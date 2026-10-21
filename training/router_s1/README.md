@@ -99,4 +99,4 @@ gsutil -m rsync -r runs/v1/ckpt gs://susmith-fde-ticket-router-laya/checkpoints/
 
 | Run | Data | Base | Loss | Epochs | sentiment acc / F1 | intent acc / F1 | τ_esc @ recall 1.0 (false-esc rate) | p50 ms | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| smoke-cs-v0 | public typed-decisions `customer_service` (300) | english | soft-ce | 8 | — | — | — | — | pipeline check, not our task |
+| smoke-cs-v0 | public typed-decisions `customer_service` (300 train / 100 test = 500 decisions) | english | soft-ce + shuffle | 8 | overall decision accuracy **0.376 → 0.778** (Brier 0.306 → 0.064; ECE 0.108 → 0.128) | — | — | 41–46 (T4, in-process, warm) | Pipeline check, not our task. 1,627 s on T4 (long multi-turn states). Checkpoint loads and answers our 4 router questions under laya 0.3.20 (serving version) |
