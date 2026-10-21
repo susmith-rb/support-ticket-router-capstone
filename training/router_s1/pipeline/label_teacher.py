@@ -14,12 +14,15 @@ from router_schema import QUESTIONS, SENTIMENTS, INTENTS, URGENCY_LEVELS
 
 SCHEMA = {
     "type": "object",
-    "required": ["escalate", "sentiment", "urgency", "intent"],
+    "required": ["escalate", "sentiment", "urgency", "intent", "topic"],
     "properties": {
         "escalate": {"type": "boolean"},
         "sentiment": {"type": "string", "enum": SENTIMENTS},
         "urgency": {"type": "integer", "minimum": 0, "maximum": URGENCY_LEVELS - 1},
         "intent": {"type": "string", "enum": INTENTS},
+        # free-text issue topic (3-6 words): lets us re-cluster `other` and change the intent
+        # taxonomy later without paying for another teacher pass
+        "topic": {"type": "string"},
     },
 }
 
@@ -39,6 +42,8 @@ PROMPT = (
     "Answer four questions about the message:\n{rubric}\n"
     "Sarcasm counts as frustrated or angry. Polite wording with a hard deadline is urgent. "
     "Tokens like [ORDER], [EMAIL], [URL], @user are redactions. Judge the message only.\n"
+    "Also give `topic`: the specific issue in 3-6 English words (e.g. 'late Prime delivery', "
+    "'Kindle book not syncing', 'unauthorized Prime charge').\n"
     "Message: ```{text}```"
 )
 
