@@ -20,7 +20,7 @@ twcs.csv ──prepare_twcs.py──▶ AmazonHelp first-turn messages + threads
 | Bucket | `gs://susmith-fde-ticket-router-laya` — `data/raw`, `data/processed`, `data/labels`, `data/dataset/<v>`, `runs/<RUN>`, `pipeline/` (code mirror) |
 | GPU VM | Workbench `laya-tune`, `us-central1-b`, n1-standard-8 + 1×T4, private IP, Cloud NAT egress |
 | SSH | `gcloud compute ssh laya-tune --zone us-central1-b --project susmith-fde-ticket-router --account admin@susmith.altostrat.com --tunnel-through-iap` (OS Login is org-enforced; the in-org admin identity works immediately, the `gcp.altostrat.com` identity needs `roles/compute.osLoginExternalUser` at org level) |
-| Teacher model | `gemini-3.1-pro-preview` on Vertex AI, location `global` (GA id `gemini-3.1-pro` returned 404 in this project on 2026-10-21; ~11 s per call with thinking=low) |
+| Teacher model | `gemini-3.1-pro-preview` on Vertex AI, location `global` (GA id `gemini-3.1-pro` returned 404 in this project on 2026-10-21; ~11 s per call with thinking=low). Measured ≈ 547 in / 42 out / 345 thinking tokens per call ≈ \$0.0057 per call, ≈ \$0.017 per message at 3 samples (`pipeline/usage_probe.py`) |
 | Laya versions | `.venv` = `laya[serve]==0.3.20` (what the Model Garden serving container pins; used for eval) · `.venv-train` = `laya==0.4.13` (only 0.4.x has `laya-train`) |
 
 ### Org-policy gotchas hit when creating the VM (Argolis defaults)
