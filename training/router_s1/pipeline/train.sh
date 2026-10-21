@@ -27,10 +27,6 @@ deactivate
 
 source .venv/bin/activate
 python pipeline/evaluate.py --ckpt "$OUT/ckpt" --data "$DATA/test.jsonl" --out "$OUT/eval_test.json" | tee "$OUT/eval_test.txt"
-if [ ! -f "runs/baseline_${BASE}_$(basename "$DATA").json" ]; then
-  python pipeline/evaluate.py --ckpt "$BASE" --data "$DATA/test.jsonl" --out "runs/baseline_${BASE}_$(basename "$DATA").json" \
-    | tee "runs/baseline_${BASE}_$(basename "$DATA").txt"
-fi
 python - "$OUT" "$DATA" "$BASE" "$LOSS" "$EPOCHS" "$SEED" <<'EOF'
 import json, sys, hashlib, pathlib
 out, data, base, loss, epochs, seed = sys.argv[1:]
@@ -39,5 +35,11 @@ json.dump({"run": pathlib.Path(out).name, "data": data, "base": base, "loss": lo
            "seed": int(seed), "ckpt_sha256_16": h}, open(pathlib.Path(out, "manifest.json"), "w"), indent=1)
 print("manifest:", pathlib.Path(out, "manifest.json").read_text())
 EOF
+# zero-shot baselines on the same test split (laya.load needs the Hub id; `english` is the repo root)
+DS=$(basename "$DATA")
+[ -f "runs/baseline_english_$DS.json" ] || python pipeline/evaluate.py --ckpt convaiinnovations/laya \
+  --data "$DATA/test.jsonl" --out "runs/baseline_english_$DS.json" > "runs/baseline_english_$DS.txt" 2>&1 || echo "baseline english failed"
+[ -f "runs/baseline_typed-decisions_$DS.json" ] || python pipeline/evaluate.py --ckpt convaiinnovations/laya --subfolder typed-decisions \
+  --data "$DATA/test.jsonl" --out "runs/baseline_typed-decisions_$DS.json" > "runs/baseline_typed-decisions_$DS.txt" 2>&1 || echo "baseline typed-decisions failed"
 if [ -n "${BUCKET:-}" ]; then gsutil -m -q rsync -r "$OUT" "$BUCKET/runs/$RUN"; gsutil -q cp runs/baseline_* "$BUCKET/runs/" || true; fi
 echo "DONE-TRAIN $RUN"
