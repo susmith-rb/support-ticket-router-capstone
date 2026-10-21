@@ -1,5 +1,11 @@
 data/
 runs/
+logs/
 .venv*/
 __pycache__/
 *.pyc
+*.zip
+*.csv
+*.parquet
+kaggle.json
+.env
