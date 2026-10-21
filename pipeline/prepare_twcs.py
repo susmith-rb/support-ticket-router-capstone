@@ -11,20 +11,27 @@ Run on the Workbench VM or Cloud Shell (twcs.csv from kaggle datasets download -
 import argparse, json, re, hashlib, pathlib
 import pandas as pd
 
+ORDER = re.compile(r"(?i)\b(?:order|ord)\.?\s*(?:no\.?|number|#|id)?\s*[:\-#]?\s*(\d{3}-\d{7}-\d{7}|\d{5,12})\b|\b\d{3}-\d{7}-\d{7}\b")
+CARD = re.compile(r"\b(?:\d[ -]?){12,18}\d\b")
 PII = [
     (re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+"), "[EMAIL]"),
-    (re.compile(r"\b(?:\d[ -]*?){13,19}\b"), "[CARD]"),            # card-like runs; Luhn check optional
-    (re.compile(r"\+?\d[\d\s().-]{8,}\d"), "[PHONE]"),
-    (re.compile(r"(?i)\b(?:order|ord)\s*#?\s*[:\-]?\s*(\d{3}-\d{7}-\d{7}|\d{5,12})\b"), "order [ORDER]"),
     (re.compile(r"https?://\S+"), "[URL]"),
     (re.compile(r"@\d+"), "@user"),                                  # dataset already pseudonymizes customers as numeric IDs
 ]
+PHONE = re.compile(r"\+?\d[\d\s().-]{8,}\d")
 SIG = re.compile(r"\s*[\^\-–—]\s?[A-Z]{1,3}\b\s*$")                 # agent signatures like ^AB / -JL
+
+def luhn_ok(digits: str) -> bool:
+    d = [int(c) for c in digits][::-1]
+    return len(d) >= 13 and sum(x if i % 2 == 0 else (x * 2 - 9 if x * 2 > 9 else x * 2) for i, x in enumerate(d)) % 10 == 0
 
 def redact(t: str) -> str:
     t = SIG.sub("", str(t))
     for rx, tok in PII:
         t = rx.sub(tok, t)
+    t = ORDER.sub(lambda m: ("order [ORDER]" if m.group(0).lower().startswith(("order", "ord")) else "[ORDER]"), t)  # before cards
+    t = CARD.sub(lambda m: "[CARD]" if luhn_ok(re.sub(r"\D", "", m.group(0))) else m.group(0), t)
+    t = PHONE.sub(lambda m: "[PHONE]" if len(re.sub(r"\D", "", m.group(0))) >= 10 else m.group(0), t)
     return re.sub(r"\s+", " ", t).strip()
 
 def main():
