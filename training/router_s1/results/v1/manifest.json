@@ -1,0 +1,1 @@
+{"run":"v1","data":"data/dataset/v1","base":"english","loss":"soft-ce","shuffle_options":true,"epochs":4,"seed":0,"train_seconds":1269,"gpu":"T4","teacher":"gemini-3.1-pro-preview x3","ckpt_sha256_16":"5a4fed642691dc86"}
