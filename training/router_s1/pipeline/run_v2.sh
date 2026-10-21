@@ -15,7 +15,7 @@ status "start N=$N concurrency=$CONC"
 
 # 1) probe the schema change (topic field) on 3 messages
 (cd pipeline && ../.venv/bin/python label_teacher.py --inp ../data/processed/inbound_first_turn.parquet \
-   --out /tmp/probe_v2.jsonl --n 3 --samples 1 --concurrency 3) >/dev/null 2>&1
+   --out /tmp/probe_v2.jsonl --n 3 --samples 2 --concurrency 3) > logs/probe_v2.log 2>&1
 grep -q '"topic"' /tmp/probe_v2.jsonl 2>/dev/null || { status "FAILED: teacher probe (no topic field)"; finish 1; }
 rm -f /tmp/probe_v2.jsonl
 
