@@ -63,6 +63,7 @@ def main():
     ap.add_argument("--ckpt", required=True); ap.add_argument("--subfolder", default=None)
     ap.add_argument("--data", required=True); ap.add_argument("--out", required=True)
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--dump", default=None, help="write per-row predictions (JSONL) for system simulation")
     a = ap.parse_args()
     agent = laya.load(a.ckpt, subfolder=a.subfolder) if a.subfolder else laya.load(a.ckpt)
     rows = [json.loads(l) for l in open(a.data)]
@@ -76,6 +77,10 @@ def main():
                      "p": {q: probs(ans[q]) for q in QUESTIONS}})
 
     rep = {"ckpt": a.ckpt + (f"/{a.subfolder}" if a.subfolder else ""), "data": a.data, "n": len(recs)}
+    if a.dump:
+        with open(a.dump, "w") as fh:
+            for x in recs:
+                fh.write(json.dumps({"text": x["text"], "expected": x["exp"], "gold_p_esc": x["gold_p_esc"], "p": x["p"]}) + "\n")
     for q, labels in (("sentiment", SENTIMENTS), ("intent", INTENTS)):
         y = [x["exp"][q] for x in recs]; p = [max(x["p"][q], key=x["p"][q].get) for x in recs]
         conf = [max(x["p"][q].values()) for x in recs]; cor = [int(i == j) for i, j in zip(y, p)]

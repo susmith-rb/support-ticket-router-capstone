@@ -1,0 +1,9 @@
+{
+ "run": "v2",
+ "data": "data/dataset/v2",
+ "base": "english",
+ "loss": "soft-ce",
+ "epochs": 3,
+ "seed": 0,
+ "ckpt_sha256_16": "0f599c1dc6005f4d"
+}

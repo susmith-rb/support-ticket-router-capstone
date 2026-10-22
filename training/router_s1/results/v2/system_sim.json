@@ -1,0 +1,449 @@
+{
+ "rule_hit_rates_test": {
+  "hard": {
+   "share": 0.0077,
+   "precision_vs_escalate": 1.0
+  },
+  "non_english": {
+   "share": 0.2012,
+   "precision_vs_escalate": 0.223
+  },
+  "shouting": {
+   "share": 0.0372,
+   "precision_vs_escalate": 0.708
+  },
+  "negative": {
+   "share": 0.0511,
+   "precision_vs_escalate": 0.697
+  },
+  "repeat": {
+   "share": 0.0697,
+   "precision_vs_escalate": 0.533
+  },
+  "deadline": {
+   "share": 0.0991,
+   "precision_vs_escalate": 0.359
+  }
+ },
+ "tier1_only_test": {
+  "tau_low": 0.15,
+  "tau_esc": 0.5,
+  "variant": "band_only",
+  "n": 646,
+  "positives": 232,
+  "system_recall_bound": 0.9138,
+  "false_escalation_rate_t0_t1": 0.0845,
+  "share": {
+   "human_hard": 0.0,
+   "human_tier1": 0.3467,
+   "tier2": 0.1238,
+   "auto": 0.5294
+  }
+ },
+ "chosen": {
+  "band_only": {
+   "tau_low_chosen_on_val": 0.01,
+   "val": {
+    "tau_low": 0.01,
+    "tau_esc": 0.5,
+    "variant": "band_only",
+    "n": 646,
+    "positives": 249,
+    "system_recall_bound": 0.996,
+    "false_escalation_rate_t0_t1": 0.1008,
+    "share": {
+     "human_hard": 0.0201,
+     "human_tier1": 0.3653,
+     "tier2": 0.418,
+     "auto": 0.1966
+    }
+   },
+   "test": {
+    "tau_low": 0.01,
+    "tau_esc": 0.5,
+    "variant": "band_only",
+    "n": 646,
+    "positives": 232,
+    "system_recall_bound": 0.9914,
+    "false_escalation_rate_t0_t1": 0.0845,
+    "share": {
+     "human_hard": 0.0077,
+     "human_tier1": 0.339,
+     "tier2": 0.4659,
+     "auto": 0.1873
+    },
+    "missed": [
+     {
+      "text": "@user has anyone had an issue with heat distortion on the echo? [URL]",
+      "gold_p_esc": 0.667,
+      "p_esc": 0.0026
+     },
+     {
+      "text": "Where is my delivery confirmation Amazon WHERE IS IT",
+      "gold_p_esc": 1.0,
+      "p_esc": 0.0081
+     }
+    ]
+   },
+   "test_grid": [
+    {
+     "tau_low": 0.01,
+     "tau_esc": 0.5,
+     "variant": "band_only",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9914,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.4659,
+      "auto": 0.1873
+     }
+    },
+    {
+     "tau_low": 0.02,
+     "tau_esc": 0.5,
+     "variant": "band_only",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9828,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.4241,
+      "auto": 0.2291
+     }
+    },
+    {
+     "tau_low": 0.03,
+     "tau_esc": 0.5,
+     "variant": "band_only",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9828,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.4025,
+      "auto": 0.2508
+     }
+    },
+    {
+     "tau_low": 0.05,
+     "tau_esc": 0.5,
+     "variant": "band_only",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9741,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.3885,
+      "auto": 0.2647
+     }
+    },
+    {
+     "tau_low": 0.075,
+     "tau_esc": 0.5,
+     "variant": "band_only",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9698,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.3762,
+      "auto": 0.2771
+     }
+    },
+    {
+     "tau_low": 0.1,
+     "tau_esc": 0.5,
+     "variant": "band_only",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9655,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.3576,
+      "auto": 0.2957
+     }
+    },
+    {
+     "tau_low": 0.15,
+     "tau_esc": 0.5,
+     "variant": "band_only",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9526,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.339,
+      "auto": 0.3142
+     }
+    },
+    {
+     "tau_low": 0.2,
+     "tau_esc": 0.5,
+     "variant": "band_only",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9483,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.3235,
+      "auto": 0.3297
+     }
+    },
+    {
+     "tau_low": 0.25,
+     "tau_esc": 0.5,
+     "variant": "band_only",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.944,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.3189,
+      "auto": 0.3344
+     }
+    },
+    {
+     "tau_low": 0.3,
+     "tau_esc": 0.5,
+     "variant": "band_only",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9397,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.3065,
+      "auto": 0.3467
+     }
+    }
+   ]
+  },
+  "tdd": {
+   "tau_low_chosen_on_val": 0.05,
+   "val": {
+    "tau_low": 0.05,
+    "tau_esc": 0.5,
+    "variant": "tdd",
+    "n": 646,
+    "positives": 249,
+    "system_recall_bound": 1.0,
+    "false_escalation_rate_t0_t1": 0.1008,
+    "share": {
+     "human_hard": 0.0201,
+     "human_tier1": 0.3653,
+     "tier2": 0.4954,
+     "auto": 0.1192
+    }
+   },
+   "test": {
+    "tau_low": 0.05,
+    "tau_esc": 0.5,
+    "variant": "tdd",
+    "n": 646,
+    "positives": 232,
+    "system_recall_bound": 0.9828,
+    "false_escalation_rate_t0_t1": 0.0845,
+    "share": {
+     "human_hard": 0.0077,
+     "human_tier1": 0.339,
+     "tier2": 0.5155,
+     "auto": 0.1378
+    },
+    "missed": [
+     {
+      "text": "@AmazonHelp money came out my account for amazon prime but i\u2019m not an amazon prime user?",
+      "gold_p_esc": 0.667,
+      "p_esc": 0.0102
+     },
+     {
+      "text": "Always nice to see @user drivers dropping your electronics on delivery [URL]",
+      "gold_p_esc": 1.0,
+      "p_esc": 0.0447
+     },
+     {
+      "text": "@AmazonHelp no other terms of the offer state that the TRANSACTION does not cover shipping. So process my extra \u20b98 in my Amazon pay. (3/3)",
+      "gold_p_esc": 1.0,
+      "p_esc": 0.0474
+     },
+     {
+      "text": "Where is my delivery confirmation Amazon WHERE IS IT",
+      "gold_p_esc": 1.0,
+      "p_esc": 0.0081
+     }
+    ]
+   },
+   "test_grid": [
+    {
+     "tau_low": 0.01,
+     "tau_esc": 0.5,
+     "variant": "tdd",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9957,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.5666,
+      "auto": 0.0867
+     }
+    },
+    {
+     "tau_low": 0.02,
+     "tau_esc": 0.5,
+     "variant": "tdd",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9914,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.5372,
+      "auto": 0.1161
+     }
+    },
+    {
+     "tau_low": 0.03,
+     "tau_esc": 0.5,
+     "variant": "tdd",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9914,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.5248,
+      "auto": 0.1285
+     }
+    },
+    {
+     "tau_low": 0.05,
+     "tau_esc": 0.5,
+     "variant": "tdd",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9828,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.5155,
+      "auto": 0.1378
+     }
+    },
+    {
+     "tau_low": 0.075,
+     "tau_esc": 0.5,
+     "variant": "tdd",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9828,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.5093,
+      "auto": 0.144
+     }
+    },
+    {
+     "tau_low": 0.1,
+     "tau_esc": 0.5,
+     "variant": "tdd",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9784,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.4954,
+      "auto": 0.1579
+     }
+    },
+    {
+     "tau_low": 0.15,
+     "tau_esc": 0.5,
+     "variant": "tdd",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9698,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.4783,
+      "auto": 0.1749
+     }
+    },
+    {
+     "tau_low": 0.2,
+     "tau_esc": 0.5,
+     "variant": "tdd",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9655,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.469,
+      "auto": 0.1842
+     }
+    },
+    {
+     "tau_low": 0.25,
+     "tau_esc": 0.5,
+     "variant": "tdd",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9612,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.4644,
+      "auto": 0.1889
+     }
+    },
+    {
+     "tau_low": 0.3,
+     "tau_esc": 0.5,
+     "variant": "tdd",
+     "n": 646,
+     "positives": 232,
+     "system_recall_bound": 0.9569,
+     "false_escalation_rate_t0_t1": 0.0845,
+     "share": {
+      "human_hard": 0.0077,
+      "human_tier1": 0.339,
+      "tier2": 0.4551,
+      "auto": 0.1981
+     }
+    }
+   ]
+  }
+ }
+}

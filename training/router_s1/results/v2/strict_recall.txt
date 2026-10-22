@@ -1,0 +1,19 @@
+none           tau_low=0.05  VAL recall 1.0 (P=127) | TEST recall 0.9754 (P=122) human 0.347 tier2 0.221 auto 0.432
+     missed: @user Pethetic Product delivery experience.
+     missed: Where is my delivery confirmation Amazon WHERE IS IT
+     missed: @user pedido foi cobrado e sumiu... recebi o email e fiz o pagamento... preciso para hoje do livro!
+lean           tau_low=0.05  VAL recall 1.0 (P=127) | TEST recall 0.9836 (P=122) human 0.347 tier2 0.252 auto 0.401
+     missed: Where is my delivery confirmation Amazon WHERE IS IT
+     missed: @user pedido foi cobrado e sumiu... recebi o email e fiz o pagamento... preciso para hoje do livro!
+lean+deadline  tau_low=0.05  VAL recall 1.0 (P=127) | TEST recall 0.9836 (P=122) human 0.347 tier2 0.289 auto 0.364
+     missed: Where is my delivery confirmation Amazon WHERE IS IT
+     missed: @user pedido foi cobrado e sumiu... recebi o email e fiz o pagamento... preciso para hoje do livro!
+full           tau_low=0.05  VAL recall 1.0 (P=127) | TEST recall 0.9918 (P=122) human 0.347 tier2 0.389 auto 0.265
+     missed: Where is my delivery confirmation Amazon WHERE IS IT
+
+strict positives share (test): 0.189
+tier1-only tau_low=0.05: strict recall 0.9754  tier2 0.221 auto 0.432
+tier1-only tau_low=0.1: strict recall 0.9672  tier2 0.163 auto 0.491
+tier1-only tau_low=0.15: strict recall 0.9672  tier2 0.124 auto 0.529
+tier1-only tau_low=0.2: strict recall 0.9344  tier2 0.098 auto 0.556
+tier1-only tau_low=0.3: strict recall 0.9262  tier2 0.06 auto 0.593

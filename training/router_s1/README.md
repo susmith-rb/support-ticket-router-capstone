@@ -103,3 +103,23 @@ gsutil -m rsync -r runs/v1/ckpt gs://susmith-fde-ticket-router-laya/checkpoints/
 | baseline (zero-shot) | v1 test (199 tweets) | `convaiinnovations/laya` (english) | — | 0 | 0.583 / 0.514 | 0.633 / 0.555 | 0.19 (FER 0.98) | 39 | urgency exact 0.19, within-one 0.55; intent ECE 0.17 |
 | baseline (zero-shot) | v1 test | `typed-decisions` | — | 0 | 0.608 / 0.546 | 0.658 / 0.556 | 0.29 (FER 0.97) | 39 | urgency exact 0.17; intent ECE 0.24 |
 | **v1** | v1: 2,000 AmazonHelp tweets, Gemini 3.1 Pro preview ×3 soft labels; 1,602 / 199 / 199 | english | soft-ce + shuffle | 4 (376 updates) | **0.754 / 0.754** (ECE 0.078) | **0.814 / 0.750** (ECE 0.053) | 0.02 (FER 0.92); at 0.15: recall 0.935, FER 0.24 | **39 (p95 46)** | urgency exact 0.69, **within-one 0.98**. 1,269 s on T4. Tier-1 alone can't reach recall 1.0: of the 5 positives below 0.15, 3 are non-English (fr/es), 1 is a security/privacy report, 2 have split (2/3) teacher votes. ckpt sha `5a4fed642691dc86` |
+| baseline (zero-shot) | v2 test (646 tweets) | english / typed-decisions | — | 0 | 0.582 / 0.490 · 0.616 / 0.534 | 0.599 / 0.529 · 0.641 / 0.556 | — | 43 | urgency within-one 0.53 / 0.52 |
+| **v2** | v2: 6,446 tweets (v1 + 4,446 new, new labels carry a free-text `topic`); 5,154 / 646 / 646 | english | soft-ce + shuffle | 3 (~870 updates) | **0.802 / 0.780** (ECE 0.086) | **0.858 / 0.819** (ECE 0.053) | broad `escalate`: none reaches 1.0; strict angry∪immediate: see verdict below | **43 (p95 51)** | urgency exact 0.71, within-one **0.985**. 3,119 s on T4. ckpt sha `0f599c1dc6005f4d`, `gs://…-laya/checkpoints/router-s1/v2` |
+
+### v2 use-case verdict (TDD §5.2, simulated with `simulate_system.py` / `strict_recall.py`)
+
+τ_low is chosen on **val**, then reported on **test**. Tier 2 is assumed to decide like the teacher, so recall is an **upper bound** until Gemini Flash is measured on the band.
+
+Strict "must reach a human" set = gold sentiment `angry` OR urgency `immediate` (18.9% of test, 122 tickets):
+
+| Tier 0 rules | τ_low | Test recall (bound) | Human (Tier 0 hard + Tier 1 ≥ 0.5) | Tier 2 share | Auto share |
+| --- | --- | --- | --- | --- | --- |
+| none, τ_low 0.15 | 0.15 | 0.967 | 34.7% | **12.4%** | 52.9% |
+| none | 0.05 | 0.975 | 34.7% | 22.1% | 43.2% |
+| lean (shouting, negative lexicon, repeat contact) | 0.05 | 0.984 | 34.7% | 25.2% | 40.1% |
+| full (+ deadline, non-English → Tier 2) | 0.05 | 0.992 | 34.7% | 38.9% | 26.5% |
+
+- **What works:** classification quality (sentiment 0.80, intent 0.86, urgency within-one 0.985), calibration (intent ECE 0.05), 43 ms latency, and a Tier-2 share that matches the TDD's 12% estimate at τ_low 0.15.
+- **What doesn't yet:** 100% angry/urgent recall is not demonstrated. Tier 0+1 reaches 97–99% on teacher labels, and the last points cost a lot of Tier-2 traffic. The persistent misses are a shouting message with a single caps word ≥3 letters ("WHERE IS IT"), a Portuguese urgent message, and sarcasm.
+- The broad `escalate` label (36% of tweets) also covers "frustrated but answerable" tickets (e.g. order-status questions an order lookup can answer). Recall on it at a sane band is ~0.91; treat it as a priority signal, not the must-escalate set (product decision).
+- **Next:** measure real Gemini Flash decisions on the band (replaces the teacher bound); human-verify a golden set; fix the intent taxonomy using `topic` (`other` = 36%); multilingual base or more non-English data so the non-English rule isn't needed.

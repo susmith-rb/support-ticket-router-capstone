@@ -1,0 +1,55 @@
+{
+ "train": {
+  "n": 5154,
+  "escalate_rate": 0.373,
+  "sentiment": {
+   "frustrated": 2521,
+   "neutral": 1260,
+   "angry": 883,
+   "positive": 490
+  },
+  "intent": {
+   "order_status": 1892,
+   "other": 1885,
+   "account_payment": 558,
+   "returns_refunds": 623,
+   "shipping_policy": 196
+  }
+ },
+ "val": {
+  "n": 646,
+  "escalate_rate": 0.385,
+  "sentiment": {
+   "frustrated": 316,
+   "angry": 111,
+   "neutral": 157,
+   "positive": 62
+  },
+  "intent": {
+   "order_status": 238,
+   "other": 235,
+   "returns_refunds": 79,
+   "account_payment": 69,
+   "shipping_policy": 25
+  }
+ },
+ "test": {
+  "n": 646,
+  "escalate_rate": 0.359,
+  "sentiment": {
+   "frustrated": 316,
+   "angry": 111,
+   "neutral": 157,
+   "positive": 62
+  },
+  "intent": {
+   "account_payment": 69,
+   "order_status": 238,
+   "other": 235,
+   "returns_refunds": 79,
+   "shipping_policy": 25
+  }
+ },
+ "source_labels": 6446,
+ "unique_cases": 6446
+}
