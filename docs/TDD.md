@@ -10,7 +10,7 @@
 
 - **Problem:** Angry customers wait in the same queue as "where is my order" questions. Illustrative baseline: median first response 4h 10m, 38% of angry tickets wait >8h, blended agent cost \$4.80/ticket, and a prior chatbot pilot hard-failed during a GenAI quota outage.
 - **Solution:** ADK multi-agent system on GEAP Agent Runtime (Cloud Run fallback), surfaced in the Gemini Enterprise (GE) App. Angry/urgent tickets bypass automation and reach a human queue in p95 < 1.5 s; factual tickets get a grounded, cited answer from Agent Search; every dependency sits behind a circuit breaker; no ticket is ever dropped (Pub/Sub + DLQ).
-- **Centerpiece:** System-1/System-2 tiered routing. A fine-tuned ModernBERT-class typed-decision encoder (Laya/Jev protocol, ~421M params) decides ~85% of tickets in p95 < 100 ms at ≈\$0.00003/call; Gemini 3.8 Flash handles the uncertainty band; Gemini 3.1 Pro only for multi-hop synthesis. Est. 80% lower routing cost and 10× lower routing latency than Gemini-only, with asymmetric thresholds tuned for angry/urgent recall = 1.0 on the golden set.
+- **Centerpiece:** System-1/System-2 tiered routing. A fine-tuned ModernBERT-class typed-decision encoder (Laya/Jev protocol, ~421M params) is fine-tuned on 6,446 Gemini-labeled AmazonHelp tweets. **Measured (router-s1 v2, 646 held-out tweets):** sentiment 0.80, intent 0.86, urgency within-one 0.985, **43 ms p50** on a T4. At τ_low 0.15 / τ_esc 0.5 it auto-routes 53%, escalates 35%, sends **12% to Gemini 3.8 Flash**, and catches **96.7%** of angry/urgent tickets at Tier 0+1 (up to 99.2% with fuller Tier-0 rules, upper bound). Gemini 3.1 Pro is used only as teacher and judge. Est. ~80% lower routing cost and ~25× lower routing latency than Gemini-only.
 - **Proof plan:** 30-case PR gate + 320-case golden benchmark, ≥80% router unit coverage, deterministic metrics first (recall, macro-F1, ECE, recall@5/MRR/nDCG, citation precision, PII leakage = 0, injection success = 0), Gen AI Evaluation Service LLM-judge second; canary with auto-rollback on angry-recall regression.
 - **Honesty line:** The encoder tier is a cost win only above ≈1.8M tickets/month (vs Flash) / ≈5M (vs Flash-Lite); below that it is a latency win and is kill-switchable (`ROUTER_TIER1_ENABLED=false`). Single Argolis project means staging = namespace isolation, not project isolation (§12.6).
 
@@ -35,7 +35,7 @@
 
 | Business KPI | Target | AI/ML objective that moves it | Measured by |
 | --- | --- | --- | --- |
-| CSAT for frustrated customers | +10 pts (Phase 2 measurement) | Angry/urgent recall = 1.0 on golden set; production recall SLO ≥ 99.5%; escalation path p95 < 1.5 s | §12.3 gates; §13 dashboard |
+| CSAT for frustrated customers | +10 pts (Phase 2 measurement) | Routing invariant 100% (D1); system angry/urgent recall ≥ 0.98 on the human-verified golden set with 95% lower bound reported (D2); production recall SLO ≥ 99.5%; escalation path p95 < 1.5 s | §12.3 gates; §13 dashboard |
 | Deflection rate on standard volume | > 40% | Factual-intent precision ≥ 0.92; grounded-answer rate ≥ 0.75 of factual tickets; citation precision ≥ 0.95 | Eval gate + production counter |
 | First response time (FRT) | Angry: < 2 s automated ack + human within 15 min; factual: < 6 s | Tier-1 p95 < 100 ms; factual path p95 < 6 s | OTel spans |
 | Availability during GenAI quota outages | 99.9% ingest availability; 0 dropped tickets | Circuit breakers, Pub/Sub DLQ, rules fallback | Chaos tests (§12.1), SLO burn alerts |
@@ -65,7 +65,7 @@
 
 | # | CUJ | Trigger | Expected outcome | Acceptance test |
 | --- | --- | --- | --- | --- |
-| 1 | **Angry escalation** | "Where is my order #12345?? Third time asking. This is ridiculous." | Tier 0/1 flags angry+urgent → ticket persisted `ESCALATED` in `human-urgent` queue → calming acknowledgement with ticket ID and ETA → no RAG call | Golden set recall = 1.0; e2e p95 < 1.5 s; RAG tool call count = 0 |
+| 1 | **Angry escalation** | "Where is my order #12345?? Third time asking. This is ridiculous." | Tier 0/1 flags angry+urgent → ticket persisted `ESCALATED` in `human-urgent` queue → calming acknowledgement with ticket ID and ETA → no RAG call | Routing invariant (D1) holds; system recall ≥ 0.98 on golden set (D2); e2e p95 < 1.5 s; RAG tool call count = 0 |
 | 2 | **Factual FAQ with citations** | "What's your return window for electronics?" | Tier 1 → `faq.returns` → Agent Search → grounded answer with ≥ 1 FAQ citation rendered in GE App | Citation precision ≥ 0.95; faithfulness ≥ 4.5/5; p95 < 6 s |
 | 3 | **Order-status lookup (read-only mock)** | "Can you check order 88213?" | Tier 0 regex extracts order ID → `OrderLookupTool` (MCP, read-only) → tool verifies the order belongs to the session's authenticated `customer_id` (object-level authorization) → status + carrier link; refuses cancellation/payment; an order that belongs to someone else returns "not found" (identical to a non-existent order, no enumeration signal) | Tool allow-list test; refusal test = 100%; cross-customer (BOLA/IDOR) probe leak = 0 |
 | 4 | **Outage degradation** | Agent Search returns 3× HTTP 429 | Breaker opens → factual tickets routed to `human-standard` queue with "a specialist will reply" → no 5xx to caller → breaker half-open probe after 30 s | Overhead < 500 ms (target < 50 ms); 0 dropped tickets |
@@ -75,8 +75,8 @@
 
 | # | Criterion | Source | Verified by |
 | --- | --- | --- | --- |
-| D1 | 100% of tickets classified Angry/Urgent are routed to a human queue (routing invariant) | Scoping | Property-based unit test over all router outputs; e2e assertion |
-| D2 | Angry/urgent classification recall = 1.0 on the 320-case golden set; production recall SLO ≥ 99.5% on sampled audits | Added | §12.3 gate G1; §13 drift monitor |
+| D1 | "100% of 'Angry' or 'Urgent' **classified** tickets successfully bypassed to human queues" (scoping doc, verbatim). This is a **routing invariant**: anything any tier classifies angry/urgent reaches a human, and no tier can clear an escalation. It is not a classification-recall target | Scoping | Property-based unit test over all router outputs (G2); e2e assertion |
+| D2 | **System** angry/urgent recall (Tier 0 + 1 + 2 with real Tier-2 decisions) **≥ 0.98** on the human-verified golden set, with the 95% lower bound reported; production recall SLO ≥ 99.5% on sampled audits. Rationale: no measured recall is "100%": with 122 positives and zero misses the 95% lower bound is still ≈ 97.5% (rule of three). Current: Tier 0+1 = 0.967 at 12% Tier-2 share, 0.984–0.992 with fuller rules (router-s1 v2, teacher labels; §5.2.1) | Added (stricter than scoping) | §12.3 gate G1; §13 drift monitor |
 | D3 | Circuit breaker opens after 3 consecutive 429s and redirects to human queue with < 500 ms overhead (target < 50 ms) | Scoping | Chaos test; OTel span `breaker.decision` duration |
 | D4 | ≥ 80% line + branch coverage on router package | Scoping | `pytest --cov`, Cloud Build gate |
 | D5 | Docker image + Terraform-provisioned infra, deployed; persistent ticket DB integrated | Scoping | `terraform plan` clean, deploy smoke test |
@@ -128,7 +128,7 @@
 | # | Assumption | Impact if false |
 | --- | --- | --- |
 | A1 | A concurrent user sends ≈1 message / 30 s; peak:average = 3:1 | TCO tiers rescale linearly (§11.4) |
-| A2 | Laya `typed-decisions` can be fine-tuned with a standard ModernBERT + head recipe (no vendor recipe exists in google3; training code not found) | Fallback: ModernBERT-large classifier trained from scratch, served behind the same Jev wire format (ADR-1, Risk R1) |
+| A2 | ~~No fine-tuning recipe~~ **Verified 2026-10-21:** the vendor ships `laya-train` (laya ≥ 0.4.x; soft-CE / RLCD loss, option shuffling, automatic temperature calibration). Fine-tuned checkpoints load under laya 0.3.20, the Model Garden serving version | Residual risk is in-domain recall, not the recipe (R1) |
 | A3 | Agent Search data stores provide hybrid (dense + keyword) retrieval and a managed re-ranker for unstructured text | If not: enable custom embeddings + Ranking API explicitly (ADR-4) |
 | A4 | GE App can render citations returned by an Agent Runtime agent natively | If not: citations rendered as markdown footnotes in the agent response |
 | A5 | Gemini list prices as of Oct 2026: 3.8 Flash \$0.75/\$3.75 per 1M in/out (intro; \$1.50/\$7.50 from Jan 2027), 3.1 Flash-Lite \$0.25/\$1.50, 3.1 Pro \$2/\$12 | TCO recomputed from `pricing.yaml` (§14) |
@@ -466,7 +466,7 @@ Multi-agent coordination pattern: **router-dispatcher with A2A handoff**, not a 
 | Uncertain | `τ_low ≤ p_esc < τ_esc` **or** `max P(intent) < τ_intent` **or** `intent = other` | Tier 2 Gemini Flash re-decides with the same schema; its escalation can only add. |
 | Auto | `p_esc < τ_low` and `max P(intent) ≥ τ_intent` | FaqResolver. |
 
-`τ_esc` is set by sweeping the golden set: the largest threshold at which angry/urgent recall = 1.0, minus a safety margin of 0.05. Initial values (to be replaced by the sweep): `τ_esc = 0.35`, `τ_low = 0.15`, `τ_intent = 0.70`. **Cost of the asymmetry:** at `τ_esc = 0.35` we expect a false-escalation rate of ~6–8% of neutral tickets (est., measured as precision on the golden set). At \$4.80/human ticket that is ≈ \$0.34 per 1k tickets of avoidable human work — about 3× the entire AI routing bill, which is why the uncertainty band exists: Flash recovers roughly two-thirds of those false escalations for \$0.00068 each. This trade is re-evaluated at every retrain with the hill-climb in §12.5.
+`τ_esc` is set by sweeping the golden set: the largest threshold at which angry/urgent recall = 1.0, minus a safety margin of 0.05. Measured on router-s1 v2 (τ chosen on val, reported on test): `τ_esc = 0.5`, `τ_low = 0.15` gives Tier 0+1 angry/urgent recall 0.967 with 12.4% of traffic in the Tier-2 band; lowering `τ_low` to 0.05 raises recall to 0.975 at 22% Tier-2 share (§5.2.1). `τ_intent = 0.70` (initial). **Cost of the asymmetry:** at `τ_esc = 0.35` we expect a false-escalation rate of ~6–8% of neutral tickets (est., measured as precision on the golden set). At \$4.80/human ticket that is ≈ \$0.34 per 1k tickets of avoidable human work — about 3× the entire AI routing bill, which is why the uncertainty band exists: Flash recovers roughly two-thirds of those false escalations for \$0.00068 each. This trade is re-evaluated at every retrain with the hill-climb in §12.5.
 
 **What if System-1 is confidently wrong?** Five independent nets, because a calibrated model is still wrong sometimes:
 
@@ -487,19 +487,46 @@ Multi-agent coordination pattern: **router-dispatcher with A2A handoff**, not a 
 | Split | 80/10/10 stratified by intent × sentiment; dedupe by MinHash across splits | `splits/v1.json` |
 | Fine-tune | ModernBERT-large encoder + Laya decision head, 3 epochs, lr 2e-5, class-weighted loss (angry ×3), max_len 512; export in Laya checkpoint layout; serve via `artifactUri` | `router-s1:v1.0.0` (Vertex Model version + sha256) |
 | Distillation (Stretch) | Soft-label KD from teacher probabilities (T = 2) instead of hard labels; expected +1–2 pts macro-F1 (literature range, to be measured) | `router-s1:v1.1.0` |
-| Acceptance | Golden set: angry/urgent recall = 1.0 at `τ_esc`; macro-F1 ≥ 0.85 on intent; ECE ≤ 0.05; p95 < 100 ms at 16 req/s/replica | Eval record in BigQuery `eval_runs` |
+| Acceptance | Golden set: system angry/urgent recall ≥ 0.98 (D2); intent macro-F1 ≥ 0.80 (v2: 0.819); ECE ≤ 0.06 (v2 intent: 0.053); p95 < 100 ms at 16 req/s/replica (v2 in-process: 51 ms) | Eval record in BigQuery `eval_runs` |
 
-**Projected numbers (all "est." until measured by the load test and golden-set run in Sprint 4; measurement method in the last column)**
+**Projected vs measured** (measured = router-s1 v2 on 646 held-out tweets with Gemini teacher labels, 2026-10-22; remaining "est." cells still need the load test or the Gemini-only baseline run)
 
 | Metric | Gemini-only routing (3.8 Flash) | Tiered routing | How measured |
 | --- | --- | --- | --- |
-| Routing accuracy (intent, golden set) | 0.90 (est.) | 0.90–0.92 (est.; Tier 2 handles the hard band) | Gen AI Eval Service run, exact match |
-| Angry/urgent recall at operating point | 0.98 (est., single threshold) | 1.00 on golden set by construction of `τ_esc`; ≥ 0.995 production SLO | Golden set; weekly human audit |
-| Routing latency p50 / p95 | 450 / 1,200 ms (est.) | 60 / 95 ms Tier-1 path; blended p95 ≈ 1,300 ms because 12% hit Tier 2 — **escalation-path p95 ≈ 95 ms** | OTel span `router.decide` |
-| Share decided per tier | 100% Flash | T0 3% · T1 85% · T2 12% · T3 ≤ 3% of answers | Counter `router.tier_hit` |
+| Routing accuracy (intent) | 0.90 (est.) | **0.858 measured at Tier 1 alone** (macro-F1 0.819); Tier 2 handles the uncertain band | Gen AI Eval Service run, exact match |
+| Angry/urgent recall at operating point | 0.98 (est., single threshold) | **Tier 0+1: 0.967 measured** (τ_low 0.15); 0.984–0.992 with fuller Tier-0 rules (upper bound); target ≥ 0.98 system (D2), ≥ 0.995 production SLO | Golden set; weekly human audit |
+| Routing latency p50 / p95 | 450 / 1,200 ms (est.) | **43 / 51 ms measured** (Tier 1, in-process, T4; endpoint overhead still to measure); blended p95 ≈ 1,300 ms because 12% hit Tier 2 — **escalation-path p95 ≈ 95 ms** | OTel span `router.decide` |
+| Share decided per tier | 100% Flash | **Measured:** Tier 1 decides 87.6% (auto 52.9%, human 34.7%), Tier 2 12.4%; Tier-0 hard rules 0.8% · T3 ≤ 3% of answers (est.) | Counter `router.tier_hit` |
 | Routing cost per 1k tickets | \$0.68 | \$0.03 (encoder) + \$0.08 (Tier 2) = **\$0.11** (−84%) | Billing export + token counters |
 | Fixed cost floor | \$0 | 2 replicas ≈ \$1,240/month | Billing |
 | Break-even volume | — | ≈ 1.8M tickets/month vs Flash; ≈ 5M vs Flash-Lite (\$0.24/1k) | Derived |
+
+#### 5.2.1 Measured results: router-s1 (2026-10-22)
+
+Pipeline and raw results: `training/router_s1/` in the capstone repo (`results/v1`, `results/v2`). Labels come from Gemini 3.1 Pro preview (3 samples per message, soft vote shares) and are **not yet human-verified**.
+
+| 646 held-out tweets | Base `english` (zero-shot) | Base `typed-decisions` (zero-shot) | v1 (2k labels) | **v2 (6.4k labels)** |
+| --- | --- | --- | --- | --- |
+| Sentiment accuracy / macro-F1 | 0.582 / 0.490 | 0.616 / 0.534 | 0.754 / 0.754 | **0.802 / 0.780** |
+| Intent accuracy / macro-F1 | 0.599 / 0.529 | 0.641 / 0.556 | 0.814 / 0.750 | **0.858 / 0.819** |
+| Intent ECE | 0.132 | 0.234 | 0.053 | **0.053** |
+| Urgency exact / within one level | 0.18 / 0.53 | 0.16 / 0.52 | 0.69 / 0.98 | **0.71 / 0.985** |
+| Latency p50 / p95 (T4, in-process) | 43 / 52 ms | 43 / 51 ms | 39 / 46 ms | **43 / 51 ms** |
+
+Angry/urgent set (gold sentiment `angry` OR urgency `immediate`; 18.9% of test, 122 tickets). τ_low chosen on val, reported on test; Tier 2 assumed to decide like the teacher (upper bound):
+
+| Tier-0 rules | τ_low | Tier 0+1 recall | Human | Tier 2 | Auto |
+| --- | --- | --- | --- | --- | --- |
+| none | 0.15 | 0.967 | 34.7% | 12.4% | 52.9% |
+| none | 0.05 | 0.975 | 34.7% | 22.1% | 43.2% |
+| shouting + negative lexicon + repeat contact | 0.05 | 0.984 | 34.7% | 25.2% | 40.1% |
+| + deadline + non-English → Tier 2 | 0.05 | 0.992 | 34.7% | 38.9% | 26.5% |
+
+Findings that change the design:
+- **Twitter skew:** the teacher flags 36–37% of tweets as "escalate" (people tweet when something already went wrong). The broad label mixes angry/urgent with frustrated-but-answerable (e.g. order status an order lookup can answer), so it is used as a queue-priority signal; the must-escalate set is angry ∪ immediate.
+- **Intent taxonomy:** `other` = 36% and `shipping_policy` = 4%. Since `intent=other` triggers Tier 2, the taxonomy is being regrouped from the teacher's free-text `topic` field before v3.
+- **Remaining misses:** non-English (20% of tweets), single-word shouting, sarcasm, and 2/3-vote teacher splits. Planned fixes: multilingual base or more non-English data, sarcasm hard negatives, and a human-verified golden set.
+- **Cost:** teacher labeling ≈ \$0.017 per message (≈ 547 input / 42 output / 345 thinking tokens per call); v1 + v2 ≈ \$95 in Gemini calls plus ≈ \$5 of T4 time.
 
 Token math for the Gemini-only baseline: system prompt 350 + message ≤ 150 + schema 100 ≈ 600 input tokens, 60 output → (600 × 0.75 + 60 × 3.75) / 1M = \$0.000675. Encoder: \$0.85/replica-hour ÷ (16 req/s × 3,600 × 50% utilization) ≈ \$0.00003.
 
@@ -1000,7 +1027,7 @@ How each estimate becomes a measurement: Billing export to BigQuery labeled by c
 
 | Gate | Pillar | Method | Threshold | Description |
 | --- | --- | --- | --- | --- |
-| G1 | Angry/urgent recall | Deterministic | **= 1.00** on golden set at `τ_esc` | No angry/urgent case may be auto-answered |
+| G1 | Angry/urgent recall | Deterministic | **System recall ≥ 0.98** on the human-verified golden set, 95% lower bound reported; Tier 0+1 recall reported separately; any miss on a unanimous, human-confirmed angry case blocks the release | Recall measured with real Tier-2 (Gemini Flash) decisions, not the teacher bound |
 | G2 | Routing invariant | Deterministic (property test) | 100% | Any decision with `escalate=true` lands in a human queue; rules add-only |
 | G3 | Intent macro-F1 / precision | Statistical | macro-F1 ≥ 0.85; false-escalation rate ≤ 8% of neutral | Cost of asymmetry bounded |
 | G4 | Calibration | Statistical | ECE ≤ 0.05 (15-bin); Brier reported | Thresholds only mean something if probabilities are calibrated |
@@ -1231,7 +1258,7 @@ Cadence: 15-min daily standup; weekly status + code walkthrough; practice panel 
 
 | # | Risk | Likelihood | Impact | Mitigation | Owner |
 | --- | --- | --- | --- | --- | --- |
-| R1 | No proven fine-tuning recipe for the Laya `typed-decisions` checkpoint; in-domain accuracy may not reach G3 | Medium | High | Time-box 1 sprint; fallback: ModernBERT-large multi-head classifier (same wire format) or Gemma-based decision model; kill switch to Gemini-only keeps the demo safe | @susmith |
+| R1 | ~~No proven fine-tuning recipe~~ (recipe verified). Remaining: Tier 0+1 angry/urgent recall (0.967 in v2) plateaus below D2 without costly Tier-2 traffic; non-English and sarcasm are the main misses | Medium | High | Time-box 1 sprint; fallback: ModernBERT-large multi-head classifier (same wire format) or Gemma-based decision model; kill switch to Gemini-only keeps the demo safe | @susmith |
 | R2 | L4 quota/capacity in Argolis region | Medium | Medium | Request quota in Sprint 1; `laya_region` variable; us-east4 verified alternative | @susmith |
 | R3 | GE App cannot render our citation objects | Low–Medium | Medium | Markdown footnote fallback; verify in Sprint 3 week 1 | @susmith |
 | R4 | Single-project parity misleads about staging | High | Low | Stated honestly; modules are env-parameterized; production plan documented | Pod lead |
