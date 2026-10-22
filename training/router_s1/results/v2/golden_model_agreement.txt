@@ -1,0 +1,13 @@
+escalate   laya vs gemini 0.860 (reweighted 0.870) | laya vs sonnet 0.850 (reweighted 0.872) | laya vs opus 0.790 (reweighted 0.798)
+sentiment  laya vs gemini 0.810 (reweighted 0.819) | laya vs sonnet 0.760 (reweighted 0.773) | laya vs opus 0.800 (reweighted 0.823)
+urgency    laya vs gemini 0.680 (reweighted 0.692) | laya vs sonnet 0.630 (reweighted 0.650) | laya vs opus 0.650 (reweighted 0.655)
+intent     laya vs gemini 0.860 (reweighted 0.836) | laya vs sonnet 0.833 (reweighted 0.811) | laya vs opus 0.853 (reweighted 0.829)
+3-model disagreement on escalate/sentiment, reweighted to test mix: 0.351 {'rest': 38, 'strict': 22, 'split': 56} {'rest': 135, 'strict': 90, 'split': 75}
+PAIRWISE AGREEMENT on 300 golden cases (majority labels)
+  escalate   gemini vs Claude Sonnet 5.5 0.850 | gemini vs Claude Opus 5.5 0.857 | Claude Sonnet 5.5 vs Claude Opus 5.5 0.833 | all three agree 0.770
+  sentiment  gemini vs Claude Sonnet 5.5 0.820 | gemini vs Claude Opus 5.5 0.880 | Claude Sonnet 5.5 vs Claude Opus 5.5 0.840 | all three agree 0.770
+  urgency    gemini vs Claude Sonnet 5.5 0.640 | gemini vs Claude Opus 5.5 0.680 | Claude Sonnet 5.5 vs Claude Opus 5.5 0.830 | all three agree 0.577
+  intent     gemini vs Claude Sonnet 5.5 0.900 | gemini vs Claude Opus 5.5 0.923 | Claude Sonnet 5.5 vs Claude Opus 5.5 0.923 | all three agree 0.877
+
+cases where the 3 models disagree on escalate or sentiment: 116 / 300  -> human review list
+  by stratum: {'rest': 38, 'strict': 22, 'split': 56}
