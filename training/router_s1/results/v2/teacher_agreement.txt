@@ -1,0 +1,13 @@
+TEACHER SELF-CONSISTENCY (all 6446 labeled messages, 3 votes each)
+question   unanimous  pairwise
+escalate       0.910     0.940
+sentiment      0.913     0.942
+urgency        0.767     0.844
+intent         0.938     0.958
+
+LAYA v2 vs TEACHER on test (646 messages)
+question   vs majority        unanimous            split  laya~vote  vote~vote
+escalate         0.879     0.906 (n=585)     0.623 (n= 61)      0.872      0.937
+sentiment        0.802     0.821 (n=592)     0.593 (n= 54)      0.797      0.944
+urgency          0.711     0.746 (n=503)     0.587 (n=143)      0.692      0.851
+intent           0.858     0.885 (n=609)     0.405 (n= 37)      0.859      0.962
