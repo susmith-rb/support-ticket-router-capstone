@@ -1,0 +1,172 @@
+[
+ {
+  "question": "The estimated delivery date for my package was two days ago and it still hasn't shown up. At what point is it officially considered late, and who can help me get a refund or replacement?",
+  "source_doc": "faq-order-status-order-not-shipped",
+  "top": [
+   "faq-order-status-late-general-delivery",
+   "faq-order-status-general-order-not-arrived",
+   "faq-order-status-lost-in-transit",
+   "faq-order-status-late-prime-delivery",
+   "faq-order-status-tracking-and-status",
+   "faq-shipping-policy-prime-delivery-speed-delays",
+   "faq-order-status-missing-delivered-package",
+   "faq-order-status-order-not-shipped",
+   "faq-order-status-preorder-delivery-issues",
+   "faq-order-status-false-delivery-attempts"
+  ],
+  "rank": 8
+ },
+ {
+  "question": "The tracking says my order was delivered yesterday afternoon, but nothing is on my porch. How long should I wait before contacting you, and what happens if it never turns up?",
+  "source_doc": "faq-order-status-driver-and-courier-issues",
+  "top": [
+   "faq-order-status-missing-delivered-package",
+   "faq-order-status-wrong-address-or-location",
+   "faq-order-status-general-order-not-arrived",
+   "faq-order-status-stolen-packages",
+   "faq-order-status-tracking-and-status",
+   "faq-order-status-late-general-delivery",
+   "faq-order-status-false-delivery-attempts",
+   "faq-order-status-lost-in-transit",
+   "faq-order-status-locker-and-pickup-issues",
+   "faq-order-status-missing-items-in-package"
+  ],
+  "rank": null
+ },
+ {
+  "question": "The tracking on my order hasn't changed in six days and my delivery estimate was yesterday. Should I contact someone now or hold off a little longer?",
+  "source_doc": "faq-order-status-lost-in-transit",
+  "top": [
+   "faq-order-status-general-order-not-arrived",
+   "faq-order-status-late-general-delivery",
+   "faq-order-status-tracking-and-status",
+   "faq-order-status-order-not-shipped",
+   "faq-shipping-policy-prime-delivery-speed-delays",
+   "faq-order-status-lost-in-transit",
+   "faq-order-status-late-prime-delivery",
+   "faq-order-status-false-delivery-attempts",
+   "faq-shipping-policy-weekend-and-same-day-delivery",
+   "faq-order-status-missing-delivered-package"
+  ],
+  "rank": 6
+ },
+ {
+  "question": "I bought something from a third-party seller and it never showed up even though it says delivered. Is there a deadline for filing a claim to get my money back?",
+  "source_doc": "faq-order-status-stolen-packages",
+  "top": [
+   "faq-order-status-missing-delivered-package",
+   "faq-order-status-missing-items-in-package",
+   "faq-order-status-lost-in-transit",
+   "faq-order-status-late-general-delivery",
+   "faq-returns-refunds-wrong-item-received",
+   "faq-order-status-stolen-packages",
+   "faq-returns-refunds-missing-or-used-items",
+   "faq-returns-refunds-damaged-or-defective-items",
+   "faq-order-status-cancellations-and-refunds",
+   "faq-returns-refunds-refund-inquiries"
+  ],
+  "rank": 6
+ },
+ {
+  "question": "My tracking says my package was delivered yesterday but there's nothing on my porch. How long should I wait before asking for a refund?",
+  "source_doc": "faq-shipping-policy-carrier-and-courier-issues",
+  "top": [
+   "faq-order-status-missing-delivered-package",
+   "faq-order-status-wrong-address-or-location",
+   "faq-order-status-stolen-packages",
+   "faq-order-status-general-order-not-arrived",
+   "faq-order-status-tracking-and-status",
+   "faq-order-status-missing-items-in-package",
+   "faq-order-status-late-general-delivery",
+   "faq-order-status-lost-in-transit",
+   "faq-returns-refunds-refund-inquiries",
+   "faq-order-status-false-delivery-attempts"
+  ],
+  "rank": null
+ },
+ {
+  "question": "My tracking says my parcel was delivered yesterday but there's nothing at my house. How long should I wait and what should I check before I reach out to you?",
+  "source_doc": "faq-shipping-policy-delivery-instructions-and-preferences",
+  "top": [
+   "faq-order-status-missing-delivered-package",
+   "faq-order-status-wrong-address-or-location",
+   "faq-order-status-general-order-not-arrived",
+   "faq-order-status-stolen-packages",
+   "faq-order-status-tracking-and-status",
+   "faq-order-status-false-delivery-attempts",
+   "faq-order-status-late-general-delivery",
+   "faq-order-status-missing-items-in-package",
+   "faq-order-status-lost-in-transit",
+   "faq-shipping-policy-delivery-instructions-and-preferences"
+  ],
+  "rank": 10
+ },
+ {
+  "question": "My package was supposed to arrive yesterday and still hasn't shown up. How long do I have to wait before it counts as late and I can get help?",
+  "source_doc": "faq-shipping-policy-order-fulfillment-and-packaging",
+  "top": [
+   "faq-order-status-late-general-delivery",
+   "faq-order-status-general-order-not-arrived",
+   "faq-order-status-missing-delivered-package",
+   "faq-order-status-lost-in-transit",
+   "faq-order-status-tracking-and-status",
+   "faq-order-status-late-prime-delivery",
+   "faq-order-status-false-delivery-attempts",
+   "faq-order-status-order-not-shipped",
+   "faq-shipping-policy-prime-delivery-speed-delays",
+   "faq-order-status-preorder-delivery-issues"
+  ],
+  "rank": null
+ },
+ {
+  "question": "My package showed up with a cracked item inside. What do I need to do to get a replacement, and will I have to pay for shipping it back?",
+  "source_doc": "faq-returns-refunds-return-policy-and-process",
+  "top": [
+   "faq-returns-refunds-damaged-or-defective-items",
+   "faq-returns-refunds-missing-or-used-items",
+   "faq-order-status-missing-items-in-package",
+   "faq-returns-refunds-wrong-item-received",
+   "faq-other-delivery-and-logistics-complaints",
+   "faq-order-status-lost-in-transit",
+   "faq-order-status-driver-and-courier-issues",
+   "faq-order-status-general-order-not-arrived",
+   "faq-other-packaging-issues",
+   "faq-order-status-missing-delivered-package"
+  ],
+  "rank": null
+ },
+ {
+  "question": "I got an email asking me to confirm my password because of a billing problem. Is that really from you, and what should I do if I already clicked the link?",
+  "source_doc": "faq-account-payment-unauthorized-charges",
+  "top": [
+   "faq-other-scams-phishing-and-fraud",
+   "faq-account-payment-hacked-compromised-account",
+   "faq-account-payment-account-locked-blocked",
+   "faq-account-payment-account-login-issues",
+   "faq-account-payment-account-management",
+   "faq-account-payment-checkout-payment-errors",
+   "faq-account-payment-unauthorized-charges",
+   "faq-account-payment-double-multiple-charges",
+   "faq-account-payment-payment-methods-emi",
+   "faq-order-status-locker-and-pickup-issues"
+  ],
+  "rank": 7
+ },
+ {
+  "question": "I just got a notification that my shipping address was updated and a pricey order is on its way, but I never made any changes. What should I do right now?",
+  "source_doc": "faq-account-payment-hacked-compromised-account",
+  "top": [
+   "faq-order-status-wrong-address-or-location",
+   "faq-order-status-missing-delivered-package",
+   "faq-account-payment-account-management",
+   "faq-order-status-false-delivery-attempts",
+   "faq-order-status-tracking-and-status",
+   "faq-order-status-missing-items-in-package",
+   "faq-order-status-general-order-not-arrived",
+   "faq-shipping-policy-delivery-instructions-and-preferences",
+   "faq-order-status-order-not-shipped",
+   "faq-order-status-stolen-packages"
+  ],
+  "rank": null
+ }
+]

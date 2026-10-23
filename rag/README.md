@@ -82,3 +82,7 @@ Gotchas:
 - New projects have a low `search_requests_regional` quota; `retrieval_eval.py --sleep` throttles and retries 429s.
 - `gcloud auth print-access-token` tokens are CBA-bound on corp machines; the Python scripts use ADC tokens.
 - The Discovery Engine service agent (`service-<num>@gcp-sa-discoveryengine…`) only exists after the first API call; grant it `storage.objectViewer` on the bucket after creating the stores.
+
+## Results
+
+See [EVAL_RESULTS.md](EVAL_RESULTS.md) for the full write-up: corpus build, threshold sweep, clean-question retrieval, groundedness (Opus judge + Vertex Eval Service), the comparison with Daniel, and cost.

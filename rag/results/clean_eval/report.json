@@ -1,0 +1,51 @@
+{
+ "A_retrieval": {
+  "n": 106,
+  "recall@1": 0.519,
+  "recall@3": 0.726,
+  "recall@5": 0.84,
+  "recall@10": 0.934,
+  "mrr@10": 0.65,
+  "zero_result": 0
+ },
+ "B_deterministic": {
+  "answers": 106,
+  "answers_with_citation": 0.991,
+  "citation_precision_verbatim": 1.0,
+  "citations": 376,
+  "cites_source_article": 0.726,
+  "abstained_or_escalated": 0.245
+ },
+ "B_evalsvc_groundedness": {
+  "scored": 0,
+  "errors": 106,
+  "groundedness_mean": null,
+  "first_error": "HTTP 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"Failed to make GenerateContent request to autorater model projects/susmith-fde-ticket-router/locations/us-central1/publishers/google/models/gemini-2.5-flash. If you're using a new project, expect a delay and retry in a few minutes.\",\n    \"sta"
+ },
+ "B_judge": {
+  "judged": 106,
+  "claims": 559,
+  "claim_support_rate": 0.977,
+  "faithfulness_mean": 4.83,
+  "answers_fully_supported": 0.887
+ },
+ "usage_this_run": {
+  "qgen": [
+   44087,
+   5341
+  ],
+  "answer": [
+   303533,
+   165551
+  ],
+  "judge": [
+   429618,
+   49492
+  ]
+ },
+ "models": {
+  "questions": "claude-sonnet-5-5",
+  "answers": "gemini-3.8-flash",
+  "judge": "claude-opus-5-5"
+ }
+}
