@@ -1,0 +1,182 @@
+[
+ {
+  "question": "I bought something from an outside seller on your site and it never arrived. How long do I have to file a claim?",
+  "source_doc": "faq-order-status-late-general-delivery",
+  "top": [
+   "faq-order-status-missing-items-in-package",
+   "faq-returns-refunds-missing-or-used-items",
+   "faq-returns-refunds-wrong-item-received",
+   "faq-order-status-lost-in-transit",
+   "faq-returns-refunds-damaged-or-defective-items",
+   "faq-order-status-late-or-not-arrived-order",
+   "faq-other-scams-phishing-and-fraud",
+   "faq-order-status-missing-or-stolen-delivered-package",
+   "faq-other-pricing-promotions-and-discounts",
+   "faq-returns-refunds-return-pickup-issues"
+  ],
+  "rank": 6,
+  "effective_gold": "faq-order-status-late-or-not-arrived-order"
+ },
+ {
+  "question": "The tracking says my order was delivered yesterday afternoon, but nothing is on my porch. How long should I wait before contacting you, and what happens if it never turns up?",
+  "source_doc": "faq-order-status-driver-and-courier-issues",
+  "top": [
+   "faq-order-status-missing-or-stolen-delivered-package",
+   "faq-order-status-wrong-address-or-location",
+   "faq-order-status-tracking-and-status",
+   "faq-order-status-late-or-not-arrived-order",
+   "faq-order-status-false-delivery-attempts",
+   "faq-order-status-lost-in-transit",
+   "faq-order-status-locker-and-pickup-issues",
+   "faq-order-status-missing-items-in-package",
+   "faq-shipping-policy-delivery-instructions-and-preferences",
+   "faq-order-status-driver-and-courier-issues"
+  ],
+  "rank": 10,
+  "effective_gold": "faq-order-status-driver-and-courier-issues"
+ },
+ {
+  "question": "My tracking says my package was delivered yesterday afternoon, but there's nothing on my porch. How long should I wait before asking for a refund?",
+  "source_doc": "faq-order-status-general-order-not-arrived",
+  "top": [
+   "faq-order-status-missing-or-stolen-delivered-package",
+   "faq-order-status-wrong-address-or-location",
+   "faq-order-status-tracking-and-status",
+   "faq-order-status-missing-items-in-package",
+   "faq-order-status-lost-in-transit",
+   "faq-returns-refunds-refund-inquiries",
+   "faq-order-status-late-or-not-arrived-order",
+   "faq-order-status-false-delivery-attempts",
+   "faq-order-status-driver-and-courier-issues",
+   "faq-returns-refunds-return-pickup-issues"
+  ],
+  "rank": 7,
+  "effective_gold": "faq-order-status-late-or-not-arrived-order"
+ },
+ {
+  "question": "My tracking says my package was delivered yesterday but there's nothing on my porch. How long should I wait before asking for a refund?",
+  "source_doc": "faq-shipping-policy-carrier-and-courier-issues",
+  "top": [
+   "faq-order-status-missing-or-stolen-delivered-package",
+   "faq-order-status-wrong-address-or-location",
+   "faq-order-status-tracking-and-status",
+   "faq-order-status-missing-items-in-package",
+   "faq-order-status-lost-in-transit",
+   "faq-returns-refunds-refund-inquiries",
+   "faq-order-status-late-or-not-arrived-order",
+   "faq-order-status-false-delivery-attempts",
+   "faq-order-status-driver-and-courier-issues",
+   "faq-returns-refunds-missing-or-used-items"
+  ],
+  "rank": null,
+  "effective_gold": "faq-shipping-policy-carrier-and-courier-issues"
+ },
+ {
+  "question": "Is there a way to find out whether a lithium battery power bank can be sent to my home in Australia before I put in my payment details, and roughly how many days would it take to arrive?",
+  "source_doc": "faq-shipping-policy-international-and-regional-shipping",
+  "top": [
+   "faq-account-payment-payment-methods-emi",
+   "faq-account-payment-double-multiple-charges",
+   "faq-account-payment-account-management",
+   "faq-shipping-policy-weekend-and-same-day-delivery",
+   "faq-account-payment-checkout-payment-errors",
+   "faq-shipping-policy-international-and-regional-shipping",
+   "faq-returns-refunds-refund-inquiries",
+   "faq-shipping-policy-prime-delivery-speed-delays",
+   "faq-order-status-late-or-not-arrived-order",
+   "faq-shipping-policy-order-fulfillment-and-packaging"
+  ],
+  "rank": 6,
+  "effective_gold": "faq-shipping-policy-international-and-regional-shipping"
+ },
+ {
+  "question": "My tracking says my parcel was delivered yesterday but there's nothing at my house. How long should I wait and what should I check before I reach out to you?",
+  "source_doc": "faq-shipping-policy-delivery-instructions-and-preferences",
+  "top": [
+   "faq-order-status-missing-or-stolen-delivered-package",
+   "faq-order-status-wrong-address-or-location",
+   "faq-order-status-tracking-and-status",
+   "faq-order-status-false-delivery-attempts",
+   "faq-order-status-late-or-not-arrived-order",
+   "faq-order-status-missing-items-in-package",
+   "faq-order-status-lost-in-transit",
+   "faq-shipping-policy-delivery-instructions-and-preferences",
+   "faq-order-status-driver-and-courier-issues",
+   "faq-order-status-locker-and-pickup-issues"
+  ],
+  "rank": 8,
+  "effective_gold": "faq-shipping-policy-delivery-instructions-and-preferences"
+ },
+ {
+  "question": "My package was supposed to arrive yesterday and still hasn't shown up. How long do I have to wait before it counts as late and I can get help?",
+  "source_doc": "faq-shipping-policy-order-fulfillment-and-packaging",
+  "top": [
+   "faq-order-status-late-or-not-arrived-order",
+   "faq-order-status-lost-in-transit",
+   "faq-order-status-tracking-and-status",
+   "faq-order-status-false-delivery-attempts",
+   "faq-shipping-policy-prime-delivery-speed-delays",
+   "faq-order-status-missing-or-stolen-delivered-package",
+   "faq-order-status-preorder-delivery-issues",
+   "faq-shipping-policy-carrier-and-courier-issues",
+   "faq-order-status-wrong-address-or-location",
+   "faq-shipping-policy-delivery-instructions-and-preferences"
+  ],
+  "rank": null,
+  "effective_gold": "faq-shipping-policy-order-fulfillment-and-packaging"
+ },
+ {
+  "question": "My package showed up with a cracked item inside. What do I need to do to get a replacement, and will I have to pay for shipping it back?",
+  "source_doc": "faq-returns-refunds-return-policy-and-process",
+  "top": [
+   "faq-returns-refunds-damaged-or-defective-items",
+   "faq-returns-refunds-missing-or-used-items",
+   "faq-order-status-missing-items-in-package",
+   "faq-returns-refunds-wrong-item-received",
+   "faq-other-delivery-and-logistics-complaints",
+   "faq-order-status-driver-and-courier-issues",
+   "faq-order-status-lost-in-transit",
+   "faq-order-status-wrong-address-or-location",
+   "faq-other-packaging-issues",
+   "faq-order-status-late-or-not-arrived-order"
+  ],
+  "rank": null,
+  "effective_gold": "faq-returns-refunds-return-policy-and-process"
+ },
+ {
+  "question": "I got an email asking me to confirm my password because of a billing problem. Is that really from you, and what should I do if I already clicked the link?",
+  "source_doc": "faq-account-payment-unauthorized-charges",
+  "top": [
+   "faq-account-payment-hacked-compromised-account",
+   "faq-other-scams-phishing-and-fraud",
+   "faq-account-payment-account-login-issues",
+   "faq-account-payment-account-management",
+   "faq-account-payment-account-locked-blocked",
+   "faq-account-payment-unauthorized-charges",
+   "faq-account-payment-checkout-payment-errors",
+   "faq-account-payment-double-multiple-charges",
+   "faq-account-payment-prime-membership-cancellation",
+   "faq-account-payment-payment-methods-emi"
+  ],
+  "rank": 6,
+  "effective_gold": "faq-account-payment-unauthorized-charges"
+ },
+ {
+  "question": "I just got a notification that my shipping address was updated and a pricey order is on its way, but I never made any changes. What should I do right now?",
+  "source_doc": "faq-account-payment-hacked-compromised-account",
+  "top": [
+   "faq-order-status-wrong-address-or-location",
+   "faq-order-status-false-delivery-attempts",
+   "faq-account-payment-account-management",
+   "faq-order-status-missing-or-stolen-delivered-package",
+   "faq-order-status-tracking-and-status",
+   "faq-order-status-late-or-not-arrived-order",
+   "faq-order-status-missing-items-in-package",
+   "faq-shipping-policy-delivery-instructions-and-preferences",
+   "faq-shipping-policy-carrier-and-courier-issues",
+   "faq-shipping-policy-shipping-costs-and-fees"
+  ],
+  "rank": null,
+  "effective_gold": "faq-account-payment-hacked-compromised-account"
+ }
+]

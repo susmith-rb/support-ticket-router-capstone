@@ -1,0 +1,628 @@
+{
+  "gate": {
+    "passed": true,
+    "criteria": {
+      "overall_delta_recall@5 >= -0.02": {
+        "threshold": -0.02,
+        "measured": -0.007,
+        "passed": true
+      },
+      "per_intent_delta_recall@5 >= -0.05": {
+        "threshold": -0.05,
+        "measured": {
+          "account_payment": 0.021,
+          "order_status": 0.028,
+          "other": -0.013,
+          "returns_refunds": -0.046,
+          "shipping_policy": 0.0
+        },
+        "passed": {
+          "account_payment": true,
+          "order_status": true,
+          "other": true,
+          "returns_refunds": true,
+          "shipping_policy": true
+        }
+      }
+    },
+    "verdict": "PASS - Keep v2 live"
+  },
+  "tier1_real_tweets": {
+    "a_all": {
+      "v1": {
+        "n": 300,
+        "zero_result_queries": 9,
+        "recall@1": 0.43,
+        "recall@3": 0.653,
+        "recall@5": 0.76,
+        "recall@10": 0.84,
+        "mrr@10": 0.562,
+        "by_intent": {
+          "account_payment": {
+            "n": 46,
+            "recall@1": 0.587,
+            "recall@3": 0.717,
+            "recall@5": 0.783,
+            "recall@10": 0.891,
+            "mrr@10": 0.676
+          },
+          "order_status": {
+            "n": 71,
+            "recall@1": 0.394,
+            "recall@3": 0.676,
+            "recall@5": 0.817,
+            "recall@10": 0.901,
+            "mrr@10": 0.558
+          },
+          "other": {
+            "n": 86,
+            "recall@1": 0.372,
+            "recall@3": 0.5,
+            "recall@5": 0.593,
+            "recall@10": 0.698,
+            "mrr@10": 0.467
+          },
+          "returns_refunds": {
+            "n": 88,
+            "recall@1": 0.477,
+            "recall@3": 0.773,
+            "recall@5": 0.864,
+            "recall@10": 0.898,
+            "mrr@10": 0.632
+          },
+          "shipping_policy": {
+            "n": 9,
+            "recall@1": 0.0,
+            "recall@3": 0.444,
+            "recall@5": 0.778,
+            "recall@10": 0.889,
+            "mrr@10": 0.24
+          }
+        }
+      },
+      "v2": {
+        "n": 300,
+        "zero_result_queries": 9,
+        "recall@1": 0.393,
+        "recall@3": 0.66,
+        "recall@5": 0.747,
+        "recall@10": 0.837,
+        "mrr@10": 0.542,
+        "by_intent": {
+          "account_payment": {
+            "n": 46,
+            "recall@1": 0.543,
+            "recall@3": 0.739,
+            "recall@5": 0.804,
+            "recall@10": 0.891,
+            "mrr@10": 0.658
+          },
+          "order_status": {
+            "n": 71,
+            "recall@1": 0.282,
+            "recall@3": 0.704,
+            "recall@5": 0.845,
+            "recall@10": 0.915,
+            "mrr@10": 0.504
+          },
+          "other": {
+            "n": 86,
+            "recall@1": 0.36,
+            "recall@3": 0.477,
+            "recall@5": 0.558,
+            "recall@10": 0.674,
+            "mrr@10": 0.452
+          },
+          "returns_refunds": {
+            "n": 88,
+            "recall@1": 0.477,
+            "recall@3": 0.773,
+            "recall@5": 0.818,
+            "recall@10": 0.898,
+            "mrr@10": 0.623
+          },
+          "shipping_policy": {
+            "n": 9,
+            "recall@1": 0.0,
+            "recall@3": 0.556,
+            "recall@5": 0.778,
+            "recall@10": 0.889,
+            "mrr@10": 0.333
+          }
+        }
+      },
+      "diff": {
+        "delta_recall@1": -0.037,
+        "delta_recall@3": 0.007,
+        "delta_recall@5": -0.013,
+        "delta_recall@10": -0.003,
+        "delta_mrr@10": -0.02,
+        "by_intent": {
+          "account_payment": {
+            "v1_recall@5": 0.783,
+            "v2_recall@5": 0.804,
+            "delta_recall@5": 0.021,
+            "v1_mrr": 0.676,
+            "v2_mrr": 0.658,
+            "delta_mrr": -0.018
+          },
+          "order_status": {
+            "v1_recall@5": 0.817,
+            "v2_recall@5": 0.845,
+            "delta_recall@5": 0.028,
+            "v1_mrr": 0.558,
+            "v2_mrr": 0.504,
+            "delta_mrr": -0.054
+          },
+          "other": {
+            "v1_recall@5": 0.593,
+            "v2_recall@5": 0.558,
+            "delta_recall@5": -0.035,
+            "v1_mrr": 0.467,
+            "v2_mrr": 0.452,
+            "delta_mrr": -0.015
+          },
+          "returns_refunds": {
+            "v1_recall@5": 0.864,
+            "v2_recall@5": 0.818,
+            "delta_recall@5": -0.046,
+            "v1_mrr": 0.632,
+            "v2_mrr": 0.623,
+            "delta_mrr": -0.009
+          },
+          "shipping_policy": {
+            "v1_recall@5": 0.778,
+            "v2_recall@5": 0.778,
+            "delta_recall@5": 0.0,
+            "v1_mrr": 0.24,
+            "v2_mrr": 0.333,
+            "delta_mrr": 0.093
+          }
+        }
+      }
+    },
+    "b_excl_dropped": {
+      "v1": {
+        "n": 287,
+        "zero_result_queries": 9,
+        "recall@1": 0.449,
+        "recall@3": 0.683,
+        "recall@5": 0.787,
+        "recall@10": 0.871,
+        "mrr@10": 0.586,
+        "by_intent": {
+          "account_payment": {
+            "n": 46,
+            "recall@1": 0.587,
+            "recall@3": 0.717,
+            "recall@5": 0.783,
+            "recall@10": 0.891,
+            "mrr@10": 0.676
+          },
+          "order_status": {
+            "n": 71,
+            "recall@1": 0.394,
+            "recall@3": 0.676,
+            "recall@5": 0.817,
+            "recall@10": 0.901,
+            "mrr@10": 0.558
+          },
+          "other": {
+            "n": 73,
+            "recall@1": 0.438,
+            "recall@3": 0.589,
+            "recall@5": 0.671,
+            "recall@10": 0.795,
+            "mrr@10": 0.545
+          },
+          "returns_refunds": {
+            "n": 88,
+            "recall@1": 0.477,
+            "recall@3": 0.773,
+            "recall@5": 0.864,
+            "recall@10": 0.898,
+            "mrr@10": 0.632
+          },
+          "shipping_policy": {
+            "n": 9,
+            "recall@1": 0.0,
+            "recall@3": 0.444,
+            "recall@5": 0.778,
+            "recall@10": 0.889,
+            "mrr@10": 0.24
+          }
+        }
+      },
+      "v2": {
+        "n": 287,
+        "zero_result_queries": 9,
+        "recall@1": 0.411,
+        "recall@3": 0.69,
+        "recall@5": 0.78,
+        "recall@10": 0.875,
+        "mrr@10": 0.567,
+        "by_intent": {
+          "account_payment": {
+            "n": 46,
+            "recall@1": 0.543,
+            "recall@3": 0.739,
+            "recall@5": 0.804,
+            "recall@10": 0.891,
+            "mrr@10": 0.658
+          },
+          "order_status": {
+            "n": 71,
+            "recall@1": 0.282,
+            "recall@3": 0.704,
+            "recall@5": 0.845,
+            "recall@10": 0.915,
+            "mrr@10": 0.504
+          },
+          "other": {
+            "n": 73,
+            "recall@1": 0.425,
+            "recall@3": 0.562,
+            "recall@5": 0.658,
+            "recall@10": 0.795,
+            "mrr@10": 0.532
+          },
+          "returns_refunds": {
+            "n": 88,
+            "recall@1": 0.477,
+            "recall@3": 0.773,
+            "recall@5": 0.818,
+            "recall@10": 0.898,
+            "mrr@10": 0.623
+          },
+          "shipping_policy": {
+            "n": 9,
+            "recall@1": 0.0,
+            "recall@3": 0.556,
+            "recall@5": 0.778,
+            "recall@10": 0.889,
+            "mrr@10": 0.333
+          }
+        }
+      },
+      "diff": {
+        "delta_recall@1": -0.038,
+        "delta_recall@3": 0.007,
+        "delta_recall@5": -0.007,
+        "delta_recall@10": 0.004,
+        "delta_mrr@10": -0.019,
+        "by_intent": {
+          "account_payment": {
+            "v1_recall@5": 0.783,
+            "v2_recall@5": 0.804,
+            "delta_recall@5": 0.021,
+            "v1_mrr": 0.676,
+            "v2_mrr": 0.658,
+            "delta_mrr": -0.018
+          },
+          "order_status": {
+            "v1_recall@5": 0.817,
+            "v2_recall@5": 0.845,
+            "delta_recall@5": 0.028,
+            "v1_mrr": 0.558,
+            "v2_mrr": 0.504,
+            "delta_mrr": -0.054
+          },
+          "other": {
+            "v1_recall@5": 0.671,
+            "v2_recall@5": 0.658,
+            "delta_recall@5": -0.013,
+            "v1_mrr": 0.545,
+            "v2_mrr": 0.532,
+            "delta_mrr": -0.013
+          },
+          "returns_refunds": {
+            "v1_recall@5": 0.864,
+            "v2_recall@5": 0.818,
+            "delta_recall@5": -0.046,
+            "v1_mrr": 0.632,
+            "v2_mrr": 0.623,
+            "delta_mrr": -0.009
+          },
+          "shipping_policy": {
+            "v1_recall@5": 0.778,
+            "v2_recall@5": 0.778,
+            "delta_recall@5": 0.0,
+            "v1_mrr": 0.24,
+            "v2_mrr": 0.333,
+            "delta_mrr": 0.093
+          }
+        }
+      }
+    },
+    "c_excl_dropped_and_merged": {
+      "v1": {
+        "n": 242,
+        "zero_result_queries": 8,
+        "recall@1": 0.446,
+        "recall@3": 0.674,
+        "recall@5": 0.773,
+        "recall@10": 0.864,
+        "mrr@10": 0.58,
+        "by_intent": {
+          "account_payment": {
+            "n": 46,
+            "recall@1": 0.587,
+            "recall@3": 0.717,
+            "recall@5": 0.783,
+            "recall@10": 0.891,
+            "mrr@10": 0.676
+          },
+          "order_status": {
+            "n": 26,
+            "recall@1": 0.269,
+            "recall@3": 0.577,
+            "recall@5": 0.731,
+            "recall@10": 0.885,
+            "mrr@10": 0.445
+          },
+          "other": {
+            "n": 73,
+            "recall@1": 0.438,
+            "recall@3": 0.589,
+            "recall@5": 0.671,
+            "recall@10": 0.795,
+            "mrr@10": 0.545
+          },
+          "returns_refunds": {
+            "n": 88,
+            "recall@1": 0.477,
+            "recall@3": 0.773,
+            "recall@5": 0.864,
+            "recall@10": 0.898,
+            "mrr@10": 0.632
+          },
+          "shipping_policy": {
+            "n": 9,
+            "recall@1": 0.0,
+            "recall@3": 0.444,
+            "recall@5": 0.778,
+            "recall@10": 0.889,
+            "mrr@10": 0.24
+          }
+        }
+      },
+      "v2": {
+        "n": 242,
+        "zero_result_queries": 8,
+        "recall@1": 0.438,
+        "recall@3": 0.674,
+        "recall@5": 0.764,
+        "recall@10": 0.864,
+        "mrr@10": 0.577,
+        "by_intent": {
+          "account_payment": {
+            "n": 46,
+            "recall@1": 0.543,
+            "recall@3": 0.739,
+            "recall@5": 0.804,
+            "recall@10": 0.891,
+            "mrr@10": 0.658
+          },
+          "order_status": {
+            "n": 26,
+            "recall@1": 0.308,
+            "recall@3": 0.577,
+            "recall@5": 0.808,
+            "recall@10": 0.885,
+            "mrr@10": 0.487
+          },
+          "other": {
+            "n": 73,
+            "recall@1": 0.425,
+            "recall@3": 0.562,
+            "recall@5": 0.658,
+            "recall@10": 0.795,
+            "mrr@10": 0.532
+          },
+          "returns_refunds": {
+            "n": 88,
+            "recall@1": 0.477,
+            "recall@3": 0.773,
+            "recall@5": 0.818,
+            "recall@10": 0.898,
+            "mrr@10": 0.623
+          },
+          "shipping_policy": {
+            "n": 9,
+            "recall@1": 0.0,
+            "recall@3": 0.556,
+            "recall@5": 0.778,
+            "recall@10": 0.889,
+            "mrr@10": 0.333
+          }
+        }
+      },
+      "diff": {
+        "delta_recall@1": -0.008,
+        "delta_recall@3": 0.0,
+        "delta_recall@5": -0.009,
+        "delta_recall@10": 0.0,
+        "delta_mrr@10": -0.003,
+        "by_intent": {
+          "account_payment": {
+            "v1_recall@5": 0.783,
+            "v2_recall@5": 0.804,
+            "delta_recall@5": 0.021,
+            "v1_mrr": 0.676,
+            "v2_mrr": 0.658,
+            "delta_mrr": -0.018
+          },
+          "order_status": {
+            "v1_recall@5": 0.731,
+            "v2_recall@5": 0.808,
+            "delta_recall@5": 0.077,
+            "v1_mrr": 0.445,
+            "v2_mrr": 0.487,
+            "delta_mrr": 0.042
+          },
+          "other": {
+            "v1_recall@5": 0.671,
+            "v2_recall@5": 0.658,
+            "delta_recall@5": -0.013,
+            "v1_mrr": 0.545,
+            "v2_mrr": 0.532,
+            "delta_mrr": -0.013
+          },
+          "returns_refunds": {
+            "v1_recall@5": 0.864,
+            "v2_recall@5": 0.818,
+            "delta_recall@5": -0.046,
+            "v1_mrr": 0.632,
+            "v2_mrr": 0.623,
+            "delta_mrr": -0.009
+          },
+          "shipping_policy": {
+            "v1_recall@5": 0.778,
+            "v2_recall@5": 0.778,
+            "delta_recall@5": 0.0,
+            "v1_mrr": 0.24,
+            "v2_mrr": 0.333,
+            "delta_mrr": 0.093
+          }
+        }
+      }
+    }
+  },
+  "tier2_clean_questions": {
+    "a_all": {
+      "v1": {
+        "n": 106,
+        "zero_result_queries": 0,
+        "recall@1": 0.519,
+        "recall@3": 0.726,
+        "recall@5": 0.84,
+        "recall@10": 0.934,
+        "mrr@10": 0.65,
+        "deterministic": {
+          "answers": 106,
+          "answers_with_citation": 0.991,
+          "citation_precision_verbatim": 0.968,
+          "citations": 376,
+          "cites_source_article": 0.726,
+          "abstained_or_escalated": 0.245
+        }
+      },
+      "v2": {
+        "n": 106,
+        "zero_result_queries": 0,
+        "recall@1": 0.557,
+        "recall@3": 0.783,
+        "recall@5": 0.821,
+        "recall@10": 0.943,
+        "mrr@10": 0.681,
+        "deterministic": {
+          "answers": 106,
+          "answers_with_citation": 0.972,
+          "citation_precision_verbatim": 0.964,
+          "citations": 338,
+          "cites_source_article": 0.679,
+          "abstained_or_escalated": 0.198
+        }
+      },
+      "diff": {
+        "delta_recall@1": 0.038,
+        "delta_recall@3": 0.057,
+        "delta_recall@5": -0.019,
+        "delta_recall@10": 0.009,
+        "delta_mrr@10": 0.031,
+        "delta_cites_source_article": -0.047,
+        "delta_abstained_or_escalated": -0.047
+      }
+    },
+    "b_excl_dropped": {
+      "v1": {
+        "n": 104,
+        "zero_result_queries": 0,
+        "recall@1": 0.519,
+        "recall@3": 0.731,
+        "recall@5": 0.846,
+        "recall@10": 0.942,
+        "mrr@10": 0.653,
+        "deterministic": {
+          "answers": 104,
+          "answers_with_citation": 0.99,
+          "citation_precision_verbatim": 0.968,
+          "citations": 372,
+          "cites_source_article": 0.731,
+          "abstained_or_escalated": 0.25
+        }
+      },
+      "v2": {
+        "n": 104,
+        "zero_result_queries": 0,
+        "recall@1": 0.567,
+        "recall@3": 0.798,
+        "recall@5": 0.837,
+        "recall@10": 0.962,
+        "mrr@10": 0.694,
+        "deterministic": {
+          "answers": 104,
+          "answers_with_citation": 0.971,
+          "citation_precision_verbatim": 0.964,
+          "citations": 336,
+          "cites_source_article": 0.692,
+          "abstained_or_escalated": 0.202
+        }
+      },
+      "diff": {
+        "delta_recall@1": 0.048,
+        "delta_recall@3": 0.067,
+        "delta_recall@5": -0.009,
+        "delta_recall@10": 0.02,
+        "delta_mrr@10": 0.041,
+        "delta_cites_source_article": -0.039,
+        "delta_abstained_or_escalated": -0.048
+      }
+    },
+    "c_excl_dropped_and_merged": {
+      "v1": {
+        "n": 92,
+        "zero_result_queries": 0,
+        "recall@1": 0.554,
+        "recall@3": 0.772,
+        "recall@5": 0.848,
+        "recall@10": 0.935,
+        "mrr@10": 0.679,
+        "deterministic": {
+          "answers": 92,
+          "answers_with_citation": 0.989,
+          "citation_precision_verbatim": 0.964,
+          "citations": 330,
+          "cites_source_article": 0.772,
+          "abstained_or_escalated": 0.25
+        }
+      },
+      "v2": {
+        "n": 92,
+        "zero_result_queries": 0,
+        "recall@1": 0.543,
+        "recall@3": 0.793,
+        "recall@5": 0.837,
+        "recall@10": 0.957,
+        "mrr@10": 0.678,
+        "deterministic": {
+          "answers": 92,
+          "answers_with_citation": 0.967,
+          "citation_precision_verbatim": 0.964,
+          "citations": 302,
+          "cites_source_article": 0.685,
+          "abstained_or_escalated": 0.217
+        }
+      },
+      "diff": {
+        "delta_recall@1": -0.011,
+        "delta_recall@3": 0.021,
+        "delta_recall@5": -0.011,
+        "delta_recall@10": 0.022,
+        "delta_mrr@10": -0.001,
+        "delta_cites_source_article": -0.087,
+        "delta_abstained_or_escalated": -0.033
+      }
+    }
+  }
+}

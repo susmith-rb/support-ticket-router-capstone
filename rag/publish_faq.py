@@ -96,6 +96,11 @@ def load_manifest(path):
     return {json.loads(l)["id"]: json.loads(l) for l in open(path)} if path.exists() else {}
 
 
+def build_import_payload(manifest):
+    """Return document entries for documents:import, excluding retired tombstones so reconciliationMode=FULL purges them."""
+    return [m for m in manifest if m.get("structData", {}).get("status") != "retired"]
+
+
 def stamp(docs, prev, gcs_prefix, today):
     out, changes = [], {"added": [], "changed": [], "unchanged": [], "retired": []}
     for doc_id, body in sorted(docs.items()):
@@ -173,6 +178,9 @@ def main():
 
     with open(w / "manifest.jsonl", "w") as fh:
         for m in manifest: fh.write(json.dumps(m) + "\n")
+    import_payload = build_import_payload(manifest)
+    with open(w / "import.jsonl", "w") as fh:
+        for m in import_payload: fh.write(json.dumps(m) + "\n")
     json.dump({"release": rel, "published_at": today, "policy_version": POLICY_VERSION, "changes": changes}, open(w / "release.json", "w"), indent=1)
 
     # 3. upload (docs for every manifest entry incl. tombstones, so FULL import can still fetch content)
@@ -181,12 +189,13 @@ def main():
         src = w / "dropped" / f"{doc_id}.txt"
         if src.exists(): subprocess.run(["gcloud", "storage", "cp", str(src), f"{gcs_prefix}/docs/", "--project", a.project], check=True, capture_output=True)
     subprocess.run(["gcloud", "storage", "cp", str(w / "manifest.jsonl"), f"{gcs_prefix}/manifest.jsonl", "--project", a.project], check=True, capture_output=True)
+    subprocess.run(["gcloud", "storage", "cp", str(w / "import.jsonl"), f"{gcs_prefix}/import.jsonl", "--project", a.project], check=True, capture_output=True)
     print(f"uploaded -> {gcs_prefix}")
 
     # 4-5. FULL import + wait
     ds = DS.format(p=a.project)
     op = call("POST", f"{API}{ds}/branches/default_branch/documents:import", a.project,
-              {"gcsSource": {"inputUris": [f"{gcs_prefix}/manifest.jsonl"], "dataSchema": "document"}, "reconciliationMode": "FULL"})
+              {"gcsSource": {"inputUris": [f"{gcs_prefix}/import.jsonl"], "dataSchema": "document"}, "reconciliationMode": "FULL"})
     name = op["name"]; print("import op", name)
     for _ in range(120):
         op = call("GET", f"{API}{name}", a.project)
@@ -212,6 +221,25 @@ def main():
             time.sleep(20)
         else:
             sys.exit(f"NOT VERIFIED: {pid} expected v{want}, saw {got} — do not bump FAQ_VERSION yet")
+
+    # verify retired articles are NOT returned
+    if changes["retired"]:
+        ret_id = changes["retired"][0]
+        ret_title = prev.get(ret_id, {}).get("structData", {}).get("title") or next(
+            (m["structData"]["title"] for m in manifest if m["id"] == ret_id), ret_id
+        )
+        engine = f"projects/{a.project}/locations/global/collections/default_collection/engines/support-kb-search/servingConfigs/default_search"
+        for i in range(30):
+            res = call("POST", f"{API}{engine}:search", a.project,
+                       {"query": ret_title, "pageSize": 10, "relevanceThreshold": "LOWEST",
+                        "dataStoreSpecs": [{"dataStore": ds}]})
+            ret_ids = [r["document"]["id"] for r in res.get("results", [])]
+            if ret_id not in ret_ids:
+                print(f"verified: retired doc '{ret_id}' is absent from search results for '{ret_title}' (attempt {i+1})")
+                break
+            time.sleep(20)
+        else:
+            sys.exit(f"NOT VERIFIED: retired doc '{ret_id}' still present in search results: {ret_ids}")
 
     # 7. hand-off for cache eviction + regression gate
     evict = [c.split("@")[0] for c in changes["changed"]] + changes["retired"]

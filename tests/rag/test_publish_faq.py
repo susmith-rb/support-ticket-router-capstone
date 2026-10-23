@@ -1,7 +1,7 @@
 import hashlib
 import json
 import pytest
-from publish_faq import sha, answer_only, lint, load_manifest, stamp
+from publish_faq import sha, answer_only, lint, load_manifest, stamp, build_import_payload
 
 
 def test_sha():
@@ -212,3 +212,26 @@ def test_stamp_retired_article():
     sd = out[0]["structData"]
     assert sd["status"] == "retired"
     assert sd["effective_to"] == today
+
+
+def test_build_import_payload_excludes_retired():
+    manifest = [
+        {"id": "faq-active", "structData": {"article_id": "faq-active", "status": "active"}},
+        {"id": "faq-draft", "structData": {"article_id": "faq-draft", "status": "draft"}},
+        {"id": "faq-retired", "structData": {"article_id": "faq-retired", "status": "retired"}},
+    ]
+    payload = build_import_payload(manifest)
+    assert len(payload) == 2
+    assert [m["id"] for m in payload] == ["faq-active", "faq-draft"]
+    assert all(m["structData"]["status"] != "retired" for m in payload)
+    # Ensure manifest was not mutated in place
+    assert len(manifest) == 3
+
+
+def test_build_import_payload_unchanged_corpus_identical():
+    manifest = [
+        {"id": "faq-1", "structData": {"article_id": "faq-1", "status": "active"}},
+        {"id": "faq-2", "structData": {"article_id": "faq-2", "status": "draft"}},
+    ]
+    payload = build_import_payload(manifest)
+    assert payload == manifest

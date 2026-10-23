@@ -1,0 +1,26 @@
+{
+  "title": "How do I troubleshoot electronics, smart home devices, and hardware issues?",
+  "question_paraphrases": [
+    "My smart home device or accessory is not responding.",
+    "How do I resolve hardware installation and setup problems?",
+    "My electronic charger or cable is defective or stopped working.",
+    "How do I report a damaged or malfunctioning electronic product?",
+    "What is the return policy for opened electronics?",
+    "My phone or tablet displays an uncertified device warning.",
+    "Where can I find installation assistance for electronics?",
+    "Can I get a free return label for a defective hardware item?"
+  ],
+  "answer_markdown": "If you encounter setup errors, connectivity issues, or defects with electronics or smart devices purchased from Global Retail Hub, follow these steps:\n\n1. **Check connections and power:** Verify that power cables, adapters, and wall outlets are functioning correctly.\n2. **Check device registration and app updates:** For digital content or app sync issues, check device registration and app updates first.\n3. **Return policy for electronics:** Opened electronics can be returned within 14 days from delivery, while unopened items can be returned within 30 days from delivery. Free return labels are provided for defective or wrong items.\n4. **Report damaged or defective items:** Report any damaged or defective item within 30 days for a free replacement or refund; photos may be requested.\n5. **Refund processing:** Refunds are issued to the original payment method within 3-5 business days after the return is received, or to a gift card within 24 hours.\n6. **Third-party seller purchases:** Items purchased from third-party sellers are covered under the Hub Guarantee for items not received or not as described (claim within 90 days).",
+  "constraints": [
+    "Returns: 30 days from delivery for most items; opened electronics 14 days.",
+    "Free return label for defective or wrong items.",
+    "Damaged, defective, or wrong items: report within 30 days for free replacement or refund.",
+    "Refunds: issued to original payment method within 3-5 business days after return is received; gift card refunds within 24 hours.",
+    "Third-party sellers: covered by Hub Guarantee (claim within 90 days)."
+  ],
+  "escalate_when": [
+    "The customer received a physically damaged, broken, or defective electronic item.",
+    "A third-party seller refuses a return for an item not as described within 90 days.",
+    "Assistance is required with replacement parts or warranty claims."
+  ]
+}

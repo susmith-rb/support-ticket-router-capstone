@@ -39,19 +39,21 @@ class Tok:
 tok = Tok()
 
 
-def post(url, body, extra=None, retries=6, timeout=300):
+def post(url, body, extra=None, retries=6, timeout=120):
     h = {"Authorization": f"Bearer {tok()}", "Content-Type": "application/json", "x-goog-user-project": P, **(extra or {})}
     for attempt in range(retries):
         try:
             req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers=h)
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return json.loads(r.read())
-        except urllib.error.HTTPError as e:
-            msg = e.read().decode()[:400]
-            if e.code in (429, 500, 503, 529) and attempt < retries - 1:
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
+            if attempt < retries - 1:
                 time.sleep(min(60, 4 * (attempt + 1)))
                 continue
-            raise RuntimeError(f"HTTP {e.code}: {msg}")
+            if isinstance(e, urllib.error.HTTPError):
+                msg = e.read().decode()[:400]
+                raise RuntimeError(f"HTTP {e.code}: {msg}")
+            raise
 
 
 def claude(model, prompt, effort="high", max_tokens=8000):
@@ -102,6 +104,7 @@ def main():
     ap.add_argument("--qmodel", default="claude-sonnet-5-5"); ap.add_argument("--judge", default="claude-opus-5-5")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--gold-map", default=None, help="path to gold map JSON (old_id -> new_id)")
+    ap.add_argument("--skip-judge", action="store_true", help="skip Eval Service and Claude judge evaluation")
     ap.add_argument("--reuse-questions", nargs="?", const=True, default=None,
                     help="reuse existing questions.jsonl (path or true to use --out/questions.jsonl)")
     a = ap.parse_args()
@@ -207,54 +210,62 @@ def main():
     print("B. deterministic:", det, flush=True)
 
     # ---- B3. Gen AI Evaluation Service groundedness (pointwise)
-    ef = out / "evalsvc.jsonl"
-    if not ef.exists():
-        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/{P}/locations/us-central1:evaluateInstances"
-        def ev(x):
-            ctx = "\n\n".join(docs[d] for d in x["context_ids"] if d in docs)
-            try:
-                r = post(url, {"groundednessInput": {"metricSpec": {}, "instance": {"prediction": x["gen"]["answer"], "context": ctx}}})
-                return {"score": r.get("groundednessResult", {}).get("score"), "explanation": r.get("groundednessResult", {}).get("explanation", "")[:300]}
-            except Exception as e:
-                return {"error": str(e)[:300]}
-        with cf.ThreadPoolExecutor(4) as ex, open(ef, "w") as fh:
-            for x, r in zip(ANS, ex.map(ev, ANS)):
-                fh.write(json.dumps({"question": x["question"], **r}) + "\n")
-    EV = [json.loads(l) for l in open(ef)]
-    sc = [e["score"] for e in EV if e.get("score") is not None]
-    evalsvc = {"scored": len(sc), "errors": len(EV) - len(sc), "groundedness_mean": round(sum(sc) / len(sc), 3) if sc else None,
-               "first_error": next((e["error"] for e in EV if "error" in e), None)}
-    print("B. Gen AI Evaluation Service groundedness:", evalsvc, flush=True)
+    if a.skip_judge:
+        evalsvc = {"skipped": True}
+        print("B. Gen AI Evaluation Service groundedness: skipped (--skip-judge)", flush=True)
+    else:
+        ef = out / "evalsvc.jsonl"
+        if not ef.exists():
+            url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/{P}/locations/us-central1:evaluateInstances"
+            def ev(x):
+                ctx = "\n\n".join(docs[d] for d in x["context_ids"] if d in docs)
+                try:
+                    r = post(url, {"groundednessInput": {"metricSpec": {}, "instance": {"prediction": x["gen"]["answer"], "context": ctx}}})
+                    return {"score": r.get("groundednessResult", {}).get("score"), "explanation": r.get("groundednessResult", {}).get("explanation", "")[:300]}
+                except Exception as e:
+                    return {"error": str(e)[:300]}
+            with cf.ThreadPoolExecutor(4) as ex, open(ef, "w") as fh:
+                for x, r in zip(ANS, ex.map(ev, ANS)):
+                    fh.write(json.dumps({"question": x["question"], **r}) + "\n")
+        EV = [json.loads(l) for l in open(ef)]
+        sc = [e["score"] for e in EV if e.get("score") is not None]
+        evalsvc = {"scored": len(sc), "errors": len(EV) - len(sc), "groundedness_mean": round(sum(sc) / len(sc), 3) if sc else None,
+                   "first_error": next((e["error"] for e in EV if "error" in e), None)}
+        print("B. Gen AI Evaluation Service groundedness:", evalsvc, flush=True)
 
     # ---- B4. cross-family atomic-claim judge
-    jf = out / "judge.jsonl"
-    if not jf.exists():
-        def judge(x):
-            ctx = "\n\n".join(f"<doc id=\"{d}\">\n{docs[d]}\n</doc>" for d in x["context_ids"] if d in docs)
-            prompt = ("You are grading whether a support answer is grounded in the provided documents.\n"
-                      "1) Split the ANSWER into atomic factual claims (ignore greetings/empathy phrases).\n"
-                      "2) For each claim, decide supported=true only if the documents state it (paraphrase OK, no outside knowledge).\n"
-                      "3) faithfulness 1-5: 5 = every claim supported; 3 = mostly supported, one minor unsupported detail; "
-                      "1 = any material policy claim not in the documents.\n"
-                      f"{ctx}\n\nQUESTION: {x['question']}\nANSWER: {x['gen']['answer']}\n\n"
-                      'Return JSON: {"claims": [{"claim": "...", "supported": true}], "faithfulness": 1-5}')
-            try:
-                res, u = claude(a.judge, prompt, effort="high")
-                return res, u
-            except Exception as e:
-                return {"error": str(e)[:300]}, {}
-        with cf.ThreadPoolExecutor(a.workers) as ex, open(jf, "w") as fh:
-            for x, (res, u) in zip(ANS, ex.map(judge, ANS)):
-                usage["judge"][0] += u.get("input_tokens", 0); usage["judge"][1] += u.get("output_tokens", 0)
-                fh.write(json.dumps({"question": x["question"], **res}) + "\n")
-    JD = [json.loads(l) for l in open(jf)]
-    claims = [c for j in JD for c in j.get("claims", [])]
-    faith = [j["faithfulness"] for j in JD if isinstance(j.get("faithfulness"), (int, float))]
-    judge_rep = {"judged": len(faith), "claims": len(claims),
-                 "claim_support_rate": round(sum(1 for c in claims if c.get("supported")) / max(1, len(claims)), 3),
-                 "faithfulness_mean": round(sum(faith) / max(1, len(faith)), 2),
-                 "answers_fully_supported": round(sum(1 for j in JD if j.get("claims") and all(c.get("supported") for c in j["claims"])) / max(1, len(JD)), 3)}
-    print("B. Opus atomic-claim judge:", judge_rep, flush=True)
+    if a.skip_judge:
+        judge_rep = {"skipped": True}
+        print("B. Opus atomic-claim judge: skipped (--skip-judge)", flush=True)
+    else:
+        jf = out / "judge.jsonl"
+        if not jf.exists():
+            def judge(x):
+                ctx = "\n\n".join(f"<doc id=\"{d}\">\n{docs[d]}\n</doc>" for d in x["context_ids"] if d in docs)
+                prompt = ("You are grading whether a support answer is grounded in the provided documents.\n"
+                          "1) Split the ANSWER into atomic factual claims (ignore greetings/empathy phrases).\n"
+                          "2) For each claim, decide supported=true only if the documents state it (paraphrase OK, no outside knowledge).\n"
+                          "3) faithfulness 1-5: 5 = every claim supported; 3 = mostly supported, one minor unsupported detail; "
+                          "1 = any material policy claim not in the documents.\n"
+                          f"{ctx}\n\nQUESTION: {x['question']}\nANSWER: {x['gen']['answer']}\n\n"
+                          'Return JSON: {"claims": [{"claim": "...", "supported": true}], "faithfulness": 1-5}')
+                try:
+                    res, u = claude(a.judge, prompt, effort="high")
+                    return res, u
+                except Exception as e:
+                    return {"error": str(e)[:300]}, {}
+            with cf.ThreadPoolExecutor(a.workers) as ex, open(jf, "w") as fh:
+                for x, (res, u) in zip(ANS, ex.map(judge, ANS)):
+                    usage["judge"][0] += u.get("input_tokens", 0); usage["judge"][1] += u.get("output_tokens", 0)
+                    fh.write(json.dumps({"question": x["question"], **res}) + "\n")
+        JD = [json.loads(l) for l in open(jf)]
+        claims = [c for j in JD for c in j.get("claims", [])]
+        faith = [j["faithfulness"] for j in JD if isinstance(j.get("faithfulness"), (int, float))]
+        judge_rep = {"judged": len(faith), "claims": len(claims),
+                     "claim_support_rate": round(sum(1 for c in claims if c.get("supported")) / max(1, len(claims)), 3),
+                     "faithfulness_mean": round(sum(faith) / max(1, len(faith)), 2),
+                     "answers_fully_supported": round(sum(1 for j in JD if j.get("claims") and all(c.get("supported") for c in j["claims"])) / max(1, len(JD)), 3)}
+        print("B. Opus atomic-claim judge:", judge_rep, flush=True)
 
     rep = {"A_retrieval": {"n": n, **{f"recall@{k}": v for k, v in rec.items()}, "mrr@10": mrr, "zero_result": zero},
            "B_deterministic": det, "B_evalsvc_groundedness": evalsvc, "B_judge": judge_rep, "usage_this_run": usage,

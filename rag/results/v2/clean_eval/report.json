@@ -1,0 +1,44 @@
+{
+ "A_retrieval": {
+  "n": 106,
+  "recall@1": 0.557,
+  "recall@3": 0.783,
+  "recall@5": 0.821,
+  "recall@10": 0.943,
+  "mrr@10": 0.681,
+  "zero_result": 0
+ },
+ "B_deterministic": {
+  "answers": 106,
+  "answers_with_citation": 0.972,
+  "citation_precision_verbatim": 1.0,
+  "citations": 338,
+  "cites_source_article": 0.679,
+  "abstained_or_escalated": 0.198
+ },
+ "B_evalsvc_groundedness": {
+  "skipped": true
+ },
+ "B_judge": {
+  "skipped": true
+ },
+ "usage_this_run": {
+  "qgen": [
+   0,
+   0
+  ],
+  "answer": [
+   310822,
+   169078
+  ],
+  "judge": [
+   0,
+   0
+  ]
+ },
+ "models": {
+  "questions": "claude-sonnet-5-5",
+  "answers": "gemini-3.8-flash",
+  "judge": "claude-opus-5-5"
+ }
+}

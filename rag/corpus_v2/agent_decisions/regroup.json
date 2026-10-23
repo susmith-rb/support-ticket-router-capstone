@@ -1,0 +1,182 @@
+{
+  "merges": [
+    {
+      "target_theme_id": "late_or_not_arrived_order",
+      "intent_family": "order_status",
+      "title": "Late or Not-Arrived Orders",
+      "description": "Inquiries, delays, and tracking issues regarding orders that are late, delayed, not yet shipped or dispatched, or have not arrived by the estimated delivery date.",
+      "source_doc_ids": [
+        "faq-order-status-late-general-delivery",
+        "faq-order-status-late-prime-delivery",
+        "faq-order-status-general-order-not-arrived",
+        "faq-order-status-order-not-shipped"
+      ]
+    },
+    {
+      "target_theme_id": "missing_or_stolen_delivered_package",
+      "intent_family": "order_status",
+      "title": "Missing or Stolen Package Marked Delivered",
+      "description": "Customer issues and assistance for packages marked as delivered that cannot be found, are missing from delivery locations, or are suspected stolen.",
+      "source_doc_ids": [
+        "faq-order-status-missing-delivered-package",
+        "faq-order-status-stolen-packages"
+      ]
+    }
+  ],
+  "dropped": {
+    "faq-order-status-positive-feedback": "Non-actionable positive feedback and early delivery compliments",
+    "faq-other-customer-service-positive-feedback": "Non-actionable positive customer service feedback",
+    "faq-other-delivery-positive-feedback": "Non-actionable positive delivery feedback",
+    "faq-other-social-media-and-sharing": "Non-actionable social media chatter, jokes, and brand mentions without customer support intent"
+  },
+  "new_themes": [
+    {
+      "theme_id": "kindle_and_e_readers",
+      "title": "Kindle e-Readers and E-Books",
+      "description": "Troubleshooting, sync, registration, parental controls, and content issues for Kindle e-readers, tablets, and digital reading.",
+      "intent_family": "other",
+      "topics": [
+        "transfer mobi file to kindle",
+        "kindle fire case recommendation",
+        "audible and kindle sync issue",
+        "oasis 3g audible download capability",
+        "word wise feature enhancement request",
+        "gift shipping notices on kindle",
+        "prime reading feature inquiry",
+        "kindle fire parental controls setup",
+        "kindle page number option",
+        "kindle app wish list feature",
+        "kindle unlimited poor user experience",
+        "kindle device registration failure",
+        "audiobooks in freetime suggestion",
+        "oasis music feature inquiry"
+      ],
+      "thread_ids": [
+        "2734012",
+        "619197",
+        "2700786",
+        "804019",
+        "2094030",
+        "721726",
+        "227129",
+        "633558",
+        "86030",
+        "1350087",
+        "2504826",
+        "1397862",
+        "2342055",
+        "1030308"
+      ]
+    },
+    {
+      "theme_id": "fire_tv_and_streaming_devices",
+      "title": "Fire TV and Streaming Devices",
+      "description": "Connection, Wi-Fi, remote, app, and streaming playback issues for Fire TV and streaming devices.",
+      "intent_family": "other",
+      "topics": [
+        "audio video out of sync",
+        "amazon fire tv promo",
+        "melted fire stick remote",
+        "fire stick not working",
+        "fire tv server connection error",
+        "fire tv stick connection error",
+        "terrible fast forward feature",
+        "fire stick app connection issue",
+        "firestick disconnected from wifi"
+      ],
+      "thread_ids": [
+        "1115811",
+        "1427379",
+        "2308259",
+        "965783",
+        "2448275",
+        "661415",
+        "2345611",
+        "519834",
+        "586910",
+        "1506904"
+      ]
+    },
+    {
+      "theme_id": "device_and_hardware_issues",
+      "title": "Device and Hardware Support",
+      "description": "Hardware troubleshooting, smart home setup, charging, installation, and accessory support for electronics.",
+      "intent_family": "other",
+      "topics": [
+        "amazon music notification tray ads",
+        "uninstalling amazon assistant software",
+        "unlocking phone bootloader code missing",
+        "smart lights not responding",
+        "lack of chromecast support",
+        "question about amazon photos",
+        "service center installation help",
+        "hindi audio not working",
+        "enjoying downloaded songs and playlists",
+        "offline downloaded content access",
+        "amazon key security vulnerability",
+        "third fire tablet purchase",
+        "poor tcl after sales service",
+        "hide folders in prime photos",
+        "prime photos availability in india",
+        "phone showing as uncertified",
+        "widespread device outage",
+        "denied warranty repair for phone",
+        "downloaded albums not working",
+        "oneplus manufacturing quality concerns",
+        "charger fried my phone",
+        "google play on fire tablet",
+        "forward tcl tv installation request",
+        "beta code not downloading",
+        "affordable smartphone printer sharing",
+        "purchased song not available",
+        "broken sanyo tv needs repair",
+        "shoes caused physical foot injury",
+        "windows 10 secure connection failed",
+        "selling unsafe seatbelt products",
+        "pre-order beta code missing",
+        "unable to purchase nfl jersey",
+        "overpriced and old electronics",
+        "amazon music persona soundtracks"
+      ],
+      "thread_ids": [
+        "2806621",
+        "340526",
+        "524265",
+        "80619",
+        "352363",
+        "2841836",
+        "35942",
+        "2821604",
+        "2693885",
+        "2858065",
+        "142953",
+        "574533",
+        "26946",
+        "884883",
+        "224392",
+        "1721626",
+        "1116194",
+        "422749",
+        "1875462",
+        "631585",
+        "2192338",
+        "334884",
+        "440985",
+        "179622",
+        "2440721",
+        "2309160",
+        "2297863",
+        "1266330",
+        "774642",
+        "1426759",
+        "191767",
+        "458976",
+        "1768951",
+        "2116198"
+      ]
+    }
+  ],
+  "replaced_theme_ids": [
+    "device_and_hardware_issues"
+  ]
+}

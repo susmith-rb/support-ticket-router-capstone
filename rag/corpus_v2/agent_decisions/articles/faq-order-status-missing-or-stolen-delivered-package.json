@@ -1,0 +1,24 @@
+{
+  "title": "What should I do if my package is marked delivered but is missing or suspected stolen?",
+  "question_paraphrases": [
+    "My tracking says delivered but there is nothing on my porch.",
+    "I cannot find my package that was marked delivered yesterday.",
+    "Someone may have taken or stolen my delivered parcel.",
+    "Delivery notice was sent but no box was left at my address.",
+    "How long must I wait before reporting a missing delivered package?",
+    "Can I get a replacement for a stolen package?",
+    "The carrier left my parcel in an unsafe location and now it is gone.",
+    "Tracking status says delivered to resident but I was not home."
+  ],
+  "answer_markdown": "If tracking in Your Orders indicates your package was delivered but you cannot find it, or you suspect it was stolen from your porch or doorstep, follow these steps:\n\n1. **Wait until end of next day:** Delivery carriers occasionally scan packages as delivered while still en route, or complete delivery by the end of next day.\n2. **Inspect delivery surroundings:** Check all potential drop-off locations around your property, including back doors, porches, garage entrances, and behind bushes. Check neighbors and safe places to see if the parcel was accepted on your behalf.\n3. **Confirm the delivery address:** Double-check the shipping address listed on your order confirmation in Your Orders.\n4. **Contact customer support:** If you have waited until end of next day and the package cannot be located, contact our support team immediately. We will investigate the delivery with the carrier and issue a free replacement or a refund.\n5. **Third-party seller purchases:** If your missing order was fulfilled by a third-party seller, submit a claim under the Hub Guarantee within 90 days.",
+  "constraints": [
+    "Customers must wait until end of next day after delivery confirmation before requesting a replacement or refund.",
+    "Refunds are issued to the original payment method within 3-5 business days after processing, or to a gift card within 24 hours.",
+    "Claims for third-party seller orders must be filed within 90 days under the Hub Guarantee."
+  ],
+  "escalate_when": [
+    "The customer has waited until end of next day and the package remains missing.",
+    "The customer has video or physical evidence of package theft or porch piracy.",
+    "The package was marked delivered to an incorrect or non-existent address."
+  ]
+}

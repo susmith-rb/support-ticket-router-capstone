@@ -1,0 +1,25 @@
+{
+  "title": "How do I troubleshoot Kindle e-reader, e-book, and digital reading issues?",
+  "question_paraphrases": [
+    "My Kindle e-reader will not sync my purchased books.",
+    "How do I register my Kindle device to my Global Retail Hub account?",
+    "My e-book is not downloading to my Kindle or reading app.",
+    "How do I set up parental controls on a Kindle tablet or e-reader?",
+    "Why are my Audible audiobooks and Kindle books not syncing progress?",
+    "How do I transfer personal mobi or e-book files to my Kindle?",
+    "Where do I find Hub Plus e-book lending benefits?",
+    "My Kindle screen is frozen or not responding to touches."
+  ],
+  "answer_markdown": "If you experience issues with your Kindle e-reader, Fire tablet reading apps, or digital e-book downloads, use the following troubleshooting steps:\n\n1. **Verify device registration:** Confirm that your device is registered to the Global Retail Hub account used to purchase the digital content. Sync issues often resolve after checking device registration and app updates first.\n2. **Check digital content purchases:** Digital content purchases (videos, e-books, apps) are tied directly to your account. Verify your digital library online to confirm the order was completed.\n3. **Update device software and apps:** Check device settings for available system updates and verify that your reading app is updated.\n4. **Restart the device:** For frozen screens or unresponsive menus, hold down the power button until the device restarts completely.\n5. **Hub Plus benefits:** Hub Plus members enjoy e-book lending benefits as part of their paid membership.\n6. **Hardware returns and replacements:** Opened electronics may be returned within 14 days of delivery, and unopened items within 30 days. If the item arrived damaged or defective, report it within 30 days for a free replacement or refund.",
+  "constraints": [
+    "Digital content purchases (videos, e-books, apps) are tied to the account; check device registration and app updates first.",
+    "Opened electronics must be returned within 14 days of delivery; unopened items within 30 days.",
+    "Defective or damaged items must be reported within 30 days for a free replacement or refund.",
+    "Hub Plus membership includes e-book lending benefits."
+  ],
+  "escalate_when": [
+    "A purchased e-book does not appear in the customer's account after purchase.",
+    "Device registration repeatedly fails due to authentication or account sync errors.",
+    "Physical hardware arrived damaged or defective within 30 days."
+  ]
+}

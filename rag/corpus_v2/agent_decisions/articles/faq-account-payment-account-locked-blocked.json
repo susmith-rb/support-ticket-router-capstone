@@ -1,0 +1,25 @@
+{
+  "title": "What should I do if my account is locked, suspended, or blocked?",
+  "question_paraphrases": [
+    "Why is my Global Retail Hub account locked or suspended?",
+    "How do I unlock my account after too many login attempts?",
+    "My account was blocked due to suspicious activity.",
+    "How do I regain access to my suspended account?",
+    "I received a notification that my account was temporarily on hold.",
+    "What information is needed to unlock a blocked account?",
+    "How fast will customer support help me unlock my account?",
+    "Can I update my payment method while my account is on hold?"
+  ],
+  "answer_markdown": "If your Global Retail Hub account has been locked or placed on hold, it is typically due to security safeguards protecting your payment information and account access.\n\nFollow these steps to restore access to your account:\n\n1. **Check your registered email:** Review any notification emails from Global Retail Hub with instructions on how to verify your account.\n2. **Check for payment updates:** If your account was locked following a failed payment, declined payments retry once within 24 h. You can update the payment method in Your Orders once signed in.\n3. **Account security:** Support never asks for passwords or full card numbers. Suspected phishing should be reported and the password changed immediately.\n4. **Contact 24/7 customer support:** Our customer support team is available via chat and phone 24/7. If contacting us via social media, social media replies are sent within 1 hour; never post order numbers or personal details publicly.\n5. **Unauthorized charges:** If you notice duplicate or unauthorized charges, support investigates within 2 business days.",
+  "constraints": [
+    "Support never asks for passwords or full card numbers; suspected phishing should be reported and the password changed.",
+    "Declined payments retry once within 24 h; update the payment method in Your Orders.",
+    "Duplicate or unauthorized charges: support investigates within 2 business days.",
+    "Support channels: chat and phone 24/7; social media replies within 1 hour; never post order numbers or personal details publicly."
+  ],
+  "escalate_when": [
+    "The customer suspects unauthorized account compromise or phishing.",
+    "Duplicate or unauthorized charges were detected on the customer's account.",
+    "The customer cannot regain access to their account through self-service verification."
+  ]
+}

@@ -115,3 +115,70 @@ def test_clean_eval_main_runs_with_gold_map_and_reuse_questions(tmp_path, monkey
     assert rep["B_deterministic"]["answers"] == 1
     assert rep["B_deterministic"]["cites_source_article"] == 1.0
     assert rep["B_deterministic"]["citation_precision_verbatim"] == 1.0
+
+
+def test_clean_eval_skip_judge_flag(tmp_path, monkeypatch):
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    doc_text = "# Order Policy\nStandard orders arrive within 4-6 business days."
+    (docs_dir / "faq-order-v2.txt").write_text(doc_text, encoding="utf-8")
+
+    import_file = tmp_path / "faq_articles_import.jsonl"
+    import_file.write_text(json.dumps({"id": "faq-order-v2"}) + "\n")
+
+    questions_file = tmp_path / "questions.jsonl"
+    questions_file.write_text(json.dumps({
+        "question": "When will my package arrive?",
+        "source_doc": "faq-order-v1"
+    }) + "\n")
+
+    gold_map_file = tmp_path / "gold_map.json"
+    gold_map_file.write_text(json.dumps({"faq-order-v1": "faq-order-v2"}))
+
+    out_dir = tmp_path / "out"
+
+    # Mock search and gemini answer generator
+    monkeypatch.setattr("clean_eval.search", lambda q: ["faq-order-v2"])
+    monkeypatch.setattr("clean_eval.gemini", lambda model, prompt, schema: (
+        {
+            "answer": "Orders arrive within 4-6 business days.",
+            "citations": [{"doc_id": "faq-order-v2", "quote": "arrive within 4-6 business days"}],
+            "grounded": True,
+            "escalate": False,
+        },
+        {"promptTokenCount": 50, "candidatesTokenCount": 20, "thoughtsTokenCount": 0}
+    ))
+
+    # Assert claude and post(evaluateInstances) are NEVER called
+    def fail_claude(*args, **kwargs):
+        pytest.fail("claude judge should not be called when --skip-judge is passed")
+
+    def fail_post(url, *args, **kwargs):
+        if "evaluateInstances" in url:
+            pytest.fail("evaluateInstances should not be called when --skip-judge is passed")
+        return {}
+
+    monkeypatch.setattr("clean_eval.claude", fail_claude)
+    monkeypatch.setattr("clean_eval.post", fail_post)
+
+    monkeypatch.setattr("sys.argv", [
+        "clean_eval.py",
+        "--docs", str(docs_dir),
+        "--import", str(import_file),
+        "--out", str(out_dir),
+        "--gold-map", str(gold_map_file),
+        "--reuse-questions", str(questions_file),
+        "--skip-judge",
+        "--workers", "1",
+    ])
+
+    main()
+
+    report_file = out_dir / "report.json"
+    assert report_file.exists()
+    rep = json.load(open(report_file))
+    assert rep["B_evalsvc_groundedness"] == {"skipped": True}
+    assert rep["B_judge"] == {"skipped": True}
+    assert not (out_dir / "evalsvc.jsonl").exists()
+    assert not (out_dir / "judge.jsonl").exists()
+

@@ -1,0 +1,25 @@
+{
+  "title": "What should I do if my order is late or has not arrived?",
+  "question_paraphrases": [
+    "My package was supposed to arrive yesterday and is still not here.",
+    "Why is my order delayed past the estimated delivery date?",
+    "My Hub Plus 2-day delivery missed its delivery date.",
+    "Tracking shows my order has not shipped or dispatched yet.",
+    "When is a package officially considered late?",
+    "How do I get a refund or replacement for an undelivered order?",
+    "My order has been stuck in processing for days.",
+    "Can I cancel an order that hasn't shipped yet?"
+  ],
+  "answer_markdown": "If your Global Retail Hub package has not arrived by the expected delivery date or appears delayed in dispatch, please check Your Orders for the latest tracking information.\n\nDelivery estimates are displayed at checkout and in Your Orders. Under Global Retail Hub policy, a package is officially considered late 1 business day after the latest delivery estimate.\n\nIf your order is delayed, follow these steps:\n\n1. **Review current status in Your Orders:** Confirm whether the package has been dispatched or is still preparing for shipment. Delivery tracking numbers and carrier updates appear directly on the order details page.\n2. **Wait 1 business day after the latest estimate:** Carriers frequently complete deliveries by the following business day during periods of high volume.\n3. **Check shipping speed eligibility:** Standard shipping takes 4-6 business days (free on eligible orders over $35). Hub Plus members receive 2 business days shipping on eligible items, or same-day shipping in select cities.\n4. **Manage or cancel unshipped orders:** If your order has not yet entered 'Preparing for shipment', you can cancel it directly in Your Orders. Once an order enters shipment preparation, cancellations are no longer possible, and you should refuse delivery or start a return upon arrival.\n5. **Request assistance if still missing:** If 1 business day has passed since your latest delivery estimate and tracking has not updated, contact customer support via chat or phone 24/7 for an immediate replacement or refund.",
+  "constraints": [
+    "A package is officially late 1 business day after the latest delivery estimate.",
+    "Standard shipping requires 4-6 business days; Hub Plus eligible items arrive in 2 business days.",
+    "Cancellations are permitted only until the order enters 'Preparing for shipment'.",
+    "Third-party seller items are covered under the Hub Guarantee if not received (claims must be filed within 90 days)."
+  ],
+  "escalate_when": [
+    "More than 1 business day has passed since the latest delivery estimate with no tracking movement.",
+    "An order has remained in processing or dispatch for an extended period without a carrier tracking number.",
+    "The customer needs an urgent refund or replacement for a time-sensitive Hub Plus delivery."
+  ]
+}

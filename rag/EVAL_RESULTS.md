@@ -149,6 +149,57 @@ Next steps (index side):
 5. Pending decisions: switch `support-kb-search` to Standard with no LLM add-on (our agent generates
    the answers), human review of the 53 articles, and a second golden-set labeler.
 
+## 8. Corpus v2 (index-side improvements), now LIVE as release 3
+
+**What changed** (`rag/corpus_v2/`: agent decisions, themes_v2, gold map, manifest). There are 50
+articles; 44 are byte-identical to v1.
+- Merged:
+  - late general / late Hub Plus / order not arrived / order not shipped → `faq-order-status-late-or-not-arrived-order`
+  - missing delivered / stolen → `faq-order-status-missing-or-stolen-delivered-package`
+- Split devices: Kindle & e-readers, Fire TV & streaming devices, and general device & hardware.
+- Fixed the invented "48 hours" fact in `faq-account-payment-account-locked-blocked`.
+- Dropped 4 themes: 3 praise themes and social-media chatter (91 threads with no support need).
+- **Authorship:** the 6 new or changed articles and the regroup decisions were written by a Jetski
+  agent (Gemini 3.8 Flash, high thinking), and each carries the provenance field
+  `authored_by: jetski-agent:gemini-3.8-flash-high`. Vertex tokens used: 0. Like v1, they are not yet
+  human-reviewed.
+
+**A bug the first publish exposed.** `publish_faq.py` imported retired tombstones, so the replaced
+articles stayed in the index and outranked their merged successors. Real-tweet recall@5 fell
+−0.031, the gate failed, and the publish was automatically rolled back to v1. The fix:
+- The manifest keeps the tombstones for audit.
+- The import payload now excludes `status=retired`, so a FULL reconciliation deletes them.
+- Post-import verification asserts that a retired id is not returned.
+- Both behaviors have unit tests. In the rerun, retired ids appear in 0 of 900 top-3 slots.
+
+**v1 → v2 (release 3).** Same 300 real tweets and same 106 clean questions; v1 golds are mapped
+through `gold_map_v1_v2.json`.
+
+| Set | Metric | v1 | v2 | Δ |
+|---|---|---|---|---|
+| Real tweets, excluding the 13 dropped-gold queries (n=287; **gate set**) | recall@5 | 0.787 | 0.780 | −0.007 ✅ (gate ≥ −0.02) |
+| | order_status recall@5 | 0.817 | **0.845** | +0.028 |
+| | account_payment / other / returns / shipping recall@5 | 0.783 / 0.671 / 0.864 / 0.778 | 0.804 / 0.658 / 0.818 / 0.778 | +0.021 / −0.013 / −0.046 / 0 |
+| Real tweets, excluding dropped and merged golds (n=242) | order_status recall@5 | 0.731 | **0.808** | +0.077 |
+| Clean questions (n=106) | recall@1 / @3 / @5 / @10 | 0.519 / 0.726 / 0.840 / 0.934 | **0.557 / 0.783** / 0.821 / **0.943** | +0.038 / +0.057 / −0.019 / +0.009 |
+| | MRR@10 | 0.650 | **0.681** | +0.031 |
+| | verbatim citation precision | 100% | 100% (338 citations, re-verified) | 0 |
+| | abstained / escalated | 24.5% | **19.8%** | −4.7 pts |
+
+**Reading it:**
+- The merges did what they were meant to. order_status improved, and the "excluding merged" slice
+  shows the gain isn't just easier gold matching.
+- The `other` split did **not** move recall: 0.671 → 0.658, which is within noise.
+- returns_refunds fell 0.046 even though none of its articles changed. That is 4 of 88 queries, and
+  it gives the **ranker-noise floor** from republishing the corpus.
+- At n≈290, a −0.02 gate is close to that noise. Next step: average over 2–3 query samples or use a
+  paired bootstrap CI before tightening the gate.
+- The Opus claim judge and the Eval Service were not rerun for v2. Per the billing rule, offline
+  judging now runs on Jetski agents. For B, v2 relies on the deterministic citation checks.
+
+Remaining gap: real-tweet recall@5 is 0.78, against the G5 target of 0.90. The weakest family is
+`other` (0.66).
+
 ## Reproduce
 
 ```bash

@@ -1,0 +1,25 @@
+{
+  "title": "How do I troubleshoot Fire TV and streaming device connection and playback issues?",
+  "question_paraphrases": [
+    "My Fire TV Stick is not working or connecting to Wi-Fi.",
+    "How do I fix video buffering and app crashes on Fire TV?",
+    "My Fire TV remote is unresponsive or unpairing.",
+    "Why does my Fire TV show a server connection error?",
+    "How do I resolve audio and video sync problems on my streaming stick?",
+    "My streaming device is stuck on the loading logo screen.",
+    "Can I stream Hub Plus video on my Fire TV?",
+    "What should I do if my Fire TV device is overheating?"
+  ],
+  "answer_markdown": "If your Fire TV Stick or streaming device is failing to power on, losing Wi-Fi connection, or encountering video streaming errors, follow these troubleshooting guidelines:\n\n1. **Power cycle the device:** Unplug the power adapter from the electrical outlet, wait 30 seconds, and reconnect securely.\n2. **Check device registration and app updates:** Digital content purchases and video streaming are tied to your account. For playback or sync issues, check device registration and app updates first in the settings menu.\n3. **Verify Wi-Fi network connection:** Navigate to network settings to confirm active internet connection. Restart your wireless router if necessary.\n4. **Re-pair the remote:** If the remote is unresponsive, replace the batteries or hold down the Home button to re-pair it with the device.\n5. **Hub Plus streaming:** Hub Plus members have access to video and music streaming as part of their paid membership.\n6. **Defective hardware:** If the streaming hardware is defective or damaged upon arrival, report it within 30 days for a free replacement or refund. Opened electronics may be returned within 14 days of delivery.",
+  "constraints": [
+    "Digital content (videos, e-books, apps) purchases are tied to the account; check device registration and app updates first.",
+    "Opened electronics must be returned within 14 days of delivery; unopened items within 30 days.",
+    "Defective or damaged items must be reported within 30 days for a free replacement or refund.",
+    "Hub Plus membership includes video and music streaming benefits."
+  ],
+  "escalate_when": [
+    "The device is defective, damaged, or will not power on after power cycling.",
+    "The customer cannot access paid video streaming purchases tied to their account.",
+    "A replacement remote or device is required within the 30 days warranty window."
+  ]
+}
