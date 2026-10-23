@@ -1,0 +1,3459 @@
+{
+ "report": {
+  "config": {
+   "threshold": "LOWEST",
+   "expansion": false,
+   "clean": true
+  },
+  "n": 300,
+  "zero_result_queries": 9,
+  "recall@1": 0.43,
+  "recall@3": 0.653,
+  "recall@5": 0.76,
+  "recall@10": 0.84,
+  "mrr@10": 0.562,
+  "by_intent": {
+   "account_payment": {
+    "n": 46,
+    "recall@5": 0.783
+   },
+   "order_status": {
+    "n": 71,
+    "recall@5": 0.817
+   },
+   "other": {
+    "n": 86,
+    "recall@5": 0.593
+   },
+   "returns_refunds": {
+    "n": 88,
+    "recall@5": 0.864
+   },
+   "shipping_policy": {
+    "n": 9,
+    "recall@5": 0.778
+   }
+  },
+  "misses_sample": [
+   {
+    "query": "@user \ud83d\ude10 No words. [URL]",
+    "relevant": "faq-other-general-complaints-and-feedback",
+    "intent": "other",
+    "rank": null,
+    "top3": [
+     "faq-order-status-false-delivery-attempts",
+     "faq-other-customer-service-complaints",
+     "faq-order-status-order-not-shipped"
+    ]
+   },
+   {
+    "query": "@user @AmazonHelp @user @user Never purchase TCL led . Worst services after sales. Amazon didn't help me even.",
+    "relevant": "faq-other-device-and-hardware-issues",
+    "intent": "other",
+    "rank": null,
+    "top3": [
+     "faq-other-customer-service-complaints",
+     "faq-returns-refunds-missing-or-used-items",
+     "faq-returns-refunds-damaged-or-defective-items"
+    ]
+   },
+   {
+    "query": "@user Pls tell me what is happening with the search algo in @user [URL] same products shown agn and agn",
+    "relevant": "faq-other-app-and-website-issues",
+    "intent": "other",
+    "rank": null,
+    "top3": [
+     "faq-other-pricing-promotions-and-discounts",
+     "faq-shipping-policy-weekend-and-same-day-delivery",
+     "faq-account-payment-double-multiple-charges"
+    ]
+   },
+   {
+    "query": "@AmazonHelp had a parcel out for nearly 36 hours \"arriving today\" \ud83e\udd25please shed some light on this. order [ORDER]",
+    "relevant": "faq-order-status-late-general-delivery",
+    "intent": "order_status",
+    "rank": null,
+    "top3": []
+   },
+   {
+    "query": "@user Is the cashback of 499 for new Amazon Prime members on purchase of Fire TV Stick discontinued ?",
+    "relevant": "faq-other-pricing-promotions-and-discounts",
+    "intent": "other",
+    "rank": null,
+    "top3": [
+     "faq-account-payment-cashback-promos-giftcards",
+     "faq-other-amazon-prime-membership",
+     "faq-account-payment-prime-membership-cancellation"
+    ]
+   },
+   {
+    "query": "@user Out for delivery for the last 4 days. Called CS thrice. Any plans for actual delivery? #FlipkartbeatsAmazon [URL]",
+    "relevant": "faq-order-status-lost-in-transit",
+    "intent": "order_status",
+    "rank": null,
+    "top3": [
+     "faq-order-status-late-general-delivery",
+     "faq-order-status-false-delivery-attempts",
+     "faq-shipping-policy-prime-delivery-speed-delays"
+    ]
+   },
+   {
+    "query": "@user ya me ha enviado #SuperMarioOdyssey para #NintendoSwitch!!! Qu\u00e9 ganas de subirlo al canal :)",
+    "relevant": "faq-other-social-media-and-sharing",
+    "intent": "other",
+    "rank": null,
+    "top3": [
+     "faq-account-payment-double-multiple-charges",
+     "faq-account-payment-invoices-and-receipts",
+     "faq-shipping-policy-delivery-instructions-and-preferences"
+    ]
+   },
+   {
+    "query": "@AmazonHelp amazon basics ! Want a replacement [URL]",
+    "relevant": "faq-returns-refunds-return-policy-and-process",
+    "intent": "returns_refunds",
+    "rank": null,
+    "top3": [
+     "faq-returns-refunds-wrong-item-received",
+     "faq-returns-refunds-damaged-or-defective-items",
+     "faq-returns-refunds-missing-or-used-items"
+    ]
+   },
+   {
+    "query": "@AmazonHelp @user @user add delivery confirmation option 4 customer into App. delivery PPL r messing with delivery. #Suggestion",
+    "relevant": "faq-other-app-and-website-issues",
+    "intent": "other",
+    "rank": null,
+    "top3": [
+     "faq-shipping-policy-delivery-instructions-and-preferences",
+     "faq-order-status-false-delivery-attempts",
+     "faq-other-delivery-and-logistics-complaints"
+    ]
+   },
+   {
+    "query": "@AmazonHelp Anyone capable of handling a missing $476.95 camera lens? Box was empty - incompetent employee #3...",
+    "relevant": "faq-order-status-general-order-not-arrived",
+    "intent": "order_status",
+    "rank": null,
+    "top3": [
+     "faq-returns-refunds-missing-or-used-items",
+     "faq-order-status-missing-items-in-package",
+     "faq-order-status-missing-delivered-package"
+    ]
+   },
+   {
+    "query": "After years of searching, found the entire Tintin series @user Childhood relived! Yayyy!!!",
+    "relevant": "faq-other-social-media-and-sharing",
+    "intent": "other",
+    "rank": null,
+    "top3": [
+     "faq-order-status-tracking-and-status",
+     "faq-order-status-missing-items-in-package",
+     "faq-account-payment-invoices-and-receipts"
+    ]
+   },
+   {
+    "query": "\u30a2\u30de\u30be\u30f3\u304b\u3089\u8377\u7269\u304c\u5c4a\u3044\u305f\uff01 [URL]",
+    "relevant": "faq-other-social-media-and-sharing",
+    "intent": "other",
+    "rank": null,
+    "top3": [
+     "faq-other-amazon-prime-membership",
+     "faq-account-payment-amazon-pay-balance",
+     "faq-order-status-missing-items-in-package"
+    ]
+   },
+   {
+    "query": "@user is there a way to \"return\" or get a refund on a digital order? My last purchase is a barely readable scan of the book.",
+    "relevant": "faq-returns-refunds-refund-inquiries",
+    "intent": "returns_refunds",
+    "rank": null,
+    "top3": []
+   },
+   {
+    "query": "Me: \"Hey @user pls send me an USB C Hub Adapter.\" Amazon: \"Haha we'll send her an MP3 Player instead lol.\" #ordergonewrong [URL]",
+    "relevant": "faq-returns-refunds-wrong-item-received",
+    "intent": "returns_refunds",
+    "rank": null,
+    "top3": []
+   },
+   {
+    "query": "@AmazonHelp My parcel (delivered by Amazon delivery) was ripped and opened. Fort. wasn't confidential or a gift for partner but not ideal!",
+    "relevant": "faq-returns-refunds-damaged-or-defective-items",
+    "intent": "returns_refunds",
+    "rank": 10,
+    "top3": [
+     "faq-order-status-missing-items-in-package",
+     "faq-order-status-wrong-address-or-location",
+     "faq-order-status-missing-delivered-package"
+    ]
+   }
+  ]
+ },
+ "rows": [
+  {
+   "query": "I was having Issue with my Account and did multiple follow-up with Support but it seems they were not interested that I shop frm @user",
+   "relevant": "faq-account-payment-account-locked-blocked",
+   "intent": "account_payment",
+   "rank": 2,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-account-payment-account-locked-blocked",
+    "faq-order-status-locker-and-pickup-issues"
+   ]
+  },
+  {
+   "query": "Echt wahr, dass im @user #FreeTime keine H\u00f6rb\u00fccher von @user einbindbar sind? Beste Plattform f\u00fcr Kids derzeit. Ihr seid doch ein Konzern, da steht ihr euch aber selbst im Weg ;) #Anregung",
+   "relevant": "faq-other-device-and-hardware-issues",
+   "intent": "other",
+   "rank": 2,
+   "top3": [
+    "faq-other-alexa-and-echo-devices",
+    "faq-other-device-and-hardware-issues",
+    "faq-other-prime-video-and-streaming"
+   ]
+  },
+  {
+   "query": "@user do you have hindi subtitles for #suits?",
+   "relevant": "faq-other-prime-video-and-streaming",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-prime-video-and-streaming",
+    "faq-other-social-media-and-sharing",
+    "faq-other-product-availability-and-inquiries"
+   ]
+  },
+  {
+   "query": "@user \ud83d\ude10 No words. [URL]",
+   "relevant": "faq-other-general-complaints-and-feedback",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-order-status-false-delivery-attempts",
+    "faq-other-customer-service-complaints",
+    "faq-order-status-order-not-shipped"
+   ]
+  },
+  {
+   "query": "So I ordered rose gold silk sheets in the mail and I got silver ones instead. Now my bed looks like aluminum foil, what the fuck @user",
+   "relevant": "faq-returns-refunds-wrong-item-received",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-wrong-item-received",
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-missing-or-used-items"
+   ]
+  },
+  {
+   "query": "Amazon\u304b\u3089\u672a\u3060\u306b\u8fd4\u54c1\u5b8c\u4e86\u306e\u901a\u77e5\u6765\u306a\u3044\u3093\u3060\u3051\u3069\u3069\u3046\u3044\u3046\u3053\u3068\uff1f Amazon\u8a73\u3057\u3044\u4eba\u6559\u3048\u3066\u304f\u3060\u3055\u3044(\u0e51o\u0334\u0336\u0337\u1dc4\ufe4fo\u0334\u0336\u0337\u0325\u1dc5\u0e51)",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-refund-inquiries",
+    "faq-returns-refunds-return-pickup-issues",
+    "faq-order-status-cancellations-and-refunds"
+   ]
+  },
+  {
+   "query": "@AmazonHelp what is your complaints procedure?",
+   "relevant": "faq-other-general-complaints-and-feedback",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-general-complaints-and-feedback",
+    "faq-other-customer-service-complaints",
+    "faq-other-delivery-and-logistics-complaints"
+   ]
+  },
+  {
+   "query": "@user hey amazon my code isn\u2019t work what can I do ????? [URL]",
+   "relevant": "faq-account-payment-cashback-promos-giftcards",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-cashback-promos-giftcards",
+    "faq-order-status-locker-and-pickup-issues",
+    "faq-other-device-and-hardware-issues"
+   ]
+  },
+  {
+   "query": "Nothing like waiting for a Dylan boxset only to find @AmazonHelp managed to destroy it on its way. Seriously? Bubble wrap envelope?! @user [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 2,
+   "top3": [
+    "faq-other-packaging-issues",
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-order-status-missing-items-in-package"
+   ]
+  },
+  {
+   "query": "@user @AmazonHelp today is the last day m available at the place...And tomorrow is the last day for return policy... I have registered return on 14th...What to do now?? #helpifuwill [URL]",
+   "relevant": "faq-returns-refunds-return-policy-and-process",
+   "intent": "returns_refunds",
+   "rank": 2,
+   "top3": [
+    "faq-returns-refunds-return-pickup-issues",
+    "faq-returns-refunds-return-policy-and-process",
+    "faq-returns-refunds-refund-inquiries"
+   ]
+  },
+  {
+   "query": "Dear @user @amazonhelp this was ordered on the premise of next day (yesterday) delivery, all day you claimed it's on the way; \u2639\ufe0f [URL]",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-late-general-delivery",
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-late-prime-delivery"
+   ]
+  },
+  {
+   "query": "This is the 2nd time I've ordered THIS ORDER And got something completely different I'm sick of paying for what I'm not getting . @user [URL]",
+   "relevant": "faq-returns-refunds-wrong-item-received",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-wrong-item-received",
+    "faq-order-status-cancellations-and-refunds",
+    "faq-order-status-general-order-not-arrived"
+   ]
+  },
+  {
+   "query": "@user @AmazonHelp @user @user Never purchase TCL led . Worst services after sales. Amazon didn't help me even.",
+   "relevant": "faq-other-device-and-hardware-issues",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-returns-refunds-missing-or-used-items",
+    "faq-returns-refunds-damaged-or-defective-items"
+   ]
+  },
+  {
+   "query": "@AmazonHelp \u8377\u7269\u304c\u9055\u3046\u4f4f\u6240\u306b\u5c4a\u3044\u3066\u3044\u308b\u5834\u6240\u306f\u3069\u3046\u3059\u308c\u3070\uff1f",
+   "relevant": "faq-order-status-wrong-address-or-location",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-wrong-address-or-location",
+    "faq-order-status-missing-delivered-package",
+    "faq-order-status-stolen-packages"
+   ]
+  },
+  {
+   "query": "@user Never expected such CHEAP service, u deduct paymnt from my card then say refusal frm bank. Give me my camera. [URL]",
+   "relevant": "faq-account-payment-checkout-payment-errors",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-checkout-payment-errors",
+    "faq-account-payment-payment-methods-emi",
+    "faq-other-customer-service-complaints"
+   ]
+  },
+  {
+   "query": "Dear @user See the pathetic primary packing for a mobile cover you just delivered to me. Seems your vendors don't believe in QC @user [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 4,
+   "top3": [
+    "faq-other-packaging-issues",
+    "faq-order-status-missing-items-in-package",
+    "faq-order-status-wrong-address-or-location"
+   ]
+  },
+  {
+   "query": "Hola @user. Soy cliente Premium desde que sac\u00e1steis la posibilidad con el fin de facilitar mis compras. \u00daltimamente estoy teniendo problemas con los env\u00edos desde que lo hac\u00e9is con @user. Hoy me dicen que no estoy en casa. \u00a1MENTIRA!",
+   "relevant": "faq-order-status-false-delivery-attempts",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-false-delivery-attempts",
+    "faq-shipping-policy-delivery-instructions-and-preferences",
+    "faq-order-status-locker-and-pickup-issues"
+   ]
+  },
+  {
+   "query": "@user, I have requested for one return and scheduled pick up time was 12th Oct 2017 (Thursday) between 15:00 to 18:00 hrs..@AmazonHelp",
+   "relevant": "faq-returns-refunds-return-pickup-issues",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-return-pickup-issues",
+    "faq-order-status-locker-and-pickup-issues",
+    "faq-returns-refunds-return-policy-and-process"
+   ]
+  },
+  {
+   "query": "Amazon charged me $193 twice for one order how's ur day going",
+   "relevant": "faq-account-payment-double-multiple-charges",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-double-multiple-charges",
+    "faq-order-status-cancellations-and-refunds",
+    "faq-account-payment-checkout-payment-errors"
+   ]
+  },
+  {
+   "query": "@user As a Amazon prime customer there is no diffrence of Shoppers. Still waiting for shipment from week even @user Ship it sooner then you guys. #Amazon #Fail Order date 21-Nov-2017 order [ORDER] [URL]",
+   "relevant": "faq-order-status-late-prime-delivery",
+   "intent": "order_status",
+   "rank": 2,
+   "top3": [
+    "faq-order-status-order-not-shipped",
+    "faq-order-status-late-prime-delivery",
+    "faq-order-status-late-general-delivery"
+   ]
+  },
+  {
+   "query": "@user Pls tell me what is happening with the search algo in @user [URL] same products shown agn and agn",
+   "relevant": "faq-other-app-and-website-issues",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-other-pricing-promotions-and-discounts",
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-account-payment-double-multiple-charges"
+   ]
+  },
+  {
+   "query": "@user very bad experience with amazon 20 din upar ho gaye 5 baar executives se baatt ki wo 48 hours bolte rahe abhi tak refund nahi mila",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-refund-inquiries",
+    "faq-order-status-cancellations-and-refunds",
+    "faq-other-customer-service-complaints"
+   ]
+  },
+  {
+   "query": "@user @user its been more than 14 days no one has came to pickup refrigerator. Contacts lot of time to customer care. No solution",
+   "relevant": "faq-returns-refunds-return-pickup-issues",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-return-pickup-issues",
+    "faq-order-status-general-order-not-arrived",
+    "faq-other-customer-service-complaints"
+   ]
+  },
+  {
+   "query": "\u77e5\u3089\u306a\u3044\u9593\u306bAmazon\u30d7\u30e9\u30a4\u30e0\u306e\u4f1a\u54e1\u306b\u306a\u3063\u3061\u3083\u3063\u3066\u305f\u308f\u3002\u8a18\u61b6\u306d\u30fc\u304b\u3089\u6016\u3044",
+   "relevant": "faq-account-payment-unauthorized-charges",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-unauthorized-charges",
+    "faq-account-payment-prime-membership-cancellation",
+    "faq-other-amazon-prime-membership"
+   ]
+  },
+  {
+   "query": "Bonjour @user, certains de vos livreurs ont besoin d'une formation en urgence. Colis massacr\u00e9, Livre d\u00e9t\u00e9rior\u00e9. [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 5,
+   "top3": [
+    "faq-other-delivery-and-logistics-complaints",
+    "faq-order-status-driver-and-courier-issues",
+    "faq-other-packaging-issues"
+   ]
+  },
+  {
+   "query": "@AmazonHelp had a parcel out for nearly 36 hours \"arriving today\" \ud83e\udd25please shed some light on this. order [ORDER]",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": null,
+   "top3": []
+  },
+  {
+   "query": "@user Is the cashback of 499 for new Amazon Prime members on purchase of Fire TV Stick discontinued ?",
+   "relevant": "faq-other-pricing-promotions-and-discounts",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-account-payment-cashback-promos-giftcards",
+    "faq-other-amazon-prime-membership",
+    "faq-account-payment-prime-membership-cancellation"
+   ]
+  },
+  {
+   "query": "@user Hi. One of my orders wasn't delivered but your app says it's been delivered. How do we fix this?",
+   "relevant": "faq-order-status-missing-delivered-package",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-missing-delivered-package",
+    "faq-order-status-wrong-address-or-location",
+    "faq-order-status-general-order-not-arrived"
+   ]
+  },
+  {
+   "query": "@user this is ridiculous! My drum head came in a broken box and is warped and ripped [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-missing-or-used-items",
+    "faq-other-packaging-issues"
+   ]
+  },
+  {
+   "query": "Disappointed in @user terrible customer service. Sadly they used to be reliable.",
+   "relevant": "faq-other-customer-service-complaints",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-other-general-complaints-and-feedback",
+    "faq-returns-refunds-missing-or-used-items"
+   ]
+  },
+  {
+   "query": "Hey @user what is the problem with Ur seller can you find 1 match for item ordered and delivered?? [URL]",
+   "relevant": "faq-returns-refunds-wrong-item-received",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-wrong-item-received",
+    "faq-order-status-missing-items-in-package",
+    "faq-order-status-late-general-delivery"
+   ]
+  },
+  {
+   "query": "Mein @user Paket ist seit 10 Tagen nicht mehr verfolgbar, vor 5 Tagen h\u00e4tte es da sein sollen. Bitte kein Hermes mehr, nur Probleme damit",
+   "relevant": "faq-order-status-tracking-and-status",
+   "intent": "order_status",
+   "rank": 5,
+   "top3": [
+    "faq-order-status-lost-in-transit",
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-general-order-not-arrived"
+   ]
+  },
+  {
+   "query": "@user My experience during this Amazon Sale, I bought many items and I got defect product's, diff colour than ordered and old product's",
+   "relevant": "faq-returns-refunds-wrong-item-received",
+   "intent": "returns_refunds",
+   "rank": 2,
+   "top3": [
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-wrong-item-received",
+    "faq-returns-refunds-missing-or-used-items"
+   ]
+  },
+  {
+   "query": "\u3068\u3053\u308d\u3067Amazon\u3055\u3093\u3001\u65b0\u54c1\u3067\u3059\u304b\u306d\u3053\u308c\u3002\u30b7\u30fc\u30eb\u306f\u7834\u3051\u3066\u308b\u3057\u4e0a\u306e\u5c01\u306f\u958b\u3044\u3066\u308b\u3057\u3002\u9762\u5012\u3060\u304b\u3089\u8fd4\u54c1\u4ea4\u63db\u3057\u306a\u3044\u3051\u3069\u3001 \u3075\u3056\u3051\u3093\u306aw [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 2,
+   "top3": [
+    "faq-returns-refunds-missing-or-used-items",
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-other-packaging-issues"
+   ]
+  },
+  {
+   "query": "@user when i try to login it says Your password is incorrect and when I change the message continues pls help",
+   "relevant": "faq-account-payment-account-login-issues",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-account-login-issues",
+    "faq-account-payment-account-locked-blocked",
+    "faq-account-payment-hacked-compromised-account"
+   ]
+  },
+  {
+   "query": "@AmazonHelp What can I do to report a fraud seller that gave a false tracking number, the same tracking number in fact to several buyers?",
+   "relevant": "faq-other-scams-phishing-and-fraud",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-scams-phishing-and-fraud",
+    "faq-order-status-false-delivery-attempts",
+    "faq-order-status-tracking-and-status"
+   ]
+  },
+  {
+   "query": "@user if i pay for an order and then cancel 1 item how do i get back the price of cancelled item?",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 2,
+   "top3": [
+    "faq-order-status-cancellations-and-refunds",
+    "faq-returns-refunds-refund-inquiries",
+    "faq-account-payment-prime-membership-cancellation"
+   ]
+  },
+  {
+   "query": "@user Out for delivery for the last 4 days. Called CS thrice. Any plans for actual delivery? #FlipkartbeatsAmazon [URL]",
+   "relevant": "faq-order-status-lost-in-transit",
+   "intent": "order_status",
+   "rank": null,
+   "top3": [
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-false-delivery-attempts",
+    "faq-shipping-policy-prime-delivery-speed-delays"
+   ]
+  },
+  {
+   "query": "Hmmm I'm losing faith with @user this should have shipped yesterday \ud83d\ude15 @user @user @user @user [URL]",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 4,
+   "top3": [
+    "faq-order-status-missing-delivered-package",
+    "faq-order-status-order-not-shipped",
+    "faq-order-status-missing-items-in-package"
+   ]
+  },
+  {
+   "query": "Charger purchased from @user blasts within sec of plugging in. Endangering lives of customers. Investigste and refund! #FakeProduct [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 5,
+   "top3": [
+    "faq-returns-refunds-missing-or-used-items",
+    "faq-returns-refunds-wrong-item-received",
+    "faq-returns-refunds-return-policy-and-process"
+   ]
+  },
+  {
+   "query": "@user ya me ha enviado #SuperMarioOdyssey para #NintendoSwitch!!! Qu\u00e9 ganas de subirlo al canal :)",
+   "relevant": "faq-other-social-media-and-sharing",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-account-payment-double-multiple-charges",
+    "faq-account-payment-invoices-and-receipts",
+    "faq-shipping-policy-delivery-instructions-and-preferences"
+   ]
+  },
+  {
+   "query": "@user I have Amazon prime. Why is there no next day delivery for any of your items at the moment? Seems to be 3 days for everything!!!",
+   "relevant": "faq-shipping-policy-prime-delivery-speed-delays",
+   "intent": "shipping_policy",
+   "rank": 3,
+   "top3": [
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-late-prime-delivery",
+    "faq-shipping-policy-prime-delivery-speed-delays"
+   ]
+  },
+  {
+   "query": "@user how my stuff going to arrive here by 8 if it hasn't even shipped yet?!?!?! [URL]",
+   "relevant": "faq-order-status-order-not-shipped",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-order-not-shipped",
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-general-order-not-arrived"
+   ]
+  },
+  {
+   "query": "@AmazonHelp amazon basics ! Want a replacement [URL]",
+   "relevant": "faq-returns-refunds-return-policy-and-process",
+   "intent": "returns_refunds",
+   "rank": null,
+   "top3": [
+    "faq-returns-refunds-wrong-item-received",
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-missing-or-used-items"
+   ]
+  },
+  {
+   "query": "@AmazonHelp @user @user add delivery confirmation option 4 customer into App. delivery PPL r messing with delivery. #Suggestion",
+   "relevant": "faq-other-app-and-website-issues",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-shipping-policy-delivery-instructions-and-preferences",
+    "faq-order-status-false-delivery-attempts",
+    "faq-other-delivery-and-logistics-complaints"
+   ]
+  },
+  {
+   "query": "@AmazonHelp Anyone capable of handling a missing $476.95 camera lens? Box was empty - incompetent employee #3...",
+   "relevant": "faq-order-status-general-order-not-arrived",
+   "intent": "order_status",
+   "rank": null,
+   "top3": [
+    "faq-returns-refunds-missing-or-used-items",
+    "faq-order-status-missing-items-in-package",
+    "faq-order-status-missing-delivered-package"
+   ]
+  },
+  {
+   "query": "DPD Paket ist aufgetaucht. Es wurde in der Gartenh\u00fctte abgelegt. Da h\u00e4tte ich im Leben nicht nachgeschaut. Wesentlich weiter weg als Garage.",
+   "relevant": "faq-order-status-wrong-address-or-location",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-wrong-address-or-location",
+    "faq-order-status-missing-delivered-package",
+    "faq-order-status-false-delivery-attempts"
+   ]
+  },
+  {
+   "query": "After years of searching, found the entire Tintin series @user Childhood relived! Yayyy!!!",
+   "relevant": "faq-other-social-media-and-sharing",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-order-status-tracking-and-status",
+    "faq-order-status-missing-items-in-package",
+    "faq-account-payment-invoices-and-receipts"
+   ]
+  },
+  {
+   "query": "When your @user parcel arrives like this... appalling! [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 2,
+   "top3": [
+    "faq-order-status-missing-items-in-package",
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-order-status-general-order-not-arrived"
+   ]
+  },
+  {
+   "query": "@AmazonHelp sent me a cracked tv asked me to return myself and buy the replacement. received the second set and it is also cracked now expect me to pay to return both. As apparently their carrier doesn't come here. How did you manage to deliver it then.",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 2,
+   "top3": [
+    "faq-returns-refunds-return-policy-and-process",
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-wrong-item-received"
+   ]
+  },
+  {
+   "query": "@AmazonHelp not sure I'd say outside my front door is my safe space this is a regular theme guessing new drivers again . Done same to my neighbour to [URL]",
+   "relevant": "faq-order-status-wrong-address-or-location",
+   "intent": "order_status",
+   "rank": 2,
+   "top3": [
+    "faq-shipping-policy-delivery-instructions-and-preferences",
+    "faq-order-status-wrong-address-or-location",
+    "faq-order-status-driver-and-courier-issues"
+   ]
+  },
+  {
+   "query": "\u30a2\u30de\u30be\u30f3\u304b\u3089\u8377\u7269\u304c\u5c4a\u3044\u305f\uff01 [URL]",
+   "relevant": "faq-other-social-media-and-sharing",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-other-amazon-prime-membership",
+    "faq-account-payment-amazon-pay-balance",
+    "faq-order-status-missing-items-in-package"
+   ]
+  },
+  {
+   "query": "@user is there a way to \"return\" or get a refund on a digital order? My last purchase is a barely readable scan of the book.",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": null,
+   "top3": []
+  },
+  {
+   "query": "@user Avez vous penser \u00e0 faire un audit de votre service client? C'est une catastrophe",
+   "relevant": "faq-other-customer-service-complaints",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-other-general-complaints-and-feedback",
+    "faq-other-packaging-issues"
+   ]
+  },
+  {
+   "query": "Aquela sensa\u00e7\u00e3o de dor e sofrimento quando voc\u00ea compra um @user e na outra semana ele aparece com R$100,00 de desconto! To bem triste rs [URL]",
+   "relevant": "faq-other-pricing-promotions-and-discounts",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-pricing-promotions-and-discounts",
+    "faq-account-payment-cashback-promos-giftcards",
+    "faq-other-customer-service-complaints"
+   ]
+  },
+  {
+   "query": "Where is my order @user ?? Still not delivered to me. When try to contact ur delivery boy he is not picking my phone\ud83d\ude20\ud83d\ude20 [URL]",
+   "relevant": "faq-order-status-driver-and-courier-issues",
+   "intent": "order_status",
+   "rank": 5,
+   "top3": [
+    "faq-order-status-general-order-not-arrived",
+    "faq-order-status-tracking-and-status",
+    "faq-order-status-false-delivery-attempts"
+   ]
+  },
+  {
+   "query": "Forgive me, I\ufe0f have to be that person for a second. But come on @user - you\u2019re really calling this the \u201cmailroom?\u201d Out on the sidewalk NEXT to the mailboxes? No wonder packages are stolen. \ud83d\ude21 [URL]",
+   "relevant": "faq-order-status-wrong-address-or-location",
+   "intent": "order_status",
+   "rank": 3,
+   "top3": [
+    "faq-order-status-stolen-packages",
+    "faq-order-status-missing-delivered-package",
+    "faq-order-status-wrong-address-or-location"
+   ]
+  },
+  {
+   "query": "Hey @user my apartment community's dog-washing station is by far not what I would call a secure delivery location. This really gives me faith in your Amazon delivery service for the holidays... [URL]",
+   "relevant": "faq-order-status-wrong-address-or-location",
+   "intent": "order_status",
+   "rank": 5,
+   "top3": [
+    "faq-shipping-policy-delivery-instructions-and-preferences",
+    "faq-other-delivery-and-logistics-complaints",
+    "faq-order-status-false-delivery-attempts"
+   ]
+  },
+  {
+   "query": "Och @user @amazonhelp, ist das euer Ernst? Das ist eine Festplatte, HDD, Feinmechanik, druck- und schlagempfindlich. Und ihr verschickt sie ungesch\u00fctzt in einem einfachen Umschlag?! [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 2,
+   "top3": [
+    "faq-other-packaging-issues",
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-other-delivery-and-logistics-complaints"
+   ]
+  },
+  {
+   "query": "3 AMIIBO EN UN MES QUE @user me manda con la caja chafada SI SE\u00d1ORES",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 3,
+   "top3": [
+    "faq-order-status-missing-items-in-package",
+    "faq-other-packaging-issues",
+    "faq-returns-refunds-damaged-or-defective-items"
+   ]
+  },
+  {
+   "query": "@user I've tried 3times to get a refund on a damaged item and all 3calls I've made to your customer service get cut off when I'm speakin",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 3,
+   "top3": [
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-return-policy-and-process",
+    "faq-returns-refunds-refund-inquiries"
+   ]
+  },
+  {
+   "query": "@user really tired of this spam in my email .. [URL]",
+   "relevant": "faq-other-scams-phishing-and-fraud",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-scams-phishing-and-fraud",
+    "faq-account-payment-hacked-compromised-account",
+    "faq-account-payment-account-locked-blocked"
+   ]
+  },
+  {
+   "query": "@user how do I pay for next day delivery, and not get it the next day???",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 2,
+   "top3": [
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-late-prime-delivery"
+   ]
+  },
+  {
+   "query": "@user you\u2019re fucking lagging on my delivery",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-late-prime-delivery",
+    "faq-other-delivery-and-logistics-complaints"
+   ]
+  },
+  {
+   "query": "Me: \"Hey @user pls send me an USB C Hub Adapter.\" Amazon: \"Haha we'll send her an MP3 Player instead lol.\" #ordergonewrong [URL]",
+   "relevant": "faq-returns-refunds-wrong-item-received",
+   "intent": "returns_refunds",
+   "rank": null,
+   "top3": []
+  },
+  {
+   "query": "@AmazonHelp please consider this as special case. Really tired. Again received a faulty product second time.",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-wrong-item-received",
+    "faq-returns-refunds-return-policy-and-process"
+   ]
+  },
+  {
+   "query": "Really disappointed with @user recently. Anyone else pay for prime but not always get next day delivery?",
+   "relevant": "faq-shipping-policy-prime-delivery-speed-delays",
+   "intent": "shipping_policy",
+   "rank": 4,
+   "top3": [
+    "faq-order-status-late-prime-delivery",
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-late-general-delivery"
+   ]
+  },
+  {
+   "query": "I just got a bunch of emails from @user for reviews it said I posted that I definitely didn't write. \ud83e\udd14 @AmazonHelp",
+   "relevant": "faq-account-payment-unauthorized-charges",
+   "intent": "account_payment",
+   "rank": 3,
+   "top3": [
+    "faq-other-scams-phishing-and-fraud",
+    "faq-account-payment-hacked-compromised-account",
+    "faq-account-payment-unauthorized-charges"
+   ]
+  },
+  {
+   "query": "I signed up for @user #KindleUnlimited and it was such an unfriendly user experience, not only did I never use it once, I forgot I'd even signed up.",
+   "relevant": "faq-other-device-and-hardware-issues",
+   "intent": "other",
+   "rank": 5,
+   "top3": [
+    "faq-account-payment-prime-membership-cancellation",
+    "faq-order-status-lost-in-transit",
+    "faq-account-payment-account-login-issues"
+   ]
+  },
+  {
+   "query": "@AmazonHelp My parcel (delivered by Amazon delivery) was ripped and opened. Fort. wasn't confidential or a gift for partner but not ideal!",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 10,
+   "top3": [
+    "faq-order-status-missing-items-in-package",
+    "faq-order-status-wrong-address-or-location",
+    "faq-order-status-missing-delivered-package"
+   ]
+  },
+  {
+   "query": "@user called ur customer service... me: I was sent an item that expired. CS in India after 15 min: did you look around your house? Me (losing it!) Are U freaking killing me? CS in India: hung up! Well done Amazon #greatcrapcustomerservice!",
+   "relevant": "faq-returns-refunds-return-policy-and-process",
+   "intent": "returns_refunds",
+   "rank": null,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-returns-refunds-wrong-item-received",
+    "faq-order-status-missing-items-in-package"
+   ]
+  },
+  {
+   "query": "@AmazonHelp thanks for changing the estimated date and charging me [URL]",
+   "relevant": "faq-order-status-tracking-and-status",
+   "intent": "order_status",
+   "rank": 2,
+   "top3": [
+    "faq-account-payment-double-multiple-charges",
+    "faq-order-status-tracking-and-status",
+    "faq-order-status-late-prime-delivery"
+   ]
+  },
+  {
+   "query": "@AmazonHelp A product I ordered yest is to be delivered on Sat. Today, the same is available for a Fri delivery? Why the gap of a day?",
+   "relevant": "faq-shipping-policy-prime-delivery-speed-delays",
+   "intent": "shipping_policy",
+   "rank": 8,
+   "top3": [
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-late-prime-delivery",
+    "faq-shipping-policy-order-fulfillment-and-packaging"
+   ]
+  },
+  {
+   "query": "Want refund for fake product ordrd by mistake. Placed refund req but denied. Y shud I bear pain for fake product :( @AmazonHelp @user [URL]",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 3,
+   "top3": [
+    "faq-returns-refunds-wrong-item-received",
+    "faq-order-status-cancellations-and-refunds",
+    "faq-returns-refunds-refund-inquiries"
+   ]
+  },
+  {
+   "query": "@AmazonHelp Useless cust service on phone. Waiting 3 weeks for a refund, made 3 calls and still nothing. No call back yesterday as promised. Very disappointed and I need the money back now.",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-refund-inquiries",
+    "faq-other-customer-service-complaints",
+    "faq-order-status-cancellations-and-refunds"
+   ]
+  },
+  {
+   "query": "@user dear sir/mam ordered an phone through Amazon for my dad as an diwali gift but the delivery date shows of 23oct#help",
+   "relevant": "faq-order-status-tracking-and-status",
+   "intent": "order_status",
+   "rank": 10,
+   "top3": [
+    "faq-order-status-late-prime-delivery",
+    "faq-order-status-preorder-delivery-issues",
+    "faq-order-status-late-general-delivery"
+   ]
+  },
+  {
+   "query": "I pay for prime. @user it's Thursday, and you're telling me two day shipping won't get it here until next Wednesday? That's not two days! [URL]",
+   "relevant": "faq-shipping-policy-prime-delivery-speed-delays",
+   "intent": "shipping_policy",
+   "rank": 4,
+   "top3": [
+    "faq-order-status-late-prime-delivery",
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-late-general-delivery"
+   ]
+  },
+  {
+   "query": "Comprei um Kindle na @user as 5:30 da tarde 9 da noite na enviaram",
+   "relevant": "faq-order-status-order-not-shipped",
+   "intent": "order_status",
+   "rank": 7,
+   "top3": [
+    "faq-order-status-late-prime-delivery",
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-preorder-delivery-issues"
+   ]
+  },
+  {
+   "query": "It has now become commonplace for my @user order (Prime) to text me my package will be delivered today...and for days (weeks) to go by before it does, if it ever does. #lastmileissues",
+   "relevant": "faq-order-status-late-prime-delivery",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-late-prime-delivery",
+    "faq-order-status-late-general-delivery",
+    "faq-shipping-policy-weekend-and-same-day-delivery"
+   ]
+  },
+  {
+   "query": "So much for @user Prime. 2 day shipping that ACTUALLY takes 7. And you PAY for this! Woohoo! [URL]",
+   "relevant": "faq-order-status-late-prime-delivery",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-late-prime-delivery",
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-late-general-delivery"
+   ]
+  },
+  {
+   "query": "@AmazonHelp @user Received Defective OnePlus 3T. Requested for return. The return pickup delayed! Unprofessional service! Dussapointing!",
+   "relevant": "faq-returns-refunds-return-pickup-issues",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-return-pickup-issues",
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-return-policy-and-process"
+   ]
+  },
+  {
+   "query": "Hey @user I think I might need some help. An order I placed in September with a deliver by date of 11/9 still hasn\u2019t arrived (no tracking info). I have contacted the seller to no avail. Any suggestions?",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 2,
+   "top3": [
+    "faq-order-status-general-order-not-arrived",
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-lost-in-transit"
+   ]
+  },
+  {
+   "query": "@AmazonHelp are you kidding me? Twice now I've ordered a book and both times have had major issues with my order. Unreal. Give me a refund.",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 2,
+   "top3": [
+    "faq-order-status-cancellations-and-refunds",
+    "faq-returns-refunds-refund-inquiries",
+    "faq-returns-refunds-wrong-item-received"
+   ]
+  },
+  {
+   "query": "@user I have requested return on 4th October and its been a month, no response from your side. No replies by the seller after multiple emails Please look into the matter. #Amazon #Worst_Seller [URL]",
+   "relevant": "faq-returns-refunds-return-policy-and-process",
+   "intent": "returns_refunds",
+   "rank": 3,
+   "top3": [
+    "faq-returns-refunds-return-pickup-issues",
+    "faq-returns-refunds-refund-inquiries",
+    "faq-returns-refunds-return-policy-and-process"
+   ]
+  },
+  {
+   "query": "I ordered a cool gift off of Amazon for my best friends birthday. It came in smashed. The package wasn\u2019t bubble wrapped and it was fragile material. @user [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-other-packaging-issues",
+    "faq-order-status-missing-items-in-package"
+   ]
+  },
+  {
+   "query": "\u30cd\u30c3\u30c8\u3067\u6620\u753b\u898b\u305f\u3044\u3093\u3060\u3051\u3069Amazon\u30d7\u30e9\u30a4\u30e0\u3068\u3084\u3089\u306e\u767b\u9332\u65b9\u6cd5\u304c\u5206\u304b\u3089\u306a\u3044(\u963f\u5446)",
+   "relevant": "faq-account-payment-prime-membership-cancellation",
+   "intent": "account_payment",
+   "rank": 4,
+   "top3": [
+    "faq-other-amazon-prime-membership",
+    "faq-other-prime-video-and-streaming",
+    "faq-account-payment-account-management"
+   ]
+  },
+  {
+   "query": "um @user i got my package but instead of the mask i ordered there was just a smaller box inside the box??? and another box in that one?",
+   "relevant": "faq-returns-refunds-wrong-item-received",
+   "intent": "returns_refunds",
+   "rank": 9,
+   "top3": [
+    "faq-order-status-missing-items-in-package",
+    "faq-returns-refunds-missing-or-used-items",
+    "faq-order-status-missing-delivered-package"
+   ]
+  },
+  {
+   "query": "@user order [ORDER] fraud wt customer by giving different product #fraudAmazon Wn asking for return or refund- Giving resolution as this product comes under non returnable dat means dey r free 2 gv wrong product. PFA of gym bag recieved wch is dfrnt on website\ud83d\ude21 [URL]",
+   "relevant": "faq-returns-refunds-wrong-item-received",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-wrong-item-received",
+    "faq-returns-refunds-missing-or-used-items",
+    "faq-returns-refunds-return-policy-and-process"
+   ]
+  },
+  {
+   "query": "@user I'm a Prime customer &amp; ordered immediately a book promoted by you as having dropped to $1.99 only to be charged its full price. Confused. Thanks for help!",
+   "relevant": "faq-account-payment-checkout-payment-errors",
+   "intent": "account_payment",
+   "rank": null,
+   "top3": [
+    "faq-other-pricing-promotions-and-discounts",
+    "faq-account-payment-cashback-promos-giftcards",
+    "faq-account-payment-prime-membership-cancellation"
+   ]
+  },
+  {
+   "query": "@AmazonHelp Cu\u00e1ndo subir\u00e1n el primer cap\u00edtulo de la 3era temporada de mr robot?",
+   "relevant": "faq-other-prime-video-and-streaming",
+   "intent": "other",
+   "rank": 3,
+   "top3": [
+    "faq-shipping-policy-prime-delivery-speed-delays",
+    "faq-order-status-late-prime-delivery",
+    "faq-other-prime-video-and-streaming"
+   ]
+  },
+  {
+   "query": "@AmazonHelp Can you provide me with number for the Canadian customer service line",
+   "relevant": "faq-other-general-complaints-and-feedback",
+   "intent": "other",
+   "rank": 2,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-other-general-complaints-and-feedback",
+    "faq-other-social-media-and-sharing"
+   ]
+  },
+  {
+   "query": "@user Scusatemi, ma significa che lo ricever\u00f2? [URL]",
+   "relevant": "faq-order-status-tracking-and-status",
+   "intent": "order_status",
+   "rank": 8,
+   "top3": [
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-false-delivery-attempts",
+    "faq-shipping-policy-prime-delivery-speed-delays"
+   ]
+  },
+  {
+   "query": "Hey @user, If a customer emails with two questions and your customer service rep fails to answer either of them and shows zero understanding of the issue, maybe they are in the wrong department.",
+   "relevant": "faq-other-customer-service-complaints",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-other-general-complaints-and-feedback",
+    "faq-account-payment-account-login-issues"
+   ]
+  },
+  {
+   "query": "I want to order from Amazon but I'm afraid they would screw up my order again\ud83d\ude10",
+   "relevant": "faq-other-social-media-and-sharing",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-order-status-order-not-shipped",
+    "faq-order-status-preorder-delivery-issues",
+    "faq-order-status-late-general-delivery"
+   ]
+  },
+  {
+   "query": "Amazon\u30d5\u30ec\u30c3\u30b7\u30e5\u3066\u4f1a\u8cbb\u53d6\u308b\u306e\u304b\u3002",
+   "relevant": "faq-account-payment-prime-membership-cancellation",
+   "intent": "account_payment",
+   "rank": 4,
+   "top3": [
+    "faq-other-amazon-prime-membership",
+    "faq-shipping-policy-shipping-costs-and-fees",
+    "faq-account-payment-amazon-pay-balance"
+   ]
+  },
+  {
+   "query": "@user It is very dissappointing that such a huge company is doing the same mistake twice. I have ordered Philips bluetooth headset and was delivered HBS 730 bluetooth headset. After replacing the product I received the same product. Not expected from Amazon India...Shameful",
+   "relevant": "faq-returns-refunds-wrong-item-received",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-wrong-item-received",
+    "faq-order-status-missing-items-in-package",
+    "faq-returns-refunds-missing-or-used-items"
+   ]
+  },
+  {
+   "query": "@user what gives I've wait five days for my parcel witch should of been delivered on Friday last week ??",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 2,
+   "top3": [
+    "faq-order-status-general-order-not-arrived",
+    "faq-order-status-late-general-delivery",
+    "faq-shipping-policy-weekend-and-same-day-delivery"
+   ]
+  },
+  {
+   "query": "Ordered a sweatband wristband set from @user it came with product packaging ripped open and missing wristbands. Awesome wow",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 3,
+   "top3": [
+    "faq-order-status-missing-items-in-package",
+    "faq-returns-refunds-missing-or-used-items",
+    "faq-returns-refunds-damaged-or-defective-items"
+   ]
+  },
+  {
+   "query": "@user why do I pay to be a Prime member if my deliveries are constantly rescheduled? 2 different orders in 2 days both delayed.",
+   "relevant": "faq-order-status-late-prime-delivery",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-late-prime-delivery",
+    "faq-order-status-late-general-delivery",
+    "faq-shipping-policy-prime-delivery-speed-delays"
+   ]
+  },
+  {
+   "query": "@user Customer service just hung up on me. Fax number doesn't work. Your \"address verification\" process is a nightmare! It's 2017 guys!",
+   "relevant": "faq-account-payment-checkout-payment-errors",
+   "intent": "account_payment",
+   "rank": null,
+   "top3": []
+  },
+  {
+   "query": "Is it just me or has @user's prime next-day delivery service gone sharply downhill over the past month or so? Items ordered 'next day' on Thursday now expected Monday-Wednesday at best. Really poor.",
+   "relevant": "faq-shipping-policy-prime-delivery-speed-delays",
+   "intent": "shipping_policy",
+   "rank": 3,
+   "top3": [
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-late-prime-delivery",
+    "faq-shipping-policy-prime-delivery-speed-delays"
+   ]
+  },
+  {
+   "query": "being a prime member why my product is still not delivered in one day. False promises @user is making.",
+   "relevant": "faq-order-status-late-prime-delivery",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-late-prime-delivery",
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-late-general-delivery"
+   ]
+  },
+  {
+   "query": "@user Bj, j'ai un probl\u00e8me avec une imprimante Canon qui d\u00e9conne H24 (achet\u00e9e 04/11/2016) vers qui dois je me tourner pour la garantie ?",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 2,
+   "top3": [
+    "faq-other-alexa-and-echo-devices",
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-other-customer-service-complaints"
+   ]
+  },
+  {
+   "query": "@user Sir mujhe cashback nahi mila hai jio ke recharge pr",
+   "relevant": "faq-account-payment-cashback-promos-giftcards",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-cashback-promos-giftcards",
+    "faq-returns-refunds-refund-inquiries",
+    "faq-order-status-false-delivery-attempts"
+   ]
+  },
+  {
+   "query": "@user @user Ordered a brand new item from Amazon, next day air, received a used product. Called customer spprt, rep and manager advised that it is not their fault the item was a return and that I would need to go drop the item off at a UPS store, and wait for a refund. [URL]",
+   "relevant": "faq-returns-refunds-missing-or-used-items",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-missing-or-used-items",
+    "faq-returns-refunds-wrong-item-received",
+    "faq-returns-refunds-damaged-or-defective-items"
+   ]
+  },
+  {
+   "query": "Hey @user, wie sieht's eigentlich Mr Robot-Season3-technisch bei euch aus?",
+   "relevant": "faq-other-prime-video-and-streaming",
+   "intent": "other",
+   "rank": 2,
+   "top3": [
+    "faq-other-app-and-website-issues",
+    "faq-other-prime-video-and-streaming",
+    "faq-other-device-and-hardware-issues"
+   ]
+  },
+  {
+   "query": "@user Amazon shipping has become very terrible!!! Go back 2 UPS and FedEx!!!! Last 4 packages, 2 this week have been late. Ridiculous.",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-late-prime-delivery",
+    "faq-shipping-policy-weekend-and-same-day-delivery"
+   ]
+  },
+  {
+   "query": "@user do we need to link aadhar card to Amazon account to claim lightning deal? #amazon #lightningCheater",
+   "relevant": "faq-account-payment-cashback-promos-giftcards",
+   "intent": "account_payment",
+   "rank": 8,
+   "top3": [
+    "faq-account-payment-amazon-pay-balance",
+    "faq-other-amazon-prime-membership",
+    "faq-other-pricing-promotions-and-discounts"
+   ]
+  },
+  {
+   "query": "Just received the @user Echo DOT &amp; @user is not working out of the box! No manual is provided!",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 2,
+   "top3": [
+    "faq-other-alexa-and-echo-devices",
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-wrong-item-received"
+   ]
+  },
+  {
+   "query": "@AmazonHelp my husband e-mailed you. Still no response. They said 6 hours? #along6hours [URL]",
+   "relevant": "faq-other-customer-service-complaints",
+   "intent": "other",
+   "rank": 6,
+   "top3": [
+    "faq-returns-refunds-refund-inquiries",
+    "faq-account-payment-account-locked-blocked",
+    "faq-order-status-order-not-shipped"
+   ]
+  },
+  {
+   "query": "a big hi to Avinash Kishore of @user customer service. A champion of empty platitudes and zero solutions. Incidentally still nothing",
+   "relevant": "faq-other-customer-service-complaints",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-other-general-complaints-and-feedback",
+    "faq-order-status-driver-and-courier-issues"
+   ]
+  },
+  {
+   "query": "Bloody worst experience from @user, been 45 DAYS and still waiting for my REFUND. #wheresthemoney #cheap #fakepromises",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-refund-inquiries",
+    "faq-order-status-cancellations-and-refunds",
+    "faq-account-payment-cashback-promos-giftcards"
+   ]
+  },
+  {
+   "query": "@user can't believe it arrives broken and [URL] wants me to send it back. Will cost more than purchase price to return from Canada. Buyers beware #wastedmoney [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-return-policy-and-process",
+    "faq-returns-refunds-missing-or-used-items"
+   ]
+  },
+  {
+   "query": "@user Any update on Cast to TV on Amazon Prime Video for Android ?",
+   "relevant": "faq-other-prime-video-and-streaming",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-prime-video-and-streaming",
+    "faq-other-amazon-prime-membership",
+    "faq-other-device-and-hardware-issues"
+   ]
+  },
+  {
+   "query": "@user 3/3 the shoes in the next two days and if I don\u2019t I should call you to make other arrangements. Cust serv not great on the phone",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": null,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-other-general-complaints-and-feedback",
+    "faq-other-product-availability-and-inquiries"
+   ]
+  },
+  {
+   "query": "@AmazonHelp @user you have now failed to deliver my item for the 2nd time. A one day delivery has taken a week now and I still don't have my item. I have spent \u00a31000 on this which you were damn quick to take from me. FUCKING SORT THIS OUT",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 2,
+   "top3": [
+    "faq-order-status-false-delivery-attempts",
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-order-not-shipped"
+   ]
+  },
+  {
+   "query": "@user .. Status for an undelivered product shows as delivered. How is that possible!! Customer service can only write canned responses. Am now stuck with paying the money and not getting the product!! Extremely frustrating!! Pathetic call center agent responses!!",
+   "relevant": "faq-order-status-missing-delivered-package",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-missing-delivered-package",
+    "faq-order-status-wrong-address-or-location",
+    "faq-order-status-lost-in-transit"
+   ]
+  },
+  {
+   "query": "@AmazonHelp where do you find the claim code for gift cards?",
+   "relevant": "faq-account-payment-cashback-promos-giftcards",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-cashback-promos-giftcards",
+    "faq-order-status-missing-items-in-package",
+    "faq-returns-refunds-refund-inquiries"
+   ]
+  },
+  {
+   "query": "Someone hacked into my @user account and they won\u2019t even do anything about it. That\u2019s how my day is going.",
+   "relevant": "faq-account-payment-hacked-compromised-account",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-hacked-compromised-account",
+    "faq-account-payment-account-login-issues",
+    "faq-other-scams-phishing-and-fraud"
+   ]
+  },
+  {
+   "query": "@AmazonHelp I need help! I have a charge on my CC that doesn't match up to any orders and website is NOT helping me. Can someone please contact me? Thank you!",
+   "relevant": "faq-account-payment-unauthorized-charges",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-unauthorized-charges",
+    "faq-account-payment-double-multiple-charges",
+    "faq-other-general-complaints-and-feedback"
+   ]
+  },
+  {
+   "query": "Gets Amazon Prime and orders an item that qualifies for next day delivery. Get a despatched note saying it will be here Monday. Well that's no good is it @AmazonHelp !!!",
+   "relevant": "faq-order-status-late-prime-delivery",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-late-prime-delivery",
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-late-general-delivery"
+   ]
+  },
+  {
+   "query": "Why am I paying for @user prime if my 2-day delivery was pushed back 1 day to begin with..&amp; now it's delayed? Ugh. Should've went standard",
+   "relevant": "faq-order-status-late-prime-delivery",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-late-prime-delivery",
+    "faq-order-status-late-general-delivery",
+    "faq-shipping-policy-prime-delivery-speed-delays"
+   ]
+  },
+  {
+   "query": "When @user and @user don\u2019t ship your wig in time for the @user concert tonight even though you paid for one day shipping...on SUNDAY! #thanksforruiningmyoutfit #pokerfaceswimsuit #nowig #frustratedashell",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 3,
+   "top3": [
+    "faq-order-status-order-not-shipped",
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-late-general-delivery"
+   ]
+  },
+  {
+   "query": "@AmazonHelp my account has been locked pending verification of my CC. I have sent the required fax 3 times. what more do you want? @user",
+   "relevant": "faq-account-payment-account-locked-blocked",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-account-locked-blocked",
+    "faq-account-payment-account-login-issues",
+    "faq-account-payment-double-multiple-charges"
+   ]
+  },
+  {
+   "query": "@AmazonHelp VISA DEBIT RETAIL PURCHASE Amazon.ca Prime [PHONE]..... #Fraud",
+   "relevant": "faq-account-payment-unauthorized-charges",
+   "intent": "account_payment",
+   "rank": 2,
+   "top3": [
+    "faq-other-scams-phishing-and-fraud",
+    "faq-account-payment-unauthorized-charges",
+    "faq-account-payment-hacked-compromised-account"
+   ]
+  },
+  {
+   "query": "@user since your last update on iPhone \ud83d\udcf1 it doesn\u2019t cast on @user TV \ud83d\udcfa. Please help",
+   "relevant": "faq-other-app-and-website-issues",
+   "intent": "other",
+   "rank": 8,
+   "top3": [
+    "faq-other-alexa-and-echo-devices",
+    "faq-other-prime-video-and-streaming",
+    "faq-other-device-and-hardware-issues"
+   ]
+  },
+  {
+   "query": "Donc chez @user si tu n'es pas membre premium, il y a certains articles que tu ne peut pas commander ? Non mais on va o\u00f9 l\u00e0 ? C'est tout simplement inadmissible! J'ai command\u00e9 ailleurs du coup, vous avez perdu une bonne cliente! #FoutageDeGueule [URL]",
+   "relevant": "faq-other-amazon-prime-membership",
+   "intent": "other",
+   "rank": 7,
+   "top3": [
+    "faq-account-payment-prime-membership-cancellation",
+    "faq-account-payment-account-locked-blocked",
+    "faq-other-customer-service-complaints"
+   ]
+  },
+  {
+   "query": "@user My Kindle Fire is defective [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-missing-or-used-items",
+    "faq-other-packaging-issues"
+   ]
+  },
+  {
+   "query": "@user your delivery people are awful. tracking says my package was have delivered today. Umm, no it wasn't. Where the hell is it?",
+   "relevant": "faq-order-status-missing-delivered-package",
+   "intent": "order_status",
+   "rank": 3,
+   "top3": [
+    "faq-order-status-false-delivery-attempts",
+    "faq-order-status-general-order-not-arrived",
+    "faq-order-status-missing-delivered-package"
+   ]
+  },
+  {
+   "query": "Will you provide no cost EMI with #OnePlus5T ? @user @user",
+   "relevant": "faq-account-payment-payment-methods-emi",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-payment-methods-emi",
+    "faq-other-product-availability-and-inquiries",
+    "faq-returns-refunds-wrong-item-received"
+   ]
+  },
+  {
+   "query": "@user talked to 3 customer service people who have not resolved an issue of getting refunded since sent two items back in 1 box. Need help",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-refund-inquiries",
+    "faq-returns-refunds-return-policy-and-process",
+    "faq-returns-refunds-wrong-item-received"
+   ]
+  },
+  {
+   "query": "@user south florida, searing heat, 30 mins before a torrential downpour, and package left halfway down the driveway for easy stealing. Delivery service, amzlus. Love your service but deliveries need improvement [URL]",
+   "relevant": "faq-order-status-wrong-address-or-location",
+   "intent": "order_status",
+   "rank": 3,
+   "top3": [
+    "faq-order-status-missing-items-in-package",
+    "faq-order-status-driver-and-courier-issues",
+    "faq-order-status-wrong-address-or-location"
+   ]
+  },
+  {
+   "query": "amazon\u304b\u3089\u6bcd\u89aa\u5b9b\u306b\u30e1\u30f3\u30ba\u306e\u8ca1\u5e03\u304c\u5c4a\u3044\u305f\u3051\u3069\u3001\u6bcd\u306famazon\u3067\u8cb7\u3044\u7269\u3057\u305f\u3053\u3068\u306a\u3044\u3057\u899a\u3048\u304c\u306a\u3044\u3063\u3066\u3002\u8acb\u6c42\u66f8\u3084\u9818\u53ce\u66f8\u306a\u3069\u306e\u66f8\u9762\u304c\u4f55\u3082\u5165\u3063\u3066\u306a\u3044\u304b\u3089\u78ba\u304b\u3081\u3088\u3046\u3082\u306a\u3044\u306a\u30fc\u3002\u306f\u3066\u3053\u308c\u306f\u3044\u3063\u305f\u3044\u3002",
+   "relevant": "faq-other-general-complaints-and-feedback",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-account-payment-unauthorized-charges",
+    "faq-order-status-wrong-address-or-location",
+    "faq-order-status-missing-delivered-package"
+   ]
+  },
+  {
+   "query": "\u4eca\u65e5\u5c4a\u3044\u305f\ud83d\udc50\ud83d\udc50\ud83d\udc50 \u3069\u3053\u306e\u304a\u5e97\u3082\u306a\u304f\u3066\u4e00\u6628\u65e5Amazon\u898b\u3066\u305f\u3089\u3042\u3063\u305f\u304b\u3089\u8cfc\u5165\ud83d\udc99 \u5024\u6bb5\u3082\u5b9a\u4fa1\u3060\u3057\u3001\u6b32\u3057\u304b\u3063\u305f\u304b\u3089\u3088\u304b\u3063\u305f\u263a \u306f\u3084\u304f\u30e9\u30a4\u30d6\u306b\u6301\u3063\u3066\u3044\u304d\u305f\u3044\ud83d\ude01 [URL]",
+   "relevant": "faq-other-social-media-and-sharing",
+   "intent": "other",
+   "rank": 5,
+   "top3": [
+    "faq-other-amazon-prime-membership",
+    "faq-order-status-late-prime-delivery",
+    "faq-order-status-tracking-and-status"
+   ]
+  },
+  {
+   "query": "@user OID: 4__credit_card__ Delivery boy took 300. Saw right amount ie 279 in slip when opened item. Delivery Boy No response.",
+   "relevant": "faq-account-payment-checkout-payment-errors",
+   "intent": "account_payment",
+   "rank": null,
+   "top3": [
+    "faq-order-status-driver-and-courier-issues",
+    "faq-order-status-false-delivery-attempts",
+    "faq-other-delivery-and-logistics-complaints"
+   ]
+  },
+  {
+   "query": "Hey @AmazonHelp Any reason my preorder has been dispatching today for 2 days now? Onto day 3.",
+   "relevant": "faq-order-status-preorder-delivery-issues",
+   "intent": "order_status",
+   "rank": 2,
+   "top3": [
+    "faq-order-status-order-not-shipped",
+    "faq-order-status-preorder-delivery-issues",
+    "faq-shipping-policy-prime-delivery-speed-delays"
+   ]
+  },
+  {
+   "query": "I mean really, @user? Bought iPhone 7 for 39,999 a week back and now the price stands at 37,999. Isn't that ridiculous?",
+   "relevant": "faq-other-pricing-promotions-and-discounts",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-pricing-promotions-and-discounts",
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-other-customer-service-complaints"
+   ]
+  },
+  {
+   "query": "@user Great sale started on Amazon today, if you login into the sites you can save up to 60%,But you can save 100% if you don't login \ud83d\ude02",
+   "relevant": "faq-other-social-media-and-sharing",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-other-pricing-promotions-and-discounts",
+    "faq-account-payment-account-login-issues",
+    "faq-other-amazon-prime-membership"
+   ]
+  },
+  {
+   "query": "It all points to one man, one mission. #Newton [URL] @user [URL]",
+   "relevant": "faq-other-scams-phishing-and-fraud",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-order-status-false-delivery-attempts",
+    "faq-order-status-missing-items-in-package",
+    "faq-other-product-availability-and-inquiries"
+   ]
+  },
+  {
+   "query": "@AmazonHelp C\u00f3mo se puede haber v\u00e1lida la garant\u00eda del fabricante despu\u00e9s de que los 30 d\u00edas hayan pasado? El producto fue vendido por Amazon USA.",
+   "relevant": "faq-returns-refunds-return-policy-and-process",
+   "intent": "returns_refunds",
+   "rank": 3,
+   "top3": [
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-missing-or-used-items",
+    "faq-returns-refunds-return-policy-and-process"
+   ]
+  },
+  {
+   "query": "@user one of my freind wrongly order [ORDER] redmi4 but i want to buy redmi note4, i request you to please help me.",
+   "relevant": "faq-returns-refunds-wrong-item-received",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-wrong-item-received",
+    "faq-order-status-cancellations-and-refunds",
+    "faq-order-status-wrong-address-or-location"
+   ]
+  },
+  {
+   "query": "@user @AmazonHelp why would you ship these products in a envelope? Broken glass and flat boxes [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-shipping-policy-order-fulfillment-and-packaging",
+    "faq-shipping-policy-international-and-regional-shipping"
+   ]
+  },
+  {
+   "query": "Alright, #Amazon. Ordered a CD. It came broken. Ordered a replacement. It came broken. Ordered a second replacement. Yes, it too came broken. It seems as if fluffy jiffy envelopes don't work as good as cardboard ones. Can't do no more exchanges, alas. Help, @AmazonHelp!",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-missing-or-used-items",
+    "faq-other-packaging-issues"
+   ]
+  },
+  {
+   "query": "@user my packet was not delivered to a neighbour as they not signed for anything today",
+   "relevant": "faq-order-status-wrong-address-or-location",
+   "intent": "order_status",
+   "rank": 3,
+   "top3": [
+    "faq-shipping-policy-delivery-instructions-and-preferences",
+    "faq-order-status-missing-delivered-package",
+    "faq-order-status-wrong-address-or-location"
+   ]
+  },
+  {
+   "query": "Disheartened with @user service. Lack of customer empathy is not what amazon is known for @user",
+   "relevant": "faq-other-customer-service-complaints",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-order-status-preorder-delivery-issues"
+   ]
+  },
+  {
+   "query": "@user order [ORDER]. I had ordered Saffola Gold (price 145) however a cheaper Saffola Active was delivered. Further the barcode on pack says Saffola Gold. Please help with return. [URL]",
+   "relevant": "faq-returns-refunds-wrong-item-received",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-wrong-item-received",
+    "faq-returns-refunds-return-policy-and-process",
+    "faq-returns-refunds-refund-inquiries"
+   ]
+  },
+  {
+   "query": "My lovely brand new car now with a massive dent thanks to a careless @user driver - not a happy bunny - hardly a great advert for the Grand Tour programme! [URL]",
+   "relevant": "faq-other-delivery-and-logistics-complaints",
+   "intent": "other",
+   "rank": 2,
+   "top3": [
+    "faq-order-status-driver-and-courier-issues",
+    "faq-other-delivery-and-logistics-complaints",
+    "faq-returns-refunds-damaged-or-defective-items"
+   ]
+  },
+  {
+   "query": "Black Friday chegando, e eu quero saber se a @user vai me ajudar a comprar meu Kindle Paperwhite. \u2665",
+   "relevant": "faq-other-pricing-promotions-and-discounts",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-other-product-availability-and-inquiries",
+    "faq-returns-refunds-refund-inquiries",
+    "faq-shipping-policy-weekend-and-same-day-delivery"
+   ]
+  },
+  {
+   "query": "@AmazonHelp ive had a serious problem with my job page. amazon keeps resetting the status of my job application to \"candidate took another position\" ive had your support fix the problem 5 times now, but it resets every morning. is there another way to take care of this",
+   "relevant": "faq-other-product-availability-and-inquiries",
+   "intent": "other",
+   "rank": null,
+   "top3": []
+  },
+  {
+   "query": "Vais vraiment finir par arr\u00eater mon abonnement @user Prime... [URL]",
+   "relevant": "faq-account-payment-prime-membership-cancellation",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-prime-membership-cancellation",
+    "faq-order-status-late-prime-delivery",
+    "faq-other-amazon-prime-membership"
+   ]
+  },
+  {
+   "query": ".@AmazonHelp is it normal practice for your delivery drivers to not ring the bell, drop the parcel then kick it to the doorstep? [URL]",
+   "relevant": "faq-order-status-driver-and-courier-issues",
+   "intent": "order_status",
+   "rank": 3,
+   "top3": [
+    "faq-other-delivery-and-logistics-complaints",
+    "faq-shipping-policy-delivery-instructions-and-preferences",
+    "faq-order-status-driver-and-courier-issues"
+   ]
+  },
+  {
+   "query": "@user i want to credit back my amazon balance in bank, what is procedure for that",
+   "relevant": "faq-account-payment-amazon-pay-balance",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-amazon-pay-balance",
+    "faq-returns-refunds-refund-inquiries",
+    "faq-returns-refunds-return-policy-and-process"
+   ]
+  },
+  {
+   "query": "@AmazonHelp Starting to get more deliveries with Royal Mail &amp; DPD. Can you confirm if you're back working with them in my area? *prays*",
+   "relevant": "faq-shipping-policy-carrier-and-courier-issues",
+   "intent": "shipping_policy",
+   "rank": 3,
+   "top3": [
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-shipping-policy-delivery-instructions-and-preferences",
+    "faq-shipping-policy-carrier-and-courier-issues"
+   ]
+  },
+  {
+   "query": "@AmazonHelp bought an Amazon iPhone branded iPhone cable 5 weeks ago... it's just randomly stopped working!! Expect more than 5 weeks out of it! Can you exchange it?",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 5,
+   "top3": [
+    "faq-returns-refunds-return-policy-and-process",
+    "faq-returns-refunds-wrong-item-received",
+    "faq-returns-refunds-missing-or-used-items"
+   ]
+  },
+  {
+   "query": "@AmazonHelp Delivery was fine with FedEx and USPS. Probably because those drivers knew the area. Train Flex drivers to be more determined.",
+   "relevant": "faq-other-product-availability-and-inquiries",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-other-delivery-and-logistics-complaints",
+    "faq-shipping-policy-delivery-instructions-and-preferences",
+    "faq-order-status-driver-and-courier-issues"
+   ]
+  },
+  {
+   "query": "@user, why was I charged Rs250 for this [URL] when the MRP on pack is Rs190??? [URL]",
+   "relevant": "faq-account-payment-checkout-payment-errors",
+   "intent": "account_payment",
+   "rank": 7,
+   "top3": [
+    "faq-account-payment-double-multiple-charges",
+    "faq-account-payment-unauthorized-charges",
+    "faq-shipping-policy-shipping-costs-and-fees"
+   ]
+  },
+  {
+   "query": "Yes, lost Kindle in paris, and need to access the books and close e-eader. No one can figure this out except start a new email for this?? [URL]",
+   "relevant": "faq-account-payment-account-login-issues",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-account-login-issues",
+    "faq-other-device-and-hardware-issues",
+    "faq-order-status-locker-and-pickup-issues"
+   ]
+  },
+  {
+   "query": "@AmazonHelp hell can you delay my package to monday? The promised date was monday anyway but it said that it will be delivered this friday. I wont be home friday, hope you can delay my package",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-late-general-delivery",
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-preorder-delivery-issues"
+   ]
+  },
+  {
+   "query": "\u30a2\u30de\u30be\u30f3\u30d7\u30e9\u30a4\u30e0\u4f1a\u54e1\u306b\u306a\u308b\u624b\u7b48\u304c\u6574\u3063\u305f",
+   "relevant": "faq-account-payment-prime-membership-cancellation",
+   "intent": "account_payment",
+   "rank": 4,
+   "top3": [
+    "faq-other-amazon-prime-membership",
+    "faq-order-status-late-prime-delivery",
+    "faq-account-payment-account-management"
+   ]
+  },
+  {
+   "query": "@user prime? Awful. terrible experience. Let me down. Useless.",
+   "relevant": "faq-other-amazon-prime-membership",
+   "intent": "other",
+   "rank": 8,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-order-status-late-prime-delivery",
+    "faq-other-delivery-and-logistics-complaints"
+   ]
+  },
+  {
+   "query": "@AmazonHelp [URL] That is the Barnes &amp; Noble CORRECT listing. Amazon's INCORRECT LISTING is here [URL]",
+   "relevant": "faq-other-product-availability-and-inquiries",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-returns-refunds-wrong-item-received",
+    "faq-other-pricing-promotions-and-discounts",
+    "faq-order-status-wrong-address-or-location"
+   ]
+  },
+  {
+   "query": "Hello @user y'a moyen de blacklister des livreurs sur mon compte ? Jai pris le prime expr\u00e8s pour ne plus \u00eatre livr\u00e9 par @user",
+   "relevant": "faq-shipping-policy-carrier-and-courier-issues",
+   "intent": "shipping_policy",
+   "rank": 5,
+   "top3": [
+    "faq-shipping-policy-delivery-instructions-and-preferences",
+    "faq-other-delivery-and-logistics-complaints",
+    "faq-order-status-driver-and-courier-issues"
+   ]
+  },
+  {
+   "query": "@user Ayer estaba viendo el cat\u00e1logo en Prime V\u00eddeo y fui a ver el de anime... Que gusto que hayan metido m\u00e1s series anime, sigan as\u00ed \ud83d\ude0a",
+   "relevant": "faq-other-prime-video-and-streaming",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-prime-video-and-streaming",
+    "faq-other-amazon-prime-membership",
+    "faq-order-status-late-prime-delivery"
+   ]
+  },
+  {
+   "query": "@AmazonHelp @user Please help - duplicate order already returned - but in status it is showing can't be returned now. This is sick 1.",
+   "relevant": "faq-returns-refunds-return-policy-and-process",
+   "intent": "returns_refunds",
+   "rank": 3,
+   "top3": [
+    "faq-returns-refunds-refund-inquiries",
+    "faq-returns-refunds-return-pickup-issues",
+    "faq-returns-refunds-return-policy-and-process"
+   ]
+  },
+  {
+   "query": "\u52dd\u624b\u306bAmazon\u30d7\u30e9\u30a4\u30e0\u4f1a\u54e1\u306b\u3055\u305b\u3089\u308c\u3066\u3066\u304a\u91d1\u3068\u3089\u308c\u3066\u308b\u3093\u3060\u3051\u3069\u306a\u3093\u306a\u306e\ud83d\ude25400\u5186\ud83d\ude44",
+   "relevant": "faq-account-payment-unauthorized-charges",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-unauthorized-charges",
+    "faq-account-payment-prime-membership-cancellation",
+    "faq-other-amazon-prime-membership"
+   ]
+  },
+  {
+   "query": "@AmazonHelp told your agent to look into this properly no one really cares",
+   "relevant": "faq-other-customer-service-complaints",
+   "intent": "other",
+   "rank": 2,
+   "top3": [
+    "faq-order-status-false-delivery-attempts",
+    "faq-other-customer-service-complaints",
+    "faq-order-status-lost-in-transit"
+   ]
+  },
+  {
+   "query": "@AmazonHelp so viel Luft hatte ich gar nicht bestellt. Da passt das Zeug ja 2x rein. Habt ihr keine kleineren Kartons? \ud83d\ude32 [URL]",
+   "relevant": "faq-other-packaging-issues",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-packaging-issues",
+    "faq-order-status-missing-items-in-package",
+    "faq-shipping-policy-weekend-and-same-day-delivery"
+   ]
+  },
+  {
+   "query": "Had a full fledged panic attack over multiple screwed up @user orders last night. Thank goodness for a boyfriend that can calm me down, ease my stress, and organize replacements for my missing orders.",
+   "relevant": "faq-order-status-general-order-not-arrived",
+   "intent": "order_status",
+   "rank": 4,
+   "top3": [
+    "faq-order-status-missing-items-in-package",
+    "faq-order-status-lost-in-transit",
+    "faq-order-status-tracking-and-status"
+   ]
+  },
+  {
+   "query": "@user ,worst and pathetic right words for u guys",
+   "relevant": "faq-other-general-complaints-and-feedback",
+   "intent": "other",
+   "rank": 2,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-other-general-complaints-and-feedback",
+    "faq-returns-refunds-damaged-or-defective-items"
+   ]
+  },
+  {
+   "query": "just lost $60 dollars on @user wtf.",
+   "relevant": "faq-account-payment-unauthorized-charges",
+   "intent": "account_payment",
+   "rank": 9,
+   "top3": [
+    "faq-order-status-lost-in-transit",
+    "faq-order-status-missing-items-in-package",
+    "faq-returns-refunds-missing-or-used-items"
+   ]
+  },
+  {
+   "query": "Why havent i recieved my @user refund yet \ud83e\udd14",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-refund-inquiries",
+    "faq-account-payment-cashback-promos-giftcards",
+    "faq-order-status-cancellations-and-refunds"
+   ]
+  },
+  {
+   "query": "@user My Amazon Echo has stopped working 4 days out of a 1 year warranty enjoy my money Amazon. Quality product merry xmas",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 2,
+   "top3": [
+    "faq-other-alexa-and-echo-devices",
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-missing-or-used-items"
+   ]
+  },
+  {
+   "query": "I've used @user 's Subscribe and Save for years, 250 to 300 orders yearly. I'm done. They just hijack whatever payment source they feel like! Just cancelled 38 orders.",
+   "relevant": "faq-account-payment-unauthorized-charges",
+   "intent": "account_payment",
+   "rank": 7,
+   "top3": [
+    "faq-order-status-cancellations-and-refunds",
+    "faq-account-payment-prime-membership-cancellation",
+    "faq-account-payment-account-management"
+   ]
+  },
+  {
+   "query": "@user my accnt hs been lockd . Can't add pay balance . Hav spokn to cust care 2ice.nd evry time thy promisd 2 resolve within 48 hrs .",
+   "relevant": "faq-account-payment-account-locked-blocked",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-account-locked-blocked",
+    "faq-account-payment-amazon-pay-balance",
+    "faq-account-payment-checkout-payment-errors"
+   ]
+  },
+  {
+   "query": "@user hello hi how is my order going to be here by 8pm today if it's 8:41 and it hasn't even been shipped",
+   "relevant": "faq-order-status-order-not-shipped",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-order-not-shipped",
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-late-prime-delivery"
+   ]
+  },
+  {
+   "query": "C'mon @user you're better than that... [URL]",
+   "relevant": "faq-other-general-complaints-and-feedback",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-order-status-late-general-delivery",
+    "faq-shipping-policy-prime-delivery-speed-delays",
+    "faq-shipping-policy-order-fulfillment-and-packaging"
+   ]
+  },
+  {
+   "query": "Just seen @user driver throw package, I hope it wasn\u2019t fragile",
+   "relevant": "faq-order-status-wrong-address-or-location",
+   "intent": "order_status",
+   "rank": 3,
+   "top3": [
+    "faq-order-status-driver-and-courier-issues",
+    "faq-other-delivery-and-logistics-complaints",
+    "faq-order-status-wrong-address-or-location"
+   ]
+  },
+  {
+   "query": "Thanks @user I recycled your box into a Halloween costume. #halloween [URL]",
+   "relevant": "faq-other-social-media-and-sharing",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-other-packaging-issues",
+    "faq-order-status-missing-items-in-package",
+    "faq-returns-refunds-damaged-or-defective-items"
+   ]
+  },
+  {
+   "query": "@AmazonHelp what's the deal with prime delivery lately! All day said it would b here by 8pm... now says by the 11th! This is the 2nd package this has happened to me... why pay for prime if it's not guaranteed anymore... \ud83d\ude21",
+   "relevant": "faq-order-status-late-prime-delivery",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-late-prime-delivery",
+    "faq-order-status-late-general-delivery",
+    "faq-shipping-policy-prime-delivery-speed-delays"
+   ]
+  },
+  {
+   "query": "@AmazonHelp today was the first day I ever had a packaged pretty messed up from pantry \u2639\ufe0f soap was left opened and leaked on everything [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 2,
+   "top3": [
+    "faq-order-status-wrong-address-or-location",
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-other-packaging-issues"
+   ]
+  },
+  {
+   "query": "@user @user @user Amazon app - __email__ , [PHONE], product not upto mark.Need refund. [URL]",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 4,
+   "top3": [
+    "faq-returns-refunds-wrong-item-received",
+    "faq-order-status-cancellations-and-refunds",
+    "faq-returns-refunds-damaged-or-defective-items"
+   ]
+  },
+  {
+   "query": "@AmazonHelp money for prime taken out my card but I don't have prime",
+   "relevant": "faq-account-payment-unauthorized-charges",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-unauthorized-charges",
+    "faq-account-payment-prime-membership-cancellation",
+    "faq-shipping-policy-prime-delivery-speed-delays"
+   ]
+  },
+  {
+   "query": "@AmazonHelp Wasted my afternoon and I'm still out $112 that I shouldn't be.",
+   "relevant": "faq-account-payment-unauthorized-charges",
+   "intent": "account_payment",
+   "rank": null,
+   "top3": [
+    "faq-order-status-wrong-address-or-location",
+    "faq-other-customer-service-complaints",
+    "faq-returns-refunds-return-pickup-issues"
+   ]
+  },
+  {
+   "query": "@AmazonHelp October 30 was estimated date of delivery. Delivery date extended to November 3. Not delivered yet. Not traceable. [URL]",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-general-order-not-arrived",
+    "faq-order-status-tracking-and-status"
+   ]
+  },
+  {
+   "query": "@user Bonjour, si on ne va pas chercher un colis a la poste et qu'il vous est retourn\u00e9, peut-on \u00eatre rembours\u00e9 comme un retour classique ?",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 2,
+   "top3": [
+    "faq-returns-refunds-return-pickup-issues",
+    "faq-returns-refunds-refund-inquiries",
+    "faq-order-status-missing-delivered-package"
+   ]
+  },
+  {
+   "query": "@user When we file a claim under the A-to-Z Guarantee program, we are asked to wait for 1-2 weeks for a resolution even for undelivered items. Who compensates us for that period while we as customers continue to pay interest on the money?",
+   "relevant": "faq-returns-refunds-return-policy-and-process",
+   "intent": "returns_refunds",
+   "rank": null,
+   "top3": [
+    "faq-order-status-lost-in-transit",
+    "faq-order-status-missing-items-in-package",
+    "faq-order-status-late-general-delivery"
+   ]
+  },
+  {
+   "query": "@user @user really disappointed with my recent order &amp; moreover the customer care guys were not helpful.Totally pissed off with u",
+   "relevant": "faq-other-customer-service-complaints",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-order-status-general-order-not-arrived",
+    "faq-other-general-complaints-and-feedback"
+   ]
+  },
+  {
+   "query": "@user great packing job on my new Xbox one X, hope it works, big dent in the limited edition box too. Thank you for taking care of it [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 2,
+   "top3": [
+    "faq-other-packaging-issues",
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-order-status-missing-items-in-package"
+   ]
+  },
+  {
+   "query": "Disgusting service from @user with delivering my pre order of @user book for tomorrow\ud83d\ude22 having to wait 5 days after it's released.",
+   "relevant": "faq-order-status-preorder-delivery-issues",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-preorder-delivery-issues",
+    "faq-shipping-policy-order-fulfillment-and-packaging",
+    "faq-order-status-late-prime-delivery"
+   ]
+  },
+  {
+   "query": "I thought @AmazonHelp wasn't responding but it turns out my notifications weren't woeking properly. I no longer have an issue thank you!",
+   "relevant": "faq-other-social-media-and-sharing",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-other-app-and-website-issues",
+    "faq-account-payment-account-login-issues",
+    "faq-other-alexa-and-echo-devices"
+   ]
+  },
+  {
+   "query": ".@AmazonHelp, your cust support is so pathetic! Screwed up the orders, then issued a refund to an old card. Now, I am asked to go the bank!\ud83d\ude21",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-refund-inquiries",
+    "faq-other-customer-service-complaints",
+    "faq-order-status-cancellations-and-refunds"
+   ]
+  },
+  {
+   "query": "I sure want to know what the f*ck happened to my @user stick-ever since it updated last night all my apps are gone",
+   "relevant": "faq-other-app-and-website-issues",
+   "intent": "other",
+   "rank": 4,
+   "top3": [
+    "faq-other-device-and-hardware-issues",
+    "faq-other-prime-video-and-streaming",
+    "faq-other-alexa-and-echo-devices"
+   ]
+  },
+  {
+   "query": "@AmazonHelp Shocking service! whats the point of having prime if its not delivered when promised! by 22:00 did not arrive!",
+   "relevant": "faq-order-status-late-prime-delivery",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-late-prime-delivery",
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-general-order-not-arrived"
+   ]
+  },
+  {
+   "query": "I really feel like shopping but I also dont want to go to a store or type in a website. Can I please just think of the items I want and they appear @user ?",
+   "relevant": "faq-other-social-media-and-sharing",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-other-product-availability-and-inquiries",
+    "faq-order-status-missing-items-in-package"
+   ]
+  },
+  {
+   "query": "@user video quality is horrible for the game.",
+   "relevant": "faq-other-prime-video-and-streaming",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-prime-video-and-streaming",
+    "faq-other-device-and-hardware-issues",
+    "faq-other-customer-service-complaints"
+   ]
+  },
+  {
+   "query": "@user this is second time happened \ud83d\ude2b\ud83d\ude2b\ud83d\ude2b Now can i still continues shopping on Amazon .No because i don't trust on amazon now .They are just wasted my time .I can buy other from other site but i believe in Amazon 2nd time and both time same result [URL]",
+   "relevant": "faq-other-social-media-and-sharing",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-order-status-false-delivery-attempts",
+    "faq-order-status-late-prime-delivery",
+    "faq-order-status-late-general-delivery"
+   ]
+  },
+  {
+   "query": "I preordered the Tal'Dorei campaign guide MONTHS ago on @user but the money never got taken out so now I can't afford it. Great.",
+   "relevant": "faq-account-payment-checkout-payment-errors",
+   "intent": "account_payment",
+   "rank": 3,
+   "top3": [
+    "faq-order-status-preorder-delivery-issues",
+    "faq-order-status-cancellations-and-refunds",
+    "faq-account-payment-checkout-payment-errors"
+   ]
+  },
+  {
+   "query": "@user Please add Chromecast support. Even Voot has it.",
+   "relevant": "faq-other-app-and-website-issues",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-other-prime-video-and-streaming",
+    "faq-other-customer-service-complaints",
+    "faq-other-alexa-and-echo-devices"
+   ]
+  },
+  {
+   "query": "2\u5ea6\u3068Amazon\u3067\u8cb7\u308f\u306a\u3044\ud83d\ude2d\u652f\u6255\u3044\u3057\u305f\u306e\u306b\u307e\u305f\u652f\u6255\u3044\u756a\u53f7\u304f\u308b\u3057\u554f\u3044\u5408\u305b\u305f\u3089\u518d\u5ea6\u9001\u3063\u305f\u65b9\u3067\u652f\u6255\u3048\u8a00\u308f\u308c\u308b\u3057\u3002\u4f55\u30672\u91cd\u306b\u652f\u6255\u3044\u3057\u3084\u306a\u3042\u304b\u3093\u306e\u7b11 \u8fd4\u91d1\u5bfe\u5fdc\u306f\u306a\u3044\u306e\uff1f\u4e00\u5207\u66f8\u3044\u3066\u306a\u3044\u3093\u3084\u3051\u3069\u3002 \u91d1\u984d\u500d\u306b\u306a\u308b\u306a\u3089\u4ed6\u3067\u8cb7\u3046\u3057\u3088\u7b11 \u30ad\u30e3\u30f3\u30bb\u30eb\u306b\u306a\u3063\u305f\u3093\u306a\u3089\u305d\u308c\u3067\u3044\u3044\u3051\u3069\u91d1\u8fd4\u305b(\uff65\u2200\uff65)\ud83d\udcad",
+   "relevant": "faq-account-payment-double-multiple-charges",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-double-multiple-charges",
+    "faq-account-payment-checkout-payment-errors",
+    "faq-order-status-cancellations-and-refunds"
+   ]
+  },
+  {
+   "query": "@user are you planning on allowing multiple commands e.g. Alexa turn on living room lights &amp; play music? This would be a really useful features",
+   "relevant": "faq-other-alexa-and-echo-devices",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-alexa-and-echo-devices",
+    "faq-account-payment-double-multiple-charges",
+    "faq-returns-refunds-return-policy-and-process"
+   ]
+  },
+  {
+   "query": "@user Might need to adjust your search functionality. Just received the wrong battery because your search was wrong. [URL]",
+   "relevant": "faq-returns-refunds-wrong-item-received",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-wrong-item-received",
+    "faq-order-status-wrong-address-or-location",
+    "faq-order-status-false-delivery-attempts"
+   ]
+  },
+  {
+   "query": "@AmazonHelp Received Amazon Pantry delivery with a broken seal. Would it be okay to use the product? \ud83e\udd14 #India [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-wrong-item-received",
+    "faq-order-status-late-prime-delivery"
+   ]
+  },
+  {
+   "query": "@AmazonHelp hi there... I want the complete M*A*S*H series for Christmas but would love to own digitally so I can watch while walking my dog. Is this not avail streaming or downloadable? Need to let my wife know how to purchase. If dvd only way that sucks but whatever. Thanks",
+   "relevant": "faq-other-prime-video-and-streaming",
+   "intent": "other",
+   "rank": 2,
+   "top3": [
+    "faq-other-device-and-hardware-issues",
+    "faq-other-prime-video-and-streaming",
+    "faq-other-alexa-and-echo-devices"
+   ]
+  },
+  {
+   "query": "will i get my money back from the order i just canceled @AmazonHelp [URL]",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 2,
+   "top3": [
+    "faq-order-status-cancellations-and-refunds",
+    "faq-returns-refunds-refund-inquiries",
+    "faq-order-status-preorder-delivery-issues"
+   ]
+  },
+  {
+   "query": "@user I bought a product but when I get it, that also broken so please sir return it immediately Track no 203987100",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-return-policy-and-process",
+    "faq-returns-refunds-refund-inquiries"
+   ]
+  },
+  {
+   "query": "@user I received a damaged product from order [ORDER]. I contacted seller \"ibhejo\" but till now got no response. Please help",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": null,
+   "top3": []
+  },
+  {
+   "query": "@AmazonHelp You guys sucks, you have the worst support ever.",
+   "relevant": "faq-other-customer-service-complaints",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-other-general-complaints-and-feedback",
+    "faq-other-social-media-and-sharing"
+   ]
+  },
+  {
+   "query": "@user when are you adding walking dead season 7 to prime?",
+   "relevant": "faq-other-prime-video-and-streaming",
+   "intent": "other",
+   "rank": 2,
+   "top3": [
+    "faq-other-amazon-prime-membership",
+    "faq-other-prime-video-and-streaming",
+    "faq-shipping-policy-prime-delivery-speed-delays"
+   ]
+  },
+  {
+   "query": "@user @user No one looks at policies b4 buying. You r fooling public in open by selling old stocks with wrong sizes &amp; harassing 4 refunds [URL]",
+   "relevant": "faq-returns-refunds-wrong-item-received",
+   "intent": "returns_refunds",
+   "rank": 3,
+   "top3": [
+    "faq-returns-refunds-return-policy-and-process",
+    "faq-returns-refunds-refund-inquiries",
+    "faq-returns-refunds-wrong-item-received"
+   ]
+  },
+  {
+   "query": "@user what is up with order [ORDER]. Ordered two day shipping three days ago and it has not shipped yet.",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 2,
+   "top3": [
+    "faq-order-status-order-not-shipped",
+    "faq-order-status-late-general-delivery",
+    "faq-shipping-policy-prime-delivery-speed-delays"
+   ]
+  },
+  {
+   "query": "@user n\u00e3o consigo pagar com cart\u00e3o de d\u00e9bito. \ud83d\ude2d O site leva pro Ita\u00fa que d\u00e1 um erro de falta de Token, mas n\u00e3o tem token para o sistema macOS \ud83d\ude29",
+   "relevant": "faq-account-payment-payment-methods-emi",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-payment-methods-emi",
+    "faq-account-payment-checkout-payment-errors",
+    "faq-account-payment-account-management"
+   ]
+  },
+  {
+   "query": "@AmazonHelp hi, I have accidentally purchased a kindle book (missclick), can I somehow cancel the order?",
+   "relevant": "faq-returns-refunds-return-policy-and-process",
+   "intent": "returns_refunds",
+   "rank": null,
+   "top3": [
+    "faq-order-status-cancellations-and-refunds",
+    "faq-account-payment-prime-membership-cancellation",
+    "faq-order-status-preorder-delivery-issues"
+   ]
+  },
+  {
+   "query": "@AmazonHelp a gift I sent to a friend of mine on her birthday never reached. And it shows delivered.",
+   "relevant": "faq-order-status-missing-delivered-package",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-missing-delivered-package",
+    "faq-order-status-wrong-address-or-location",
+    "faq-order-status-false-delivery-attempts"
+   ]
+  },
+  {
+   "query": "When you\u2019re too sick to go to the store, you order @user and await morning delivery of medicine, soup, and juice. Except it never got delivered. Super disappointed \ud83d\ude14",
+   "relevant": "faq-order-status-general-order-not-arrived",
+   "intent": "order_status",
+   "rank": 5,
+   "top3": [
+    "faq-order-status-false-delivery-attempts",
+    "faq-order-status-missing-delivered-package",
+    "faq-order-status-locker-and-pickup-issues"
+   ]
+  },
+  {
+   "query": "@user Well played amazon. A sugar-coated reply on how important your customers are and fooling them in the name of offers.",
+   "relevant": "faq-other-customer-service-complaints",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-other-general-complaints-and-feedback",
+    "faq-other-amazon-prime-membership"
+   ]
+  },
+  {
+   "query": "@user When will the packet will get collected and refund sent back to account.. [URL]",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-refund-inquiries",
+    "faq-returns-refunds-return-pickup-issues",
+    "faq-order-status-cancellations-and-refunds"
+   ]
+  },
+  {
+   "query": "Amazon\u304b\u3089\u306e\u8377\u7269\u5c4a\u3044\u305f\u3051\u3069\u672c\u306b\u4ed8\u3044\u3066\u305f\u30a2\u30a4\u30c6\u30e0\u30b3\u30fc\u30c9\u958b\u5c01\u3055\u308c\u3066\u305f \u5b9a\u4fa1\u3067\u65b0\u54c1\u8cb7\u3063\u305f\u306f\u305a\u306a\u3093\u3060\u3051\u3069 \u3082\u3061\u308d\u3093\u30b3\u30fc\u30c9\u306f\u4f7f\u3048\u306a\u3044\u3057\u2026\u3002",
+   "relevant": "faq-returns-refunds-missing-or-used-items",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-missing-or-used-items",
+    "faq-order-status-locker-and-pickup-issues",
+    "faq-order-status-missing-items-in-package"
+   ]
+  },
+  {
+   "query": "Comprinhas na @user. [URL]",
+   "relevant": "faq-other-social-media-and-sharing",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-order-status-late-prime-delivery",
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-other-pricing-promotions-and-discounts"
+   ]
+  },
+  {
+   "query": "@AmazonHelp Hi, was soll das denn? Ungew\u00fcnschte Werbung, und sogar per Post (zu meiner Mutter geschickt \ud83d\ude2c). Lieber nicht mehr. [URL]",
+   "relevant": "faq-other-scams-phishing-and-fraud",
+   "intent": "other",
+   "rank": 7,
+   "top3": [
+    "faq-other-packaging-issues",
+    "faq-account-payment-unauthorized-charges",
+    "faq-other-customer-service-complaints"
+   ]
+  },
+  {
+   "query": "By the time @user decides to ship the maternity belt I would have given birth already. I ordered it when I was 6 weeks away.... baby coming any day now. Yikes.",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 5,
+   "top3": [
+    "faq-order-status-order-not-shipped",
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-preorder-delivery-issues"
+   ]
+  },
+  {
+   "query": "Yet another #Amazon #driver smashes into this #hydrant that was recently repaired. #NotADemolitionDerby #badamazondrivers #retest 9 [URL]",
+   "relevant": "faq-other-delivery-and-logistics-complaints",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-delivery-and-logistics-complaints",
+    "faq-order-status-driver-and-courier-issues",
+    "faq-shipping-policy-delivery-instructions-and-preferences"
+   ]
+  },
+  {
+   "query": "Dear @user what is the point of next day delivery if you can\u2019t deliver? Very disappointed!",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 3,
+   "top3": [
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-false-delivery-attempts",
+    "faq-order-status-late-general-delivery"
+   ]
+  },
+  {
+   "query": "@AmazonHelp My order was picked up, then the refund was put on halt as youll said, you have empty box, and now after 20 days, I am been told, I did not send correct product. This is clear fraud, and I need someone to look into this.",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 5,
+   "top3": [
+    "faq-order-status-cancellations-and-refunds",
+    "faq-returns-refunds-wrong-item-received",
+    "faq-order-status-missing-items-in-package"
+   ]
+  },
+  {
+   "query": "@user Luckily I came home before the rain damaged it or someone stole it. This is NOT a delivery!!! [URL]",
+   "relevant": "faq-order-status-wrong-address-or-location",
+   "intent": "order_status",
+   "rank": 4,
+   "top3": [
+    "faq-order-status-stolen-packages",
+    "faq-order-status-false-delivery-attempts",
+    "faq-other-delivery-and-logistics-complaints"
+   ]
+  },
+  {
+   "query": "I love @user but their Prime \"One-Day\" shipping when being delivered through Amazon Logistics consistently sucks.",
+   "relevant": "faq-shipping-policy-prime-delivery-speed-delays",
+   "intent": "shipping_policy",
+   "rank": null,
+   "top3": []
+  },
+  {
+   "query": "@user pathetic customer service to prime members,birthday gift delayed, impolite customer service agents non apologetic, no compensation",
+   "relevant": "faq-order-status-late-prime-delivery",
+   "intent": "order_status",
+   "rank": 2,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-order-status-late-prime-delivery",
+    "faq-order-status-late-general-delivery"
+   ]
+  },
+  {
+   "query": "@AmazonHelp Pickup Tracking ID: [PHONE] order [ORDER] It's been a month since I first requested pickup. No pickup yet!!",
+   "relevant": "faq-returns-refunds-return-pickup-issues",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-return-pickup-issues",
+    "faq-order-status-locker-and-pickup-issues",
+    "faq-order-status-tracking-and-status"
+   ]
+  },
+  {
+   "query": "@user is best rather than fake @user who gives only wrong information to costumer by customer service.",
+   "relevant": "faq-other-customer-service-complaints",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-returns-refunds-wrong-item-received",
+    "faq-order-status-false-delivery-attempts"
+   ]
+  },
+  {
+   "query": "@AmazonHelp We opened up the case [PHONE]. We've been trying to reactivate our Seller Central Account since September. Pls let us know.",
+   "relevant": "faq-account-payment-account-locked-blocked",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-account-locked-blocked",
+    "faq-account-payment-account-login-issues",
+    "faq-order-status-lost-in-transit"
+   ]
+  },
+  {
+   "query": "@user When will I get my HDFC credit cashback? I purchased a product on 13th of July. You can check my order [ORDER]. It was purchased on 15% cashback offer which was about to get within 3 month of order.",
+   "relevant": "faq-account-payment-cashback-promos-giftcards",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-cashback-promos-giftcards",
+    "faq-returns-refunds-refund-inquiries",
+    "faq-order-status-cancellations-and-refunds"
+   ]
+  },
+  {
+   "query": "@AmazonHelp Im trying to establish if I had an account hacked after a dodgy email but cant log into the account with that email address.",
+   "relevant": "faq-account-payment-account-login-issues",
+   "intent": "account_payment",
+   "rank": 2,
+   "top3": [
+    "faq-account-payment-hacked-compromised-account",
+    "faq-account-payment-account-login-issues",
+    "faq-other-scams-phishing-and-fraud"
+   ]
+  },
+  {
+   "query": "@AmazonHelp @user ordered this in 3849 and received a local product [URL]",
+   "relevant": "faq-returns-refunds-wrong-item-received",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-wrong-item-received",
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-missing-or-used-items"
+   ]
+  },
+  {
+   "query": "Dear @user stop fooling your customers with fake products.. \ud83d\ude21\ud83d\ude21\ud83d\ude21",
+   "relevant": "faq-other-scams-phishing-and-fraud",
+   "intent": "other",
+   "rank": 2,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-other-scams-phishing-and-fraud",
+    "faq-order-status-missing-items-in-package"
+   ]
+  },
+  {
+   "query": "Why does @user think they can fix all their fuck ups by offering a $5 promo? The least thing I want to do is buy from them ever again.",
+   "relevant": "faq-other-pricing-promotions-and-discounts",
+   "intent": "other",
+   "rank": 4,
+   "top3": [
+    "faq-account-payment-cashback-promos-giftcards",
+    "faq-other-customer-service-complaints",
+    "faq-other-general-complaints-and-feedback"
+   ]
+  },
+  {
+   "query": "\u30a2\u30de\u30be\u30f3\u30d7\u30e9\u30a4\u30e0\u306e\u529b\u306f\u5049\u5927\u3060",
+   "relevant": "faq-other-amazon-prime-membership",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-amazon-prime-membership",
+    "faq-order-status-late-prime-delivery",
+    "faq-account-payment-amazon-pay-balance"
+   ]
+  },
+  {
+   "query": "@AmazonHelp It will be necessary to pay to get the blocks of amazon flex",
+   "relevant": "faq-other-product-availability-and-inquiries",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-account-payment-amazon-pay-balance",
+    "faq-order-status-cancellations-and-refunds",
+    "faq-account-payment-payment-methods-emi"
+   ]
+  },
+  {
+   "query": "@user I know you are ending at the end of this month, but does that mean I am not getting any more films sent in October? :(",
+   "relevant": "faq-other-prime-video-and-streaming",
+   "intent": "other",
+   "rank": 6,
+   "top3": [
+    "faq-other-product-availability-and-inquiries",
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-missing-delivered-package"
+   ]
+  },
+  {
+   "query": "So @AmazonHelp on chat is pretty much the worst. Getting zero help in resolving that the wrong item was sent twice. Only suggestion is to send back for refunds. (Um, duh - but I want the right items.)",
+   "relevant": "faq-returns-refunds-wrong-item-received",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-wrong-item-received",
+    "faq-order-status-missing-items-in-package",
+    "faq-order-status-cancellations-and-refunds"
+   ]
+  },
+  {
+   "query": "@AmazonHelp I\u2019ve been charged \u00a380 for amazon prime however on my account it says that I\u2019m not a member of amazon prime. It said the same thing when I wanted to cancel my free trial",
+   "relevant": "faq-account-payment-prime-membership-cancellation",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-prime-membership-cancellation",
+    "faq-account-payment-unauthorized-charges",
+    "faq-account-payment-double-multiple-charges"
+   ]
+  },
+  {
+   "query": "@user Lo PREGUNTO porque si es normal seguramente cancele la suscripci\u00f3n PRIME",
+   "relevant": "faq-account-payment-prime-membership-cancellation",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-prime-membership-cancellation",
+    "faq-other-amazon-prime-membership",
+    "faq-order-status-late-prime-delivery"
+   ]
+  },
+  {
+   "query": "@user saying it is my problem when I couldn't redeem one of your egift vouchers leaving me \u00a330 out of pocket is not acceptable. Talk to me",
+   "relevant": "faq-account-payment-cashback-promos-giftcards",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-cashback-promos-giftcards",
+    "faq-other-general-complaints-and-feedback",
+    "faq-returns-refunds-wrong-item-received"
+   ]
+  },
+  {
+   "query": "@user why hasn\u2019t my package I ordered from last week shipped yet?!?",
+   "relevant": "faq-order-status-tracking-and-status",
+   "intent": "order_status",
+   "rank": 6,
+   "top3": [
+    "faq-order-status-order-not-shipped",
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-general-order-not-arrived"
+   ]
+  },
+  {
+   "query": "Amazon can you fucking not? \"Delivered\" does not mean leave it in the sodding driveway where anyone can steal it!",
+   "relevant": "faq-order-status-wrong-address-or-location",
+   "intent": "order_status",
+   "rank": null,
+   "top3": []
+  },
+  {
+   "query": "@AmazonHelp sent you a DM :)",
+   "relevant": "faq-other-social-media-and-sharing",
+   "intent": "other",
+   "rank": 4,
+   "top3": [
+    "faq-order-status-missing-delivered-package",
+    "faq-order-status-order-not-shipped",
+    "faq-order-status-wrong-address-or-location"
+   ]
+  },
+  {
+   "query": "@user @user @AmazonHelp Teach some manners to your delivery boy or learn from others companies like flipkart courier department",
+   "relevant": "faq-other-delivery-and-logistics-complaints",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-delivery-and-logistics-complaints",
+    "faq-order-status-driver-and-courier-issues",
+    "faq-shipping-policy-carrier-and-courier-issues"
+   ]
+  },
+  {
+   "query": "Why is my fire stick not working \ud83d\ude10",
+   "relevant": "faq-other-device-and-hardware-issues",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-device-and-hardware-issues",
+    "faq-other-alexa-and-echo-devices",
+    "faq-other-prime-video-and-streaming"
+   ]
+  },
+  {
+   "query": "@user cio\u00e8 grazie che mi date tutta la vostra libreria senza costi con l'abbonamento di Amazon Prime ma vedete di non fare una cagata con la serie su LOTR, senn\u00f2 mi incazzo pi\u00f9 di un uruk-hai.",
+   "relevant": "faq-other-prime-video-and-streaming",
+   "intent": "other",
+   "rank": 10,
+   "top3": [
+    "faq-other-amazon-prime-membership",
+    "faq-order-status-late-prime-delivery",
+    "faq-account-payment-prime-membership-cancellation"
+   ]
+  },
+  {
+   "query": "Ive been ordering so much stuff from amazon recently that they just threw my package on the lawn today \ud83d\ude02\ud83d\ude02fuck you guys \ud83d\ude2d\ud83d\ude2d",
+   "relevant": "faq-order-status-wrong-address-or-location",
+   "intent": "order_status",
+   "rank": 6,
+   "top3": [
+    "faq-other-delivery-and-logistics-complaints",
+    "faq-order-status-driver-and-courier-issues",
+    "faq-order-status-missing-items-in-package"
+   ]
+  },
+  {
+   "query": "@user Learn to do business. Making false commitments and promises. When will I get my refund !!! @user @user [URL]",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-refund-inquiries",
+    "faq-order-status-false-delivery-attempts",
+    "faq-order-status-cancellations-and-refunds"
+   ]
+  },
+  {
+   "query": "@AmazonHelp getting text massage product is delivered without getting delivery......how possible....?",
+   "relevant": "faq-order-status-missing-delivered-package",
+   "intent": "order_status",
+   "rank": 2,
+   "top3": [
+    "faq-order-status-false-delivery-attempts",
+    "faq-order-status-missing-delivered-package",
+    "faq-order-status-wrong-address-or-location"
+   ]
+  },
+  {
+   "query": "@user bunch of liars sitting at customer care..don't buy big electronic products from amazon",
+   "relevant": "faq-other-customer-service-complaints",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-returns-refunds-missing-or-used-items",
+    "faq-order-status-missing-items-in-package"
+   ]
+  },
+  {
+   "query": "@user hola! Ayuda mi cuenta est\u00e1 como bloqueada y no me permite hacer ning\u00fan movimiento! Gracias",
+   "relevant": "faq-account-payment-account-locked-blocked",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-account-locked-blocked",
+    "faq-account-payment-account-login-issues",
+    "faq-account-payment-hacked-compromised-account"
+   ]
+  },
+  {
+   "query": "Gibt es eigentlich Pl\u00e4ne bez\u00fcgl. einer hiesigen Ver\u00f6ffentlichung der Amazon JP Eigenprod. Tokyo Vampire Hotel? @user #sionsono",
+   "relevant": "faq-other-prime-video-and-streaming",
+   "intent": "other",
+   "rank": 5,
+   "top3": [
+    "faq-other-amazon-prime-membership",
+    "faq-account-payment-amazon-pay-balance",
+    "faq-other-product-availability-and-inquiries"
+   ]
+  },
+  {
+   "query": "1) @user @AmazonHelp.... One of the wrost service experience i ever had on any ecommerce platform.",
+   "relevant": "faq-other-customer-service-complaints",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-other-general-complaints-and-feedback",
+    "faq-returns-refunds-damaged-or-defective-items"
+   ]
+  },
+  {
+   "query": "@AmazonHelp I would like to buy this pillow for this price but it won't add to cart. [URL]",
+   "relevant": "faq-other-app-and-website-issues",
+   "intent": "other",
+   "rank": 10,
+   "top3": [
+    "faq-other-pricing-promotions-and-discounts",
+    "faq-other-product-availability-and-inquiries",
+    "faq-account-payment-checkout-payment-errors"
+   ]
+  },
+  {
+   "query": "Lost in the stream? We\u2019ll help you find something to watch tonight on Amazon Fire TV. [URL]",
+   "relevant": "faq-other-device-and-hardware-issues",
+   "intent": "other",
+   "rank": 4,
+   "top3": [
+    "faq-other-prime-video-and-streaming",
+    "faq-order-status-lost-in-transit",
+    "faq-other-amazon-prime-membership"
+   ]
+  },
+  {
+   "query": "@user gente o desconto no kindle vai ate quando?",
+   "relevant": "faq-other-pricing-promotions-and-discounts",
+   "intent": "other",
+   "rank": 3,
+   "top3": [
+    "faq-other-amazon-prime-membership",
+    "faq-account-payment-amazon-pay-balance",
+    "faq-other-pricing-promotions-and-discounts"
+   ]
+  },
+  {
+   "query": "@user @user @AmazonHelp dang I ordered this headset with 2 day shipping for this LAN event tomorrow and they come in defective just my luck. Any way you guys could hook it up with free next day/one day delivery? [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 4,
+   "top3": [
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-late-prime-delivery"
+   ]
+  },
+  {
+   "query": "Not up to @user 's normal service. Nearly a week and looks like it was drop kicked. Used DPD couriers. #WhyDoIPayForPrime? [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": null,
+   "top3": [
+    "faq-order-status-late-prime-delivery",
+    "faq-order-status-late-general-delivery",
+    "faq-shipping-policy-weekend-and-same-day-delivery"
+   ]
+  },
+  {
+   "query": "@user is the third class company which yet not refunded my payback balance to my account",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-refund-inquiries",
+    "faq-order-status-cancellations-and-refunds",
+    "faq-account-payment-cashback-promos-giftcards"
+   ]
+  },
+  {
+   "query": "About 2 seconds away from ending my @user membership. I've literally NEVER had so many problems with account security &amp; customer service before when shopping online. \u270c\ufe0f out @user...it was mediocre while it lasted. @AmazonHelp [URL]",
+   "relevant": "faq-account-payment-hacked-compromised-account",
+   "intent": "account_payment",
+   "rank": 6,
+   "top3": [
+    "faq-account-payment-prime-membership-cancellation",
+    "faq-other-customer-service-complaints",
+    "faq-other-general-complaints-and-feedback"
+   ]
+  },
+  {
+   "query": "&gt;get release day shipping from @user for Assassins Creed: Origins &gt;check tracking &gt;game is in a different province ... on release day Uh what the hell?",
+   "relevant": "faq-order-status-preorder-delivery-issues",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-preorder-delivery-issues",
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-tracking-and-status"
+   ]
+  },
+  {
+   "query": "@user ridiculous customer service it's been 10days and i am not refunded \ud83d\ude21 Amazon executives fool people @AmazonHelp #fraud #shitService",
+   "relevant": "faq-returns-refunds-refund-inquiries",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-refund-inquiries",
+    "faq-other-customer-service-complaints",
+    "faq-order-status-cancellations-and-refunds"
+   ]
+  },
+  {
+   "query": "@user Boat BassHeads 225 Special Edition In-Ear Headphones with Mic (Blue) Bought in Aug'17 not working properly now, please help with process of replacement",
+   "relevant": "faq-returns-refunds-return-policy-and-process",
+   "intent": "returns_refunds",
+   "rank": 7,
+   "top3": [
+    "faq-returns-refunds-missing-or-used-items",
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-other-alexa-and-echo-devices"
+   ]
+  },
+  {
+   "query": "@AmazonHelp why haven\u2019t my football bed sheets come yet I can\u2019t sleep without them",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 4,
+   "top3": [
+    "faq-order-status-order-not-shipped",
+    "faq-order-status-general-order-not-arrived",
+    "faq-returns-refunds-refund-inquiries"
+   ]
+  },
+  {
+   "query": "Dear @user , is there any way to access #AmazonPrimeVideo from my #WindowsPhone ?",
+   "relevant": "faq-other-prime-video-and-streaming",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-prime-video-and-streaming",
+    "faq-other-amazon-prime-membership",
+    "faq-other-device-and-hardware-issues"
+   ]
+  },
+  {
+   "query": "@AmazonHelp do you know what time delivery stops. I payed for next day delivery. Got the dispatched email but it still hasn\u2019t arrived 19:43",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-late-prime-delivery",
+    "faq-order-status-general-order-not-arrived"
+   ]
+  },
+  {
+   "query": "@AmazonHelp I keep being charged for prime even though I've never signed up for it i noticed last month and cancelled and now received email to say welcome to prime not happy",
+   "relevant": "faq-account-payment-unauthorized-charges",
+   "intent": "account_payment",
+   "rank": 2,
+   "top3": [
+    "faq-account-payment-prime-membership-cancellation",
+    "faq-account-payment-unauthorized-charges",
+    "faq-order-status-late-prime-delivery"
+   ]
+  },
+  {
+   "query": "@AmazonHelp already talked you guys and it\u2019s pretty dumb that it says by 8pm on Thursday and never shows up \ud83d\ude02",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 4,
+   "top3": [
+    "faq-order-status-false-delivery-attempts",
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-late-prime-delivery"
+   ]
+  },
+  {
+   "query": "no me mand\u00e9is el pok\u00e9mon ya no me gusta @user",
+   "relevant": "faq-returns-refunds-return-policy-and-process",
+   "intent": "returns_refunds",
+   "rank": null,
+   "top3": [
+    "faq-returns-refunds-wrong-item-received",
+    "faq-account-payment-account-management",
+    "faq-order-status-preorder-delivery-issues"
+   ]
+  },
+  {
+   "query": "The new amazon shipping (AMZL) is garbage! I haven\u2019t had a package arrive on time yet! 3 late packages out of 3 by them so far. @user",
+   "relevant": "faq-order-status-late-general-delivery",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-late-prime-delivery",
+    "faq-order-status-lost-in-transit"
+   ]
+  },
+  {
+   "query": "Amazon\u3063\u3066\u3044\u3064\u3082\u68b1\u5305\u904e\u5270\u306a\u30a4\u30e1\u30fc\u30b8\u3060\u3051\u3069\u4eca\u56de\u68b1\u5305\u3059\u3054\u3044\u96d1\u3060\u3063\u305f\u2026\u305b\u3063\u304b\u304f\u304d\u308c\u3044\u306a\u30c7\u30b6\u30a4\u30f3\u306e\u30d1\u30c3\u30b1\u30fc\u30b8\u3060\u3051\u3069\u3061\u3087\u3063\u3068\u50b7\u307f\u304c\u6fc0\u3057\u304b\u3063\u305f\ud83d\ude2d \u305d\u308c\u3060\u3051\u30b7\u30e7\u30c3\u30af",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 3,
+   "top3": [
+    "faq-other-packaging-issues",
+    "faq-order-status-missing-items-in-package",
+    "faq-returns-refunds-damaged-or-defective-items"
+   ]
+  },
+  {
+   "query": "Na endlich ist #SuperMarioOdyssey bei mir angekommen. Da hat sich die Vorbestellung bei @user ja richtig gelohnt. [URL]",
+   "relevant": "faq-order-status-preorder-delivery-issues",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-preorder-delivery-issues",
+    "faq-account-payment-account-management",
+    "faq-shipping-policy-weekend-and-same-day-delivery"
+   ]
+  },
+  {
+   "query": "@AmazonHelp Result of winner contest. Give me the list link [URL]",
+   "relevant": "faq-other-pricing-promotions-and-discounts",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-account-payment-invoices-and-receipts",
+    "faq-other-scams-phishing-and-fraud",
+    "faq-account-payment-account-locked-blocked"
+   ]
+  },
+  {
+   "query": "@user I pre-ordered #FM18 through @user but haven\u2019t received a beta code. How do I go about getting one?",
+   "relevant": "faq-order-status-preorder-delivery-issues",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-preorder-delivery-issues",
+    "faq-shipping-policy-order-fulfillment-and-packaging",
+    "faq-account-payment-cashback-promos-giftcards"
+   ]
+  },
+  {
+   "query": "About to let my phone die and see how long I can let it be dead. My laptop is broken and I still haven\u2019t resolved my @user issues with @user sooooo... [URL]",
+   "relevant": "faq-other-customer-service-complaints",
+   "intent": "other",
+   "rank": 5,
+   "top3": [
+    "faq-other-app-and-website-issues",
+    "faq-other-device-and-hardware-issues",
+    "faq-account-payment-account-login-issues"
+   ]
+  },
+  {
+   "query": "@user iPhone 5S gets more exchange value than iPhone SE may i ask why??? [URL]",
+   "relevant": "faq-returns-refunds-return-policy-and-process",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-return-policy-and-process",
+    "faq-account-payment-account-login-issues",
+    "faq-returns-refunds-damaged-or-defective-items"
+   ]
+  },
+  {
+   "query": "@user third times the charm. Delivery actually arrived with contents. Package damaged though. Might look into handling.. [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-order-status-false-delivery-attempts",
+    "faq-order-status-lost-in-transit"
+   ]
+  },
+  {
+   "query": "Ordered the airbed on Tuesday night with amazon prime next day delivery and it still isn't out for delivery",
+   "relevant": "faq-order-status-late-prime-delivery",
+   "intent": "order_status",
+   "rank": 3,
+   "top3": [
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-late-prime-delivery"
+   ]
+  },
+  {
+   "query": "Thanks @user for the invite.. That was quick.. #AmazonEcho [URL]",
+   "relevant": "faq-other-alexa-and-echo-devices",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-alexa-and-echo-devices",
+    "faq-other-amazon-prime-membership",
+    "faq-other-product-availability-and-inquiries"
+   ]
+  },
+  {
+   "query": "@user I purchased this earphone from your company on 23 Oct and it's not working.... [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 4,
+   "top3": [
+    "faq-other-device-and-hardware-issues",
+    "faq-other-alexa-and-echo-devices",
+    "faq-returns-refunds-missing-or-used-items"
+   ]
+  },
+  {
+   "query": "Is anyone else experiencing issues logging onto their @user account today?",
+   "relevant": "faq-account-payment-account-login-issues",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-account-login-issues",
+    "faq-other-app-and-website-issues",
+    "faq-account-payment-account-locked-blocked"
+   ]
+  },
+  {
+   "query": "Already fake sellers in amazon.in and now fake ads are popping up in facebook.Take some safety actions to safeguard your customers @user [URL]",
+   "relevant": "faq-other-scams-phishing-and-fraud",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-scams-phishing-and-fraud",
+    "faq-other-customer-service-complaints",
+    "faq-account-payment-hacked-compromised-account"
+   ]
+  },
+  {
+   "query": "@AmazonHelp Lost my 2FA device. But the alternative login page gives a 404. [URL] So I\u2019m locked out :(",
+   "relevant": "faq-account-payment-account-login-issues",
+   "intent": "account_payment",
+   "rank": 1,
+   "top3": [
+    "faq-account-payment-account-login-issues",
+    "faq-account-payment-account-locked-blocked",
+    "faq-other-app-and-website-issues"
+   ]
+  },
+  {
+   "query": "Look at the MRP. Amazon you are making people fool.@user ,@AmazonHelp @user [URL]",
+   "relevant": "faq-other-pricing-promotions-and-discounts",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-pricing-promotions-and-discounts",
+    "faq-other-packaging-issues",
+    "faq-returns-refunds-missing-or-used-items"
+   ]
+  },
+  {
+   "query": "\u3042\u307e\u305e\u3093\u3067\u983c\u3093\u3060\u7d75\u306e\u5177\u3068\u7b46\u304c\u5c4a\u304b\u306a\u3044\u306e\u3067\u5b66\u6821\u884c\u3051\u307e\u305b\u3093",
+   "relevant": "faq-order-status-general-order-not-arrived",
+   "intent": "order_status",
+   "rank": null,
+   "top3": [
+    "faq-order-status-late-general-delivery",
+    "faq-order-status-late-prime-delivery",
+    "faq-order-status-lost-in-transit"
+   ]
+  },
+  {
+   "query": "hey @AmazonHelp, I got a fun question if i buy a toy from your sex and sensuality range will it be in my purchase history?",
+   "relevant": "faq-account-payment-account-management",
+   "intent": "account_payment",
+   "rank": null,
+   "top3": [
+    "faq-order-status-cancellations-and-refunds",
+    "faq-account-payment-invoices-and-receipts",
+    "faq-account-payment-double-multiple-charges"
+   ]
+  },
+  {
+   "query": "The status says delivered but where is my package @user [URL]",
+   "relevant": "faq-order-status-missing-delivered-package",
+   "intent": "order_status",
+   "rank": 1,
+   "top3": [
+    "faq-order-status-missing-delivered-package",
+    "faq-order-status-tracking-and-status",
+    "faq-order-status-wrong-address-or-location"
+   ]
+  },
+  {
+   "query": "@user @user what do you do when your art is being sold on the amazon.fr site by an unauthorized dealer. [URL]",
+   "relevant": "faq-other-scams-phishing-and-fraud",
+   "intent": "other",
+   "rank": 6,
+   "top3": [
+    "faq-account-payment-unauthorized-charges",
+    "faq-account-payment-hacked-compromised-account",
+    "faq-other-pricing-promotions-and-discounts"
+   ]
+  },
+  {
+   "query": "I have ordered Californication 5 times and everytime it's either scratched or warped. Please explain @user @AmazonHelp",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-returns-refunds-wrong-item-received",
+    "faq-order-status-preorder-delivery-issues"
+   ]
+  },
+  {
+   "query": "Think I found @user's kryptonite. Returning things are a bitch. Have to pay to return items. Then spend time driving to big city to have it mailed properly. \ud83d\ude21 #Amazon",
+   "relevant": "faq-returns-refunds-return-policy-and-process",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-return-policy-and-process",
+    "faq-returns-refunds-refund-inquiries",
+    "faq-returns-refunds-return-pickup-issues"
+   ]
+  },
+  {
+   "query": "@AmazonHelp bloody cheaters u don't deliver the product and yet u say product is delivered? There is a height of misguiding Customers",
+   "relevant": "faq-order-status-missing-delivered-package",
+   "intent": "order_status",
+   "rank": 6,
+   "top3": [
+    "faq-order-status-driver-and-courier-issues",
+    "faq-order-status-order-not-shipped",
+    "faq-order-status-wrong-address-or-location"
+   ]
+  },
+  {
+   "query": "@user @user In Amazon no easy returns all the ads are fake &amp; I m feeling like hell",
+   "relevant": "faq-returns-refunds-return-policy-and-process",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-return-policy-and-process",
+    "faq-returns-refunds-refund-inquiries",
+    "faq-returns-refunds-wrong-item-received"
+   ]
+  },
+  {
+   "query": "Amazon\u3055\u3093\u306e\u30d7\u30ec\u30de\u30deBOX\u5c4a\u3044\u305f [URL]",
+   "relevant": "faq-other-social-media-and-sharing",
+   "intent": "other",
+   "rank": null,
+   "top3": [
+    "faq-other-amazon-prime-membership",
+    "faq-account-payment-amazon-pay-balance",
+    "faq-order-status-missing-items-in-package"
+   ]
+  },
+  {
+   "query": "Hola, @user: \u00bfMe pod\u00e9is explicar esto de que el env\u00edo que esperaba lo recibi\u00f3 ayer \"Felpudo\"? [URL]",
+   "relevant": "faq-order-status-wrong-address-or-location",
+   "intent": "order_status",
+   "rank": null,
+   "top3": []
+  },
+  {
+   "query": ".@AmazonHelp \u00bfOs parece normal que reciba un paquete as\u00ed? Sin caja, con una pegatina en la caja propia del juguete y encima rota la caja? [URL]",
+   "relevant": "faq-returns-refunds-damaged-or-defective-items",
+   "intent": "returns_refunds",
+   "rank": 2,
+   "top3": [
+    "faq-other-packaging-issues",
+    "faq-returns-refunds-damaged-or-defective-items",
+    "faq-order-status-missing-items-in-package"
+   ]
+  },
+  {
+   "query": "@user Have requested return on October 11, 2017 but even after 15 days, no one has turned up to collect. Kindly advise. [URL]",
+   "relevant": "faq-returns-refunds-return-pickup-issues",
+   "intent": "returns_refunds",
+   "rank": 1,
+   "top3": [
+    "faq-returns-refunds-return-pickup-issues",
+    "faq-returns-refunds-refund-inquiries",
+    "faq-returns-refunds-return-policy-and-process"
+   ]
+  },
+  {
+   "query": "@AmazonHelp hi, i recieved an email about amazon prime which i dont have &amp; was just wondering if u could tell me if it was real. Thanks [URL]",
+   "relevant": "faq-other-scams-phishing-and-fraud",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-scams-phishing-and-fraud",
+    "faq-account-payment-hacked-compromised-account",
+    "faq-account-payment-unauthorized-charges"
+   ]
+  },
+  {
+   "query": "I hate it when @user customer representatives don't read what I write to them.",
+   "relevant": "faq-other-customer-service-complaints",
+   "intent": "other",
+   "rank": 1,
+   "top3": [
+    "faq-other-customer-service-complaints",
+    "faq-other-general-complaints-and-feedback",
+    "faq-shipping-policy-carrier-and-courier-issues"
+   ]
+  },
+  {
+   "query": "Deadline for normal order is within 3 working days&amp; for subscribe&amp;save it is 28th Why spoiling d purpose? @user \ud83d\ude2b [URL]",
+   "relevant": "faq-shipping-policy-order-fulfillment-and-packaging",
+   "intent": "shipping_policy",
+   "rank": 3,
+   "top3": [
+    "faq-shipping-policy-weekend-and-same-day-delivery",
+    "faq-shipping-policy-prime-delivery-speed-delays",
+    "faq-shipping-policy-order-fulfillment-and-packaging"
+   ]
+  }
+ ]
+}

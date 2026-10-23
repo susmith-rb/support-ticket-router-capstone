@@ -35,6 +35,22 @@ Cost: ≈ 163k input / 81k output (incl. thinking) tokens ≈ \$1.30 (est., Gemi
 
 Silver-standard eval: 300 real customer first messages whose topic was clustered into a theme that became an article (relevant doc = that article). Messages used as writing examples are excluded. See `results/` for per-config JSON.
 
+Query-side sweep (same 300 queries, `retrieval_sweep.sh`, 2026-10-23):
+
+| Config | Zero-result queries | recall@1 | recall@3 | recall@5 | recall@10 | MRR@10 |
+| --- | --- | --- | --- | --- | --- | --- |
+| API default (= `relevanceThreshold: LOW`) | 113 | 0.327 | 0.427 | 0.467 | 0.480 | 0.384 |
+| `LOWEST` | 9 | 0.417 | 0.623 | 0.750 | 0.847 | 0.551 |
+| **`LOWEST` + cleaned query** (strip @mentions, redaction tokens, `#`) | **9** | **0.430** | **0.653** | **0.760** | **0.840** | **0.562** |
+| `LOWEST` + cleaned + query expansion / spell correction | 9 | 0.430 | 0.650 | 0.757 | 0.837 | 0.561 |
+
+recall@5 by intent family (best config): account_payment 0.78 · order_status 0.82 · returns_refunds 0.86 · shipping_policy 0.78 · **other 0.59**.
+
+Takeaways:
+- The default relevance threshold silently dropped 38% of real (noisy, short) customer queries. `LOWEST` is the single biggest win; the FaqResolver's citation validator and grounding check are the safety net for weaker matches.
+- Cleaning helps a little; query expansion adds nothing on this corpus.
+- Below the TDD G5 target (recall@5 ≥ 0.90). The labels are silver (one relevant article per query) and several themes overlap (e.g. late delivery vs. late Hub Plus delivery vs. order not arrived), so this underestimates real usefulness — but the `other` family (0.59) is a real gap, the same taxonomy problem the router has. Next (index side): merge overlapping articles, split `other` by topic, boost by the router's intent family, then re-run this eval.
+
 Gotchas:
 - `dataStoreSpecs[].dataStore` must be the resource name (`projects/…/dataStores/faq-articles`), not a URL.
 - New projects have a low `search_requests_regional` quota; `retrieval_eval.py --sleep` throttles and retries 429s.

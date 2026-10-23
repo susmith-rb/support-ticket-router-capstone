@@ -27,7 +27,7 @@ def post(body):
 
 for q in a.queries:
     print(f"\n=== {q}")
-    faq = post({"query": q, "pageSize": 5,
+    faq = post({"query": q, "pageSize": 5, "relevanceThreshold": "LOWEST",
                 "dataStoreSpecs": [{"dataStore": f"projects/{a.project}/locations/global/collections/default_collection/dataStores/faq-articles"}],
                 "contentSearchSpec": {"snippetSpec": {"returnSnippet": True},
                                       "summarySpec": {"summaryResultCount": 3, "includeCitations": True, "ignoreAdversarialQuery": True,
