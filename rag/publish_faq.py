@@ -208,7 +208,7 @@ def main():
     print("import done:", json.dumps(op.get("response", {}))[:300])
 
     # 6. verify a changed (or added) article is served at its new version before anyone flips FAQ_VERSION
-    probe = (changes["changed"] or changes["added"] or [None])[0]
+    probe = (changes["changed"] or changes["added"] or changes["unchanged"] or [None])[0]
     search_endpoint = search_url(a.project, "support-kb-search", location=a.location)
     if probe:
         pid = probe.split("@")[0]; want = next(m["structData"]["version"] for m in manifest if m["id"] == pid)

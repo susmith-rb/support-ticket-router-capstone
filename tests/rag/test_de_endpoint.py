@@ -190,3 +190,48 @@ def test_search_test_location_us(monkeypatch):
         "projects/susmith-fde-ticket-router/locations/us/collections/default_collection/"
         "dataStores/resolved-threads"
     )
+
+
+def test_import_threads_trigger_and_poll(monkeypatch):
+    import import_threads
+
+    calls = []
+
+    def mock_call(method, url, project, token, body=None, timeout=120):
+        calls.append((method, url, body))
+        if method == "POST":
+            return {"name": "projects/p/locations/us/collections/default_collection/dataStores/resolved-threads/branches/0/operations/op-123"}
+        elif method == "GET":
+            return {"name": "op-123", "done": True, "response": {"successCount": 81103}}
+        return {}
+
+    monkeypatch.setattr("import_threads.call", mock_call)
+    monkeypatch.setattr("import_threads.get_token", lambda: "fake-tok")
+
+    # Test trigger_import with location="us"
+    res = import_threads.trigger_import(
+        project="susmith-fde-ticket-router",
+        location="us",
+        data_store_id="resolved-threads",
+        input_uri="gs://bucket/resolved.jsonl",
+        reconciliation_mode="FULL",
+        token="fake-tok",
+    )
+    assert "name" in res
+    assert len(calls) == 1
+    method, url, body = calls[0]
+    assert method == "POST"
+    assert url == (
+        "https://us-discoveryengine.googleapis.com/v1/projects/susmith-fde-ticket-router/"
+        "locations/us/collections/default_collection/dataStores/resolved-threads/branches/default_branch/documents:import"
+    )
+    assert body["reconciliationMode"] == "FULL"
+    assert body["gcsSource"]["inputUris"] == ["gs://bucket/resolved.jsonl"]
+
+    # Test poll_operation
+    op_res = import_threads.poll_operation("projects/p/locations/us/operations/op-123", location="us", token="fake-tok", poll_interval=0)
+    assert op_res.get("done") is True
+    assert op_res["response"]["successCount"] == 81103
+    assert calls[1][0] == "GET"
+    assert calls[1][1] == "https://us-discoveryengine.googleapis.com/v1/projects/p/locations/us/operations/op-123"
+
