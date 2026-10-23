@@ -6,17 +6,22 @@ citations (LLM add-on), and top-3 similar `resolved-threads` (secondary evidence
 
   python search_test.py --project P "what is the return window for opened electronics?" ...
 """
-import argparse, json, subprocess, urllib.error, urllib.request
+import argparse, json, pathlib, subprocess, sys, urllib.error, urllib.request
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+from de_endpoint import search_url, data_store_name  # noqa: E402
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--project", default="susmith-fde-ticket-router"); ap.add_argument("--engine", default="support-kb-search")
+    ap.add_argument("--location", default="global", help="Discovery Engine location (default: global)")
     ap.add_argument("queries", nargs="+")
     a = ap.parse_args()
     tok = subprocess.check_output(["gcloud", "auth", "application-default", "print-access-token"], text=True).strip()
-    base = f"https://discoveryengine.googleapis.com/v1/projects/{a.project}/locations/global/collections/default_collection"
-    url = f"{base}/engines/{a.engine}/servingConfigs/default_search:search"
+    url = search_url(a.project, a.engine, location=a.location)
+    faq_ds = data_store_name(a.project, "faq-articles", location=a.location)
+    threads_ds = data_store_name(a.project, "resolved-threads", location=a.location)
 
     def post(body):
         req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers={
@@ -30,7 +35,7 @@ def main():
     for q in a.queries:
         print(f"\n=== {q}")
         faq = post({"query": q, "pageSize": 5, "relevanceThreshold": "LOWEST",
-                    "dataStoreSpecs": [{"dataStore": f"projects/{a.project}/locations/global/collections/default_collection/dataStores/faq-articles"}],
+                    "dataStoreSpecs": [{"dataStore": faq_ds}],
                     "contentSearchSpec": {"snippetSpec": {"returnSnippet": True},
                                           "summarySpec": {"summaryResultCount": 3, "includeCitations": True, "ignoreAdversarialQuery": True,
                                                           "ignoreNonSummarySeekingQuery": False}}})
@@ -42,7 +47,7 @@ def main():
         print("  SUMMARY:", (s.get("summaryText") or "")[:600].replace("\n", " "))
         refs = (s.get("summaryWithMetadata") or {}).get("references", [])
         print("  CITATIONS:", [r.get("document", "").split("/")[-1] for r in refs])
-        th = post({"query": q, "pageSize": 3, "dataStoreSpecs": [{"dataStore": f"projects/{a.project}/locations/global/collections/default_collection/dataStores/resolved-threads"}]})
+        th = post({"query": q, "pageSize": 3, "dataStoreSpecs": [{"dataStore": threads_ds}]})
         for r in th.get("results", []):
             sd = r["document"].get("structData", {})
             print(f"     thread {sd.get('thread_id')} [{sd.get('intent')}] {sd.get('first_customer_message', '')[:100]}")

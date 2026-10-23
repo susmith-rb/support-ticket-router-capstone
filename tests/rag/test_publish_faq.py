@@ -235,3 +235,104 @@ def test_build_import_payload_unchanged_corpus_identical():
     ]
     payload = build_import_payload(manifest)
     assert payload == manifest
+
+
+def test_publish_faq_location_default_global(tmp_path, monkeypatch):
+    import subprocess
+    from publish_faq import main
+
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "faq-shipping.txt").write_text("# Shipping\nStandard delivery is 4-6 business days.", encoding="utf-8")
+
+    recorded_calls = []
+
+    def mock_call(method, url, project, body=None):
+        recorded_calls.append((method, url, body))
+        if "documents:import" in url:
+            return {"name": "projects/susmith-fde-ticket-router/locations/global/operations/op123", "done": True, "response": {}}
+        if ":search" in url:
+            return {"results": [{"document": {"id": "faq-shipping", "structData": {"version": 1}}}]}
+        if "op123" in url:
+            return {"name": "op123", "done": True}
+        return {}
+
+    monkeypatch.setattr("publish_faq.call", mock_call)
+    monkeypatch.setattr("subprocess.check_output", lambda *a, **kw: "dummy-tok\n")
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: subprocess.CompletedProcess(a, 0))
+    monkeypatch.setattr("sys.argv", [
+        "publish_faq.py",
+        "--work", str(tmp_path),
+        "--project", "susmith-fde-ticket-router",
+    ])
+
+    main()
+
+    import_calls = [c for c in recorded_calls if "documents:import" in c[1]]
+    assert len(import_calls) == 1
+    assert import_calls[0][1] == (
+        "https://discoveryengine.googleapis.com/v1/projects/susmith-fde-ticket-router/"
+        "locations/global/collections/default_collection/dataStores/faq-articles/branches/default_branch/documents:import"
+    )
+
+    search_calls = [c for c in recorded_calls if ":search" in c[1]]
+    assert len(search_calls) == 1
+    search_url_called, search_body = search_calls[0][1], search_calls[0][2]
+    assert search_url_called == (
+        "https://discoveryengine.googleapis.com/v1/projects/susmith-fde-ticket-router/"
+        "locations/global/collections/default_collection/engines/support-kb-search/servingConfigs/default_search:search"
+    )
+    assert search_body["dataStoreSpecs"][0]["dataStore"] == (
+        "projects/susmith-fde-ticket-router/locations/global/collections/default_collection/dataStores/faq-articles"
+    )
+
+
+def test_publish_faq_location_us(tmp_path, monkeypatch):
+    import subprocess
+    from publish_faq import main
+
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "faq-shipping.txt").write_text("# Shipping\nStandard delivery is 4-6 business days.", encoding="utf-8")
+
+    recorded_calls = []
+
+    def mock_call(method, url, project, body=None):
+        recorded_calls.append((method, url, body))
+        if "documents:import" in url:
+            return {"name": "projects/susmith-fde-ticket-router/locations/us/operations/op456", "done": True, "response": {}}
+        if ":search" in url:
+            return {"results": [{"document": {"id": "faq-shipping", "structData": {"version": 1}}}]}
+        if "op456" in url:
+            return {"name": "op456", "done": True}
+        return {}
+
+    monkeypatch.setattr("publish_faq.call", mock_call)
+    monkeypatch.setattr("subprocess.check_output", lambda *a, **kw: "dummy-tok\n")
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: subprocess.CompletedProcess(a, 0))
+    monkeypatch.setattr("sys.argv", [
+        "publish_faq.py",
+        "--work", str(tmp_path),
+        "--project", "susmith-fde-ticket-router",
+        "--location", "us",
+    ])
+
+    main()
+
+    import_calls = [c for c in recorded_calls if "documents:import" in c[1]]
+    assert len(import_calls) == 1
+    assert import_calls[0][1] == (
+        "https://us-discoveryengine.googleapis.com/v1/projects/susmith-fde-ticket-router/"
+        "locations/us/collections/default_collection/dataStores/faq-articles/branches/default_branch/documents:import"
+    )
+
+    search_calls = [c for c in recorded_calls if ":search" in c[1]]
+    assert len(search_calls) == 1
+    search_url_called, search_body = search_calls[0][1], search_calls[0][2]
+    assert search_url_called == (
+        "https://us-discoveryengine.googleapis.com/v1/projects/susmith-fde-ticket-router/"
+        "locations/us/collections/default_collection/engines/support-kb-search/servingConfigs/default_search:search"
+    )
+    assert search_body["dataStoreSpecs"][0]["dataStore"] == (
+        "projects/susmith-fde-ticket-router/locations/us/collections/default_collection/dataStores/faq-articles"
+    )

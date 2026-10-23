@@ -23,10 +23,9 @@ import argparse, datetime, hashlib, json, pathlib, re, subprocess, sys, time, ur
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from build_faq_corpus import POLICY_VERSION, SIMULATED_POLICY  # noqa: E402
+from de_endpoint import api_base, data_store_name, documents_import_url, search_url  # noqa: E402
 
 BUCKET = "gs://susmith-fde-ticket-router-laya"
-DS = "projects/{p}/locations/global/collections/default_collection/dataStores/faq-articles"
-API = "https://discoveryengine.googleapis.com/v1/"
 
 
 def tok():
@@ -134,6 +133,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--work", required=True, help="dir with docs/*.txt and manifest.jsonl")
     ap.add_argument("--project", default="susmith-fde-ticket-router")
+    ap.add_argument("--location", default="global", help="Discovery Engine location (default: global)")
     ap.add_argument("--release", type=int, help="release number N for gs://…/v<N>/ (default: previous+1)")
     ap.add_argument("--dry-run", action="store_true"); ap.add_argument("--lint-only", action="store_true")
     ap.add_argument("--retire", nargs="*", default=[]); ap.add_argument("--supersedes", default="")
@@ -193,12 +193,14 @@ def main():
     print(f"uploaded -> {gcs_prefix}")
 
     # 4-5. FULL import + wait
-    ds = DS.format(p=a.project)
-    op = call("POST", f"{API}{ds}/branches/default_branch/documents:import", a.project,
+    api = api_base(a.location)
+    ds = data_store_name(a.project, "faq-articles", location=a.location)
+    import_url = documents_import_url(a.project, "faq-articles", location=a.location)
+    op = call("POST", import_url, a.project,
               {"gcsSource": {"inputUris": [f"{gcs_prefix}/import.jsonl"], "dataSchema": "document"}, "reconciliationMode": "FULL"})
     name = op["name"]; print("import op", name)
     for _ in range(120):
-        op = call("GET", f"{API}{name}", a.project)
+        op = call("GET", f"{api}{name}", a.project)
         if op.get("done"): break
         time.sleep(10)
     if not op.get("done") or op.get("error"):
@@ -207,12 +209,12 @@ def main():
 
     # 6. verify a changed (or added) article is served at its new version before anyone flips FAQ_VERSION
     probe = (changes["changed"] or changes["added"] or [None])[0]
+    search_endpoint = search_url(a.project, "support-kb-search", location=a.location)
     if probe:
         pid = probe.split("@")[0]; want = next(m["structData"]["version"] for m in manifest if m["id"] == pid)
         title = next(m["structData"]["title"] for m in manifest if m["id"] == pid)
-        engine = f"projects/{a.project}/locations/global/collections/default_collection/engines/support-kb-search/servingConfigs/default_search"
         for i in range(30):
-            res = call("POST", f"{API}{engine}:search", a.project,
+            res = call("POST", search_endpoint, a.project,
                        {"query": title, "pageSize": 5, "relevanceThreshold": "LOWEST",
                         "dataStoreSpecs": [{"dataStore": ds}]})
             got = {r["document"]["id"]: r["document"].get("structData", {}).get("version") for r in res.get("results", [])}
@@ -228,9 +230,8 @@ def main():
         ret_title = prev.get(ret_id, {}).get("structData", {}).get("title") or next(
             (m["structData"]["title"] for m in manifest if m["id"] == ret_id), ret_id
         )
-        engine = f"projects/{a.project}/locations/global/collections/default_collection/engines/support-kb-search/servingConfigs/default_search"
         for i in range(30):
-            res = call("POST", f"{API}{engine}:search", a.project,
+            res = call("POST", search_endpoint, a.project,
                        {"query": ret_title, "pageSize": 10, "relevanceThreshold": "LOWEST",
                         "dataStoreSpecs": [{"dataStore": ds}]})
             ret_ids = [r["document"]["id"] for r in res.get("results", [])]

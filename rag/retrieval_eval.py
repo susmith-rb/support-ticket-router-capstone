@@ -8,7 +8,10 @@ This is a silver set (teacher topic -> theme mapping), not human-judged; report 
 
   python retrieval_eval.py --themes themes.json --threads threads.jsonl --import faq_articles_import.jsonl --n 300
 """
-import argparse, json, random, re, subprocess, time, urllib.error, urllib.request
+import argparse, json, pathlib, random, re, subprocess, sys, time, urllib.error, urllib.request
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+from de_endpoint import search_url, data_store_name  # noqa: E402
 
 
 def clean(q):
@@ -66,6 +69,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--themes", required=True); ap.add_argument("--threads", required=True); ap.add_argument("--import", dest="imp", required=True)
     ap.add_argument("--project", default="susmith-fde-ticket-router"); ap.add_argument("--engine", default="support-kb-search")
+    ap.add_argument("--location", default="global", help="Discovery Engine location (default: global)")
     ap.add_argument("--n", type=int, default=300); ap.add_argument("--k", type=int, default=5); ap.add_argument("--out", default="retrieval_eval.json")
     ap.add_argument("--threshold", default="", help="relevanceThreshold: LOWEST|LOW|MEDIUM|HIGH ('' = API default)")
     ap.add_argument("--expansion", action="store_true", help="queryExpansionSpec AUTO + spellCorrection AUTO")
@@ -93,9 +97,8 @@ def main():
     qs = cands[: a.n]
 
     tok = subprocess.check_output(["gcloud", "auth", "application-default", "print-access-token"], text=True).strip()
-    url = (f"https://discoveryengine.googleapis.com/v1/projects/{a.project}/locations/global/collections/default_collection/"
-           f"engines/{a.engine}/servingConfigs/default_search:search")
-    ds = f"projects/{a.project}/locations/global/collections/default_collection/dataStores/faq-articles"
+    url = search_url(a.project, a.engine, location=a.location)
+    ds = data_store_name(a.project, "faq-articles", location=a.location)
 
     rows, rr = [], []
     for q, doc, intent in qs:

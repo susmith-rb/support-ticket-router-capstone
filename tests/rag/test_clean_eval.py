@@ -182,3 +182,116 @@ def test_clean_eval_skip_judge_flag(tmp_path, monkeypatch):
     assert not (out_dir / "evalsvc.jsonl").exists()
     assert not (out_dir / "judge.jsonl").exists()
 
+
+def test_clean_eval_location_default_global(tmp_path, monkeypatch):
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "faq-order-v2.txt").write_text("# Order Policy\nStandard orders arrive within 4-6 business days.", encoding="utf-8")
+
+    import_file = tmp_path / "faq_articles_import.jsonl"
+    import_file.write_text(json.dumps({"id": "faq-order-v2"}) + "\n")
+
+    questions_file = tmp_path / "questions.jsonl"
+    questions_file.write_text(json.dumps({
+        "question": "When will my package arrive?",
+        "source_doc": "faq-order-v2"
+    }) + "\n")
+
+    out_dir = tmp_path / "out"
+
+    recorded_search_posts = []
+
+    def mock_post(url, body, **kw):
+        if ":search" in url:
+            recorded_search_posts.append((url, body))
+            return {"results": [{"document": {"id": "faq-order-v2"}}]}
+        return {}
+
+    monkeypatch.setattr("clean_eval.post", mock_post)
+    monkeypatch.setattr("clean_eval.gemini", lambda *a, **kw: (
+        {"answer": "Within 4-6 days.", "citations": [{"doc_id": "faq-order-v2", "quote": "arrive within 4-6 business days"}], "grounded": True, "escalate": False},
+        {"promptTokenCount": 10, "candidatesTokenCount": 10, "thoughtsTokenCount": 0}
+    ))
+    monkeypatch.setattr("sys.argv", [
+        "clean_eval.py",
+        "--docs", str(docs_dir),
+        "--import", str(import_file),
+        "--out", str(out_dir),
+        "--reuse-questions", str(questions_file),
+        "--skip-judge",
+        "--workers", "1",
+    ])
+
+    main()
+
+    assert len(recorded_search_posts) == 1
+    url, body = recorded_search_posts[0]
+    expected_url = (
+        "https://discoveryengine.googleapis.com/v1/projects/susmith-fde-ticket-router/"
+        "locations/global/collections/default_collection/engines/support-kb-search/"
+        "servingConfigs/default_search:search"
+    )
+    expected_ds = (
+        "projects/susmith-fde-ticket-router/locations/global/collections/default_collection/"
+        "dataStores/faq-articles"
+    )
+    assert url == expected_url
+    assert body["dataStoreSpecs"][0]["dataStore"] == expected_ds
+
+
+def test_clean_eval_location_us(tmp_path, monkeypatch):
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "faq-order-v2.txt").write_text("# Order Policy\nStandard orders arrive within 4-6 business days.", encoding="utf-8")
+
+    import_file = tmp_path / "faq_articles_import.jsonl"
+    import_file.write_text(json.dumps({"id": "faq-order-v2"}) + "\n")
+
+    questions_file = tmp_path / "questions.jsonl"
+    questions_file.write_text(json.dumps({
+        "question": "When will my package arrive?",
+        "source_doc": "faq-order-v2"
+    }) + "\n")
+
+    out_dir = tmp_path / "out"
+
+    recorded_search_posts = []
+
+    def mock_post(url, body, **kw):
+        if ":search" in url:
+            recorded_search_posts.append((url, body))
+            return {"results": [{"document": {"id": "faq-order-v2"}}]}
+        return {}
+
+    monkeypatch.setattr("clean_eval.post", mock_post)
+    monkeypatch.setattr("clean_eval.gemini", lambda *a, **kw: (
+        {"answer": "Within 4-6 days.", "citations": [{"doc_id": "faq-order-v2", "quote": "arrive within 4-6 business days"}], "grounded": True, "escalate": False},
+        {"promptTokenCount": 10, "candidatesTokenCount": 10, "thoughtsTokenCount": 0}
+    ))
+    monkeypatch.setattr("sys.argv", [
+        "clean_eval.py",
+        "--docs", str(docs_dir),
+        "--import", str(import_file),
+        "--out", str(out_dir),
+        "--location", "us",
+        "--reuse-questions", str(questions_file),
+        "--skip-judge",
+        "--workers", "1",
+    ])
+
+    main()
+
+    assert len(recorded_search_posts) == 1
+    url, body = recorded_search_posts[0]
+    expected_url = (
+        "https://us-discoveryengine.googleapis.com/v1/projects/susmith-fde-ticket-router/"
+        "locations/us/collections/default_collection/engines/support-kb-search/"
+        "servingConfigs/default_search:search"
+    )
+    expected_ds = (
+        "projects/susmith-fde-ticket-router/locations/us/collections/default_collection/"
+        "dataStores/faq-articles"
+    )
+    assert url == expected_url
+    assert body["dataStoreSpecs"][0]["dataStore"] == expected_ds
+

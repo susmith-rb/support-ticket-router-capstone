@@ -133,3 +133,110 @@ def test_retrieval_eval_main_runs_with_and_without_gold_map(tmp_path, monkeypatc
     assert res2["report"]["n"] == 1
     # With gold-map, faq-order-status-late-delivery mapped to faq-order-status-v2, which was rank 1
     assert res2["rows"][0]["rank"] == 1
+
+
+def test_retrieval_eval_location_default_global(tmp_path, monkeypatch):
+    threads_file = tmp_path / "threads.jsonl"
+    themes_file = tmp_path / "themes.json"
+    import_file = tmp_path / "faq_articles_import.jsonl"
+    out_file = tmp_path / "out.json"
+
+    threads_file.write_text(json.dumps({
+        "thread_id": 101,
+        "turns": [{"role": "customer", "text": "Where is my package?"}, {"role": "agent", "text": "Checking"}]
+    }) + "\n" + json.dumps({
+        "thread_id": 102,
+        "turns": [{"role": "customer", "text": "Package is late"}, {"role": "customer", "text": "Please help"}]
+    }) + "\n")
+    import_file.write_text(json.dumps({"id": "faq-order-status-late-delivery"}) + "\n")
+    themes_file.write_text(json.dumps([{
+        "intent_family": "order_status",
+        "theme_id": "late_delivery",
+        "thread_ids": ["101", "102"]
+    }]))
+
+    captured = {}
+
+    def mock_search(q, url, tok, project, ds, **kwargs):
+        captured["url"] = url
+        captured["ds"] = ds
+        return ["faq-order-status-late-delivery"]
+
+    monkeypatch.setattr("subprocess.check_output", lambda *a, **kw: "dummy-tok\n")
+    monkeypatch.setattr("retrieval_eval.search", mock_search)
+    monkeypatch.setattr("sys.argv", [
+        "retrieval_eval.py",
+        "--themes", str(themes_file),
+        "--threads", str(threads_file),
+        "--import", str(import_file),
+        "--out", str(out_file),
+        "--n", "1",
+    ])
+
+    main()
+
+    expected_url = (
+        "https://discoveryengine.googleapis.com/v1/projects/susmith-fde-ticket-router/"
+        "locations/global/collections/default_collection/engines/support-kb-search/"
+        "servingConfigs/default_search:search"
+    )
+    expected_ds = (
+        "projects/susmith-fde-ticket-router/locations/global/collections/default_collection/"
+        "dataStores/faq-articles"
+    )
+    assert captured["url"] == expected_url
+    assert captured["ds"] == expected_ds
+
+
+def test_retrieval_eval_location_us(tmp_path, monkeypatch):
+    threads_file = tmp_path / "threads.jsonl"
+    themes_file = tmp_path / "themes.json"
+    import_file = tmp_path / "faq_articles_import.jsonl"
+    out_file = tmp_path / "out.json"
+
+    threads_file.write_text(json.dumps({
+        "thread_id": 101,
+        "turns": [{"role": "customer", "text": "Where is my package?"}, {"role": "agent", "text": "Checking"}]
+    }) + "\n" + json.dumps({
+        "thread_id": 102,
+        "turns": [{"role": "customer", "text": "Package is late"}, {"role": "customer", "text": "Please help"}]
+    }) + "\n")
+    import_file.write_text(json.dumps({"id": "faq-order-status-late-delivery"}) + "\n")
+    themes_file.write_text(json.dumps([{
+        "intent_family": "order_status",
+        "theme_id": "late_delivery",
+        "thread_ids": ["101", "102"]
+    }]))
+
+    captured = {}
+
+    def mock_search(q, url, tok, project, ds, **kwargs):
+        captured["url"] = url
+        captured["ds"] = ds
+        return ["faq-order-status-late-delivery"]
+
+    monkeypatch.setattr("subprocess.check_output", lambda *a, **kw: "dummy-tok\n")
+    monkeypatch.setattr("retrieval_eval.search", mock_search)
+    monkeypatch.setattr("sys.argv", [
+        "retrieval_eval.py",
+        "--themes", str(themes_file),
+        "--threads", str(threads_file),
+        "--import", str(import_file),
+        "--out", str(out_file),
+        "--location", "us",
+        "--n", "1",
+    ])
+
+    main()
+
+    expected_url = (
+        "https://us-discoveryengine.googleapis.com/v1/projects/susmith-fde-ticket-router/"
+        "locations/us/collections/default_collection/engines/support-kb-search/"
+        "servingConfigs/default_search:search"
+    )
+    expected_ds = (
+        "projects/susmith-fde-ticket-router/locations/us/collections/default_collection/"
+        "dataStores/faq-articles"
+    )
+    assert captured["url"] == expected_url
+    assert captured["ds"] == expected_ds

@@ -17,12 +17,16 @@ caches to --out so it can be resumed.
 
   python clean_eval.py --docs faq/docs --import faq/faq_articles_import.jsonl --out clean_eval/ [--per-article 2]
 """
-import argparse, concurrent.futures as cf, json, pathlib, re, subprocess, time, urllib.error, urllib.request
+import argparse, concurrent.futures as cf, json, pathlib, re, subprocess, sys, time, urllib.error, urllib.request
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+from de_endpoint import search_url, data_store_name  # noqa: E402
 
 P = "susmith-fde-ticket-router"
-DS = f"projects/{P}/locations/global/collections/default_collection/dataStores/faq-articles"
-SEARCH = (f"https://discoveryengine.googleapis.com/v1/projects/{P}/locations/global/collections/default_collection/"
-          "engines/support-kb-search/servingConfigs/default_search:search")
+VERTEX_LOC = "global"
+DEFAULT_LOCATION = "global"
+DS = data_store_name(P, "faq-articles", location=DEFAULT_LOCATION)
+SEARCH = search_url(P, "support-kb-search", location=DEFAULT_LOCATION)
 
 
 class Tok:
@@ -57,7 +61,7 @@ def post(url, body, extra=None, retries=6, timeout=120):
 
 
 def claude(model, prompt, effort="high", max_tokens=8000):
-    url = f"https://aiplatform.googleapis.com/v1/projects/{P}/locations/global/publishers/anthropic/models/{model}:rawPredict"
+    url = f"https://aiplatform.googleapis.com/v1/projects/{P}/locations/{VERTEX_LOC}/publishers/anthropic/models/{model}:rawPredict"
     body = {"anthropic_version": "vertex-2023-10-16", "max_tokens": max_tokens, "thinking": {"type": "adaptive"},
             "output_config": {"effort": effort}, "messages": [{"role": "user", "content": prompt}]}
     r = post(url, body)
@@ -66,7 +70,7 @@ def claude(model, prompt, effort="high", max_tokens=8000):
 
 
 def gemini(model, prompt, schema):
-    url = f"https://aiplatform.googleapis.com/v1/projects/{P}/locations/global/publishers/google/models/{model}:generateContent"
+    url = f"https://aiplatform.googleapis.com/v1/projects/{P}/locations/{VERTEX_LOC}/publishers/google/models/{model}:generateContent"
     body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {"responseMimeType": "application/json", "responseSchema": schema, "temperature": 0.2}}
     r = post(url, body)
@@ -100,6 +104,7 @@ ANSWER_SCHEMA = {"type": "object", "required": ["answer", "citations", "grounded
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--docs", required=True); ap.add_argument("--import", dest="imp", required=True); ap.add_argument("--out", required=True)
+    ap.add_argument("--location", default="global", help="Discovery Engine location (default: global)")
     ap.add_argument("--per-article", type=int, default=2); ap.add_argument("--gen-model", default="gemini-3.8-flash")
     ap.add_argument("--qmodel", default="claude-sonnet-5-5"); ap.add_argument("--judge", default="claude-opus-5-5")
     ap.add_argument("--workers", type=int, default=8)
@@ -108,6 +113,9 @@ def main():
     ap.add_argument("--reuse-questions", nargs="?", const=True, default=None,
                     help="reuse existing questions.jsonl (path or true to use --out/questions.jsonl)")
     a = ap.parse_args()
+    global SEARCH, DS
+    SEARCH = search_url(P, "support-kb-search", location=a.location)
+    DS = data_store_name(P, "faq-articles", location=a.location)
     out = pathlib.Path(a.out); out.mkdir(parents=True, exist_ok=True)
     ids = [json.loads(l)["id"] for l in open(a.imp)]
     docs = {i: (pathlib.Path(a.docs) / f"{i}.txt").read_text(encoding="utf-8") for i in ids}

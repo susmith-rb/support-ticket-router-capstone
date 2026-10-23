@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# ==============================================================================
+# DEPRECATED / SUPERSEDED:
+# This script is superseded by deploy/terraform (see deploy/terraform/README.md).
+# Kept for historical reference of initial bootstrap in global location.
+# For all new deployments and updates, use Terraform on the Argolis VM.
+# ==============================================================================
 # agent_search_setup.sh — create Agent Search (Discovery Engine) data stores + search app, import corpora.
 #   bash agent_search_setup.sh create|import-threads|import-faq|engine|status
 set -uo pipefail
