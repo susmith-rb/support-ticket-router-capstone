@@ -2,6 +2,7 @@ import pytest
 from golden_score import norm, kappa
 
 
+# REQ-ROUTER-S1-007
 def test_norm_escalate():
     assert norm("escalate", "yes") == "true"
     assert norm("escalate", "YES") == "true"
@@ -12,6 +13,7 @@ def test_norm_escalate():
     assert norm("escalate", None) is None
 
 
+# REQ-ROUTER-S1-007
 def test_norm_urgency():
     assert norm("urgency", "3 - immediate") == "3"
     assert norm("urgency", "0 - can wait") == "0"
@@ -19,17 +21,20 @@ def test_norm_urgency():
     assert norm("urgency", "") is None
 
 
+# REQ-ROUTER-S1-007
 def test_norm_other_questions():
     assert norm("sentiment", " ANGRY ") == "angry"
     assert norm("intent", "Order_Status") == "order_status"
     assert norm("sentiment", "") is None
 
 
+# REQ-ROUTER-S1-007
 def test_kappa_perfect_agreement():
     pairs = [("a", "a"), ("b", "b"), ("c", "c"), ("a", "a")]
     assert kappa(pairs) == 1.0
 
 
+# REQ-ROUTER-S1-007
 def test_kappa_chance_agreement():
     # Symmetric 50/50 distribution where observed agreement equals chance agreement
     pairs = [("a", "b"), ("b", "a")]
@@ -39,5 +44,6 @@ def test_kappa_chance_agreement():
     assert k <= 0.0
 
 
+# REQ-ROUTER-S1-007
 def test_kappa_empty():
     assert kappa([]) is None

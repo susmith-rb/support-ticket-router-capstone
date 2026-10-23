@@ -140,12 +140,14 @@ def _make_mock_v1_themes():
     ]
 
 
+# REQ-RAG-CORPUS-011
 def test_doc_id_for_theme():
     assert doc_id_for_theme("order_status", "late_general_delivery") == "faq-order-status-late-general-delivery"
     assert doc_id_for_theme({"intent_family": "other", "theme_id": "app_and_website_issues"}) == "faq-other-app-and-website-issues"
     assert doc_id_for_theme("shipping_policy", "prime_delivery_speed_&_delays") == "faq-shipping-policy-prime-delivery-speed---delays"
 
 
+# REQ-RAG-CORPUS-012
 def test_merge_application():
     v1_themes = _make_mock_v1_themes()
     updated_themes, merge_map = apply_merges(v1_themes, ORDER_STATUS_MERGES)
@@ -184,6 +186,7 @@ def test_merge_application():
     assert set(missing_merged["thread_ids"]) == {"t6", "t7", "t8"}
 
 
+# REQ-RAG-CORPUS-013
 def test_gold_map_completeness():
     v1_themes = _make_mock_v1_themes()
     updated_themes, merge_map = apply_merges(v1_themes, ORDER_STATUS_MERGES)
@@ -209,6 +212,7 @@ def test_gold_map_completeness():
     validate_v2(v1_themes, v2_themes, gold_map)
 
 
+# REQ-RAG-CORPUS-013
 def test_gold_map_unmapped_theme_raises():
     v1_themes = _make_mock_v1_themes()
     # If a v1 theme is missing from v2 and not in dropped_dict, build_gold_map must fail
@@ -217,6 +221,7 @@ def test_gold_map_unmapped_theme_raises():
         build_gold_map(v1_themes, v2_themes, {}, dropped_dict={})
 
 
+# REQ-RAG-CORPUS-012
 def test_no_thread_assigned_to_two_v2_themes():
     v1_themes = _make_mock_v1_themes()
     v2_themes, merge_map = apply_merges(v1_themes, ORDER_STATUS_MERGES)
@@ -234,6 +239,7 @@ def test_no_thread_assigned_to_two_v2_themes():
         validate_v2(v1_themes, corrupt_v2, gold_map)
 
 
+# REQ-RAG-CORPUS-012
 def test_reassign_other_threads_disjointness():
     clustered_themes = [
         {"theme_id": "kindle_e_readers", "topics": ["kindle book", "ebook download"]},
@@ -256,6 +262,7 @@ def test_reassign_other_threads_disjointness():
     assert len(all_assigned) == len(set(all_assigned))
 
 
+# REQ-RAG-CORPUS-014
 def test_cluster_other_injectable_fake_llm():
     other_msgs = [
         ("t101", "kindle battery"),
@@ -305,6 +312,7 @@ def test_cluster_other_injectable_fake_llm():
     assert usage["prompt_token_count"] == 120
 
 
+# REQ-RAG-CORPUS-012
 def test_regroup_full_pipeline_with_real_v1_file():
     v1_file = REPO_ROOT / "rag" / "results" / "themes_v1.json"
     if not v1_file.exists():

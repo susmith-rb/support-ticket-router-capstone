@@ -2,6 +2,7 @@ import pytest
 from strict_recall import strict, RULESETS, run
 
 
+# REQ-ROUTER-S1-010
 def test_strict_condition():
     assert strict({"expected": {"sentiment": "angry", "urgency": 0}}) is True
     assert strict({"expected": {"sentiment": "neutral", "urgency": "3"}}) is True
@@ -9,6 +10,7 @@ def test_strict_condition():
     assert strict({"expected": {"sentiment": "neutral", "urgency": 1}}) is False
 
 
+# REQ-ROUTER-S1-010
 def test_rulesets_structure():
     assert "none" in RULESETS
     assert "lean" in RULESETS
@@ -21,6 +23,7 @@ def test_rulesets_structure():
     assert "non_english" in RULESETS["full"]
 
 
+# REQ-ROUTER-S1-010
 def test_strict_run():
     rows = [
         # Hard hit

@@ -50,6 +50,7 @@ def _make_dummy_threads_file(tmp_path):
     return threads_file
 
 
+# REQ-RAG-CORPUS-001
 def test_build_article_body_formatting():
     art = {
         "title": "What should I do if my order is late?",
@@ -66,6 +67,7 @@ def test_build_article_body_formatting():
     assert "_Global Retail Hub is a simulated retailer; policy details are illustrative._" in body
 
 
+# REQ-RAG-CORPUS-002
 def test_lint_retry_path_with_fake_llm():
     """Verify that when an LLM produces an invented policy fact (e.g. 48 hours),
 
@@ -125,6 +127,7 @@ def test_lint_retry_path_with_fake_llm():
     assert len(bad) == 0
 
 
+# REQ-RAG-CORPUS-003
 def test_reuse_from_copies_unchanged_articles_byte_identical(tmp_path):
     """Verify that --reuse-from copies existing clean articles byte-identical without calling LLM."""
     v1_docs_dir = tmp_path / "v1_docs"
@@ -266,6 +269,7 @@ def test_reuse_from_copies_unchanged_articles_byte_identical(tmp_path):
     assert clean_sd["content_sha256"] == hashlib.sha256(clean_content.encode("utf-8")).hexdigest()
 
 
+# REQ-RAG-CORPUS-004
 def test_articles_from_mode_renders_docs_and_sets_provenance(tmp_path):
     """Verify that --articles-from renders pre-authored JSON articles and sets authored_by provenance."""
     articles_dir = tmp_path / "authored_articles"

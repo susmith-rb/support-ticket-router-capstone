@@ -2,6 +2,7 @@ import pytest
 from evaluate import ece, macro_f1, probs, sweep
 
 
+# REQ-ROUTER-S1-005
 def test_ece_perfect_calibration():
     # If confidences equal accuracies in all bins, ECE is 0.0
     confs = [0.1, 0.1, 0.5, 0.5, 0.9, 0.9]
@@ -13,6 +14,7 @@ def test_ece_perfect_calibration():
     assert ece(confs, correct, bins=10) == pytest.approx(0.0)
 
 
+# REQ-ROUTER-S1-005
 def test_ece_poor_calibration():
     # Model is 100% confident on every prediction, but 0% are correct
     confs = [1.0] * 10
@@ -20,10 +22,12 @@ def test_ece_poor_calibration():
     assert ece(confs, correct, bins=10) == pytest.approx(1.0)
 
 
+# REQ-ROUTER-S1-005
 def test_ece_empty():
     assert ece([], []) == 0.0
 
 
+# REQ-ROUTER-S1-005
 def test_macro_f1_perfect():
     y = ["a", "b", "c", "a"]
     p = ["a", "b", "c", "a"]
@@ -31,6 +35,7 @@ def test_macro_f1_perfect():
     assert macro_f1(y, p, labels) == pytest.approx(1.0)
 
 
+# REQ-ROUTER-S1-005
 def test_macro_f1_all_wrong():
     y = ["a", "a", "b", "b"]
     p = ["b", "b", "a", "a"]
@@ -38,6 +43,7 @@ def test_macro_f1_all_wrong():
     assert macro_f1(y, p, labels) == pytest.approx(0.0)
 
 
+# REQ-ROUTER-S1-005
 def test_macro_f1_imbalanced():
     y = ["a", "a", "b"]
     p = ["a", "b", "b"]
@@ -48,12 +54,14 @@ def test_macro_f1_imbalanced():
     assert macro_f1(y, p, labels) == pytest.approx(2 / 3)
 
 
+# REQ-ROUTER-S1-006
 def test_probs_probabilities_dict():
     ans = {"probabilities": {"optA": "0.7", "optB": 0.3}}
     res = probs(ans)
     assert res == {"optA": 0.7, "optB": 0.3}
 
 
+# REQ-ROUTER-S1-006
 def test_probs_noul():
     ans = {"noul": "0.85"}
     res = probs(ans)
@@ -61,10 +69,12 @@ def test_probs_noul():
     assert res["false"] == pytest.approx(0.15)
 
 
+# REQ-ROUTER-S1-006
 def test_probs_empty():
     assert probs({}) == {}
 
 
+# REQ-ROUTER-S1-006
 def test_sweep():
     scores = [0.1, 0.4, 0.6, 0.9]
     pos = [False, False, True, True]

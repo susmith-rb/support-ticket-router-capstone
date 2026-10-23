@@ -2,6 +2,7 @@ import pytest
 from simulate_system import HARD, NEG, REPEAT, DEADLINE, non_english, shouting, tier0, p_esc, run
 
 
+# REQ-ROUTER-S1-008
 def test_hard_regexes():
     assert HARD.search("I am calling my lawyer right now") is not None
     assert HARD.search("This is fraud and unauthorized charge") is not None
@@ -10,6 +11,7 @@ def test_hard_regexes():
     assert HARD.search("Just checking if the color is blue") is None
 
 
+# REQ-ROUTER-S1-008
 def test_soft_regexes():
     assert NEG.search("This is the worst and most pathetic service") is not None
     assert REPEAT.search("I have asked 3rd time for my refund") is not None
@@ -17,6 +19,7 @@ def test_soft_regexes():
     assert NEG.search("Thank you so much") is None
 
 
+# REQ-ROUTER-S1-008
 def test_shouting():
     # 2 or more capitalized words >= 3 chars not in CAPS_OK
     assert shouting("WHERE IS MY PACKAGE") is True
@@ -27,6 +30,7 @@ def test_shouting():
     assert shouting("My AMAZON PRIME order") is False
 
 
+# REQ-ROUTER-S1-008
 def test_non_english():
     # Pure non-ASCII / foreign script
     assert non_english("私の荷物はどこですか？") is True
@@ -34,6 +38,7 @@ def test_non_english():
     assert non_english("Where is my order? It was supposed to arrive yesterday.") is False
 
 
+# REQ-ROUTER-S1-008
 def test_tier0():
     hard, soft = tier0("I will sue you for fraud, this is the worst experience ever")
     assert hard is True
@@ -45,6 +50,7 @@ def test_tier0():
     assert "deadline" in soft
 
 
+# REQ-ROUTER-S1-009
 def test_p_esc():
     p = {
         "escalate": {"true": 0.4},
@@ -55,6 +61,7 @@ def test_p_esc():
     assert p_esc(p) == 0.9
 
 
+# REQ-ROUTER-S1-009
 def test_run_routing():
     rows = [
         # 1. Hard escalation -> human_hard

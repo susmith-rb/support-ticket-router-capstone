@@ -12,18 +12,21 @@ CASES = {
 }
 
 
+# REQ-ROUTER-S1-002
 def test_redact():
     for text, (must, must_not) in CASES.items():
         out = redact(text)
         assert must in out and must_not not in out, (text, out)
 
 
+# REQ-ROUTER-S1-002
 def test_luhn_ok():
     assert luhn_ok("4111111111111111") is True
     assert luhn_ok("4111111111111112") is False
     assert luhn_ok("123") is False  # too short (< 13)
 
 
+# REQ-ROUTER-S1-002
 def test_redact_additional_cases():
     # Email redaction
     assert redact("support: test.user+tag@domain.co.uk") == "support: [EMAIL]"

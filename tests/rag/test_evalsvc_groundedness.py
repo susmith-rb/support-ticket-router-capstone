@@ -5,6 +5,7 @@ import pytest
 from evalsvc_groundedness import build_request_body, evaluate_single_instance, aggregate_scores
 
 
+# REQ-RAG-RETR-007
 def test_build_request_body():
     prediction = "You can return within 30 days."
     context = "<doc>Returns are 30 days.</doc>"
@@ -22,6 +23,7 @@ def test_build_request_body():
     assert body["autoraterConfig"]["autoraterModel"] == "projects/test-project/locations/global/publishers/google/models/gemini-3.8-flash"
 
 
+# REQ-RAG-RETR-007
 def test_evaluate_single_instance_retry_429(monkeypatch):
     calls = []
     sleeps = []
@@ -62,6 +64,7 @@ def test_evaluate_single_instance_retry_429(monkeypatch):
     assert res["explanation"] == "fully grounded"
 
 
+# REQ-RAG-RETR-007
 def test_evaluate_single_instance_timeout_retry(monkeypatch):
     calls = []
     sleeps = []
@@ -99,6 +102,7 @@ def test_evaluate_single_instance_timeout_retry(monkeypatch):
     assert res["score"] == 4
 
 
+# REQ-RAG-RETR-007
 def test_evaluate_single_instance_error_exhausted(monkeypatch):
     calls = []
 
@@ -124,6 +128,7 @@ def test_evaluate_single_instance_error_exhausted(monkeypatch):
     assert "503" in res["error"]
 
 
+# REQ-RAG-RETR-007
 def test_aggregate_scores():
     results = [
         {"question": "q1", "score": 5},

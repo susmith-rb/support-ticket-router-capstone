@@ -4,12 +4,14 @@ import pytest
 from publish_faq import sha, answer_only, lint, load_manifest, stamp, build_import_payload
 
 
+# REQ-RAG-CORPUS-005
 def test_sha():
     text = "Hello Global Retail Hub"
     expected = hashlib.sha256(text.encode("utf-8")).hexdigest()
     assert sha(text) == expected
 
 
+# REQ-RAG-CORPUS-005
 def test_answer_only_drops_paraphrase_block():
     body = (
         "# Return Policy\n"
@@ -27,6 +29,7 @@ def test_answer_only_drops_paraphrase_block():
     assert "# Return Policy" in res
 
 
+# REQ-RAG-CORPUS-006
 def test_lint_flags_invented_fact():
     # "48 hours" is an invented fact not in SIMULATED_POLICY
     docs = {
@@ -37,6 +40,7 @@ def test_lint_flags_invented_fact():
     assert "48 hour" in bad["faq-account-blocked"]
 
 
+# REQ-RAG-CORPUS-006
 def test_lint_flags_invented_days():
     # "7 days" is not in SIMULATED_POLICY
     docs = {
@@ -47,6 +51,7 @@ def test_lint_flags_invented_days():
     assert "7 day" in bad["faq-claims"]
 
 
+# REQ-RAG-CORPUS-006
 def test_lint_passes_policy_consistent_text():
     # Numbers that appear directly in SIMULATED_POLICY and are matched by NUM:
     # 30 days, 2 business days, 24 hours, 90 days, 35$
@@ -64,6 +69,7 @@ def test_lint_passes_policy_consistent_text():
     assert bad == {}
 
 
+# REQ-RAG-CORPUS-006
 def test_lint_range_parsing():
     # Both endpoints of policy ranges ("3-5 business days", "4-6 business days")
     # are recognized as allowed policy facts.
@@ -74,6 +80,7 @@ def test_lint_range_parsing():
     assert lint(docs) == {}
 
 
+# REQ-RAG-CORPUS-006
 def test_lint_dollar_amounts():
     # $35 is allowed by policy (free shipping over $35), while $50 is invented
     assert lint({"t": "Free over $35."}) == {}
@@ -82,6 +89,7 @@ def test_lint_dollar_amounts():
     assert "$50" in bad["t"]
 
 
+# REQ-RAG-CORPUS-006
 def test_lint_business_days():
     # 4 business days is within allowed policy (from 4-6 business days range),
     # while 7 business days is invented
@@ -91,10 +99,12 @@ def test_lint_business_days():
     assert "7 business day" in bad["t"]
 
 
+# REQ-RAG-CORPUS-007
 def test_load_manifest_nonexistent(tmp_path):
     assert load_manifest(tmp_path / "does_not_exist.jsonl") == {}
 
 
+# REQ-RAG-CORPUS-007
 def test_load_manifest_existing(tmp_path):
     p = tmp_path / "manifest.jsonl"
     entry = {"id": "faq-1", "structData": {"article_id": "faq-1", "version": 1}}
@@ -104,6 +114,7 @@ def test_load_manifest_existing(tmp_path):
     assert res["faq-1"]["structData"]["version"] == 1
 
 
+# REQ-RAG-CORPUS-008
 def test_stamp_new_article():
     docs = {"faq-shipping": "# Shipping\nStandard delivery is 4-6 business days."}
     prev = {}
@@ -126,6 +137,7 @@ def test_stamp_new_article():
     assert sd["content_sha256"] == sha(docs["faq-shipping"])
 
 
+# REQ-RAG-CORPUS-008
 def test_stamp_content_unchanged():
     content = "# Shipping\nStandard delivery is 4-6 business days."
     h = sha(content)
@@ -154,6 +166,7 @@ def test_stamp_content_unchanged():
     assert sd["status"] == "active"
 
 
+# REQ-RAG-CORPUS-008
 def test_stamp_content_changed():
     old_content = "# Shipping\nStandard delivery is 4-6 business days."
     new_content = "# Shipping\nStandard delivery is 3-5 business days."
@@ -188,6 +201,7 @@ def test_stamp_content_changed():
     assert sd["content_sha256"] == sha(new_content)
 
 
+# REQ-RAG-CORPUS-008
 def test_stamp_retired_article():
     docs = {}  # article was deleted from docs/
     today = "2026-10-23"
@@ -214,6 +228,7 @@ def test_stamp_retired_article():
     assert sd["effective_to"] == today
 
 
+# REQ-RAG-CORPUS-009
 def test_build_import_payload_excludes_retired():
     manifest = [
         {"id": "faq-active", "structData": {"article_id": "faq-active", "status": "active"}},
@@ -228,6 +243,7 @@ def test_build_import_payload_excludes_retired():
     assert len(manifest) == 3
 
 
+# REQ-RAG-CORPUS-009
 def test_build_import_payload_unchanged_corpus_identical():
     manifest = [
         {"id": "faq-1", "structData": {"article_id": "faq-1", "status": "active"}},
@@ -237,6 +253,7 @@ def test_build_import_payload_unchanged_corpus_identical():
     assert payload == manifest
 
 
+# REQ-RAG-CORPUS-010
 def test_publish_faq_location_default_global(tmp_path, monkeypatch):
     import subprocess
     from publish_faq import main
@@ -287,6 +304,7 @@ def test_publish_faq_location_default_global(tmp_path, monkeypatch):
     )
 
 
+# REQ-RAG-CORPUS-010
 def test_publish_faq_location_us(tmp_path, monkeypatch):
     import subprocess
     from publish_faq import main

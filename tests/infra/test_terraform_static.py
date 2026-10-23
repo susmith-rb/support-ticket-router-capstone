@@ -17,6 +17,7 @@ BOOTSTRAP_DIR = TF_DIR / "bootstrap"
 SINGLE_PROJECT_DIR = TF_DIR / "single-project"
 
 
+# REQ-INFRA-SEARCH-001
 def test_terraform_directories_exist():
   """Verify expected Terraform directories exist."""
   assert TF_DIR.is_dir(), f"Missing {TF_DIR}"
@@ -26,6 +27,7 @@ def test_terraform_directories_exist():
   assert (SINGLE_PROJECT_DIR / "modules" / "agent-search").is_dir()
 
 
+# REQ-INFRA-SEARCH-001
 def test_every_module_has_variables_and_outputs():
   """Every module must provide variables.tf, outputs.tf, and main.tf."""
   modules = [
@@ -40,6 +42,7 @@ def test_every_module_has_variables_and_outputs():
     assert (mod / "outputs.tf").is_file(), f"Missing outputs.tf in {mod}"
 
 
+# REQ-INFRA-SEARCH-003
 def test_backend_bucket_name():
   """GCS state backend must point to susmith-fde-ticket-router-tfstate."""
   versions_tf = (SINGLE_PROJECT_DIR / "versions.tf").read_text()
@@ -53,6 +56,7 @@ def test_backend_bucket_name():
   assert prefix_match.group(1) == "terraform/state/single-project"
 
 
+# REQ-INFRA-SEARCH-003
 def test_bootstrap_state_bucket_configuration():
   """Bootstrap module must enforce versioning, uniform access, and public prevention."""
   main_tf = (BOOTSTRAP_DIR / "main.tf").read_text()
@@ -67,6 +71,7 @@ def test_bootstrap_state_bucket_configuration():
   assert 'default     = "susmith-fde-ticket-router-tfstate"' in vars_tf
 
 
+# REQ-INFRA-SEARCH-004
 def test_no_global_location_when_search_location_is_us():
   """Agent Search resources must be in location 'us', never hardcoding 'global'."""
   as_main = (SINGLE_PROJECT_DIR / "modules" / "agent-search" / "main.tf").read_text()
@@ -87,6 +92,7 @@ def test_no_global_location_when_search_location_is_us():
   assert "location          = var.search_location" in as_main
 
 
+# REQ-INFRA-SEARCH-006
 def test_tdd_12_6_security_policy_no_forbidden_iam():
   """TDD §12.6 policy: no google_project_iam_binding, no roles/editor, no roles/owner."""
   tf_files = list(TF_DIR.glob("**/*.tf"))
@@ -108,6 +114,7 @@ def test_tdd_12_6_security_policy_no_forbidden_iam():
   assert not violations, "Security policy violations found:\n" + "\n".join(violations)
 
 
+# REQ-INFRA-SEARCH-005
 def test_agent_search_contract():
   """Agent Search module must declare faq-articles, resolved-threads, and support-kb-search."""
   main_tf = (SINGLE_PROJECT_DIR / "modules" / "agent-search" / "main.tf").read_text()
@@ -132,6 +139,7 @@ def test_agent_search_contract():
   assert "search_tier    = var.search_tier" in main_tf
 
 
+# REQ-INFRA-SEARCH-005
 def test_resolved_threads_schema_matches_content_config():
   """Assert resolved-threads content_config matches schema fixture (NO_CONTENT iff no 'content' key)."""
   import json
@@ -161,6 +169,7 @@ def test_resolved_threads_schema_matches_content_config():
     )
 
 
+# REQ-INFRA-SEARCH-007
 def test_corpus_bucket_data_source_not_managed():
   """Corpus bucket must only be referenced as data source, not managed resource."""
   single_main = (SINGLE_PROJECT_DIR / "main.tf").read_text()

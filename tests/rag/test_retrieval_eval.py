@@ -3,6 +3,7 @@ import pytest
 from retrieval_eval import clean, compute_rank, compute_recall_at_k, compute_mrr, main
 
 
+# REQ-RAG-RETR-001
 def test_clean_strips_mentions_and_tokens():
     raw = "@AmazonHelp where is my order [ORDER] sent to [EMAIL]?"
     cleaned = clean(raw)
@@ -12,6 +13,7 @@ def test_clean_strips_mentions_and_tokens():
     assert "where is my order" in cleaned
 
 
+# REQ-RAG-RETR-001
 def test_clean_handles_hashtags_and_whitespace():
     raw = "package #late    arrived   #damaged"
     cleaned = clean(raw)
@@ -20,6 +22,7 @@ def test_clean_handles_hashtags_and_whitespace():
     assert cleaned == "package late arrived damaged"
 
 
+# REQ-RAG-RETR-001
 def test_clean_fallback_behavior():
     # If cleaned string is whitespace/empty, fallback 'or q' returns the original string q
     assert clean("   ") == "   "
@@ -28,6 +31,7 @@ def test_clean_fallback_behavior():
     assert clean("@AmazonHelp [URL]") == "@AmazonHelp [URL]"
 
 
+# REQ-RAG-RETR-002
 def test_compute_rank_single_target():
     ids = ["doc-a", "doc-b", "doc-c"]
     assert compute_rank("doc-a", ids) == 1
@@ -36,6 +40,7 @@ def test_compute_rank_single_target():
     assert compute_rank("doc-missing", ids) is None
 
 
+# REQ-RAG-RETR-002
 def test_compute_rank_multiple_targets():
     ids = ["doc-x", "doc-b", "doc-a"]
     # target is a list or tuple of equivalent valid targets (e.g. from gold-map)
@@ -44,6 +49,7 @@ def test_compute_rank_multiple_targets():
     assert compute_rank(["doc-1", "doc-2"], ids) is None
 
 
+# REQ-RAG-RETR-002
 def test_compute_recall_at_k():
     ranks = [1, 2, 5, 6, None, 10]
     assert compute_recall_at_k(ranks, k=1) == pytest.approx(1 / 6)
@@ -53,6 +59,7 @@ def test_compute_recall_at_k():
     assert compute_recall_at_k([], k=5) == 0.0
 
 
+# REQ-RAG-RETR-002
 def test_compute_mrr():
     # ranks: [1, 2, None, 4] -> (1/1 + 1/2 + 0 + 1/4) / 4 = 1.75 / 4 = 0.4375
     ranks = [1, 2, None, 4]
@@ -61,6 +68,7 @@ def test_compute_mrr():
     assert compute_mrr([None, None]) == 0.0
 
 
+# REQ-RAG-RETR-003
 def test_gold_map_mapping():
     # Verify gold_map remapping logic
     gold_map = {"faq-old-order": "faq-new-order-merged"}
@@ -75,6 +83,7 @@ def test_gold_map_mapping():
     assert compute_rank(effective_target, ids) == 2
 
 
+# REQ-RAG-RETR-003
 def test_retrieval_eval_main_runs_with_and_without_gold_map(tmp_path, monkeypatch):
     threads_file = tmp_path / "threads.jsonl"
     themes_file = tmp_path / "themes.json"
@@ -135,6 +144,7 @@ def test_retrieval_eval_main_runs_with_and_without_gold_map(tmp_path, monkeypatc
     assert res2["rows"][0]["rank"] == 1
 
 
+# REQ-RAG-RETR-004
 def test_retrieval_eval_location_default_global(tmp_path, monkeypatch):
     threads_file = tmp_path / "threads.jsonl"
     themes_file = tmp_path / "themes.json"
@@ -188,6 +198,7 @@ def test_retrieval_eval_location_default_global(tmp_path, monkeypatch):
     assert captured["ds"] == expected_ds
 
 
+# REQ-RAG-RETR-004
 def test_retrieval_eval_location_us(tmp_path, monkeypatch):
     threads_file = tmp_path / "threads.jsonl"
     themes_file = tmp_path / "themes.json"

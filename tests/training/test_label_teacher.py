@@ -2,6 +2,7 @@ import pytest
 from label_teacher import to_gold
 
 
+# REQ-ROUTER-S1-003
 def test_to_gold_insufficient_votes():
     # Less than 2 successful votes returns None
     assert to_gold([]) is None
@@ -13,6 +14,7 @@ def test_to_gold_insufficient_votes():
     ]) is None
 
 
+# REQ-ROUTER-S1-003
 def test_to_gold_unanimous_votes():
     votes = [
         {"escalate": True, "sentiment": "angry", "urgency": 3, "intent": "order_status"},
@@ -31,6 +33,7 @@ def test_to_gold_unanimous_votes():
     assert gold["intent"]["probabilities"]["other"] == 0.0
 
 
+# REQ-ROUTER-S1-003
 def test_to_gold_split_votes():
     votes = [
         {"escalate": True, "sentiment": "angry", "urgency": 2, "intent": "order_status"},

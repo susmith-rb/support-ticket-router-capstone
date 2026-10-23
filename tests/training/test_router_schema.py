@@ -2,11 +2,13 @@ import pytest
 from router_schema import QUESTIONS, SENTIMENTS, INTENTS, URGENCY_LEVELS
 
 
+# REQ-ROUTER-S1-001
 def test_schema_required_questions():
     expected_questions = {"escalate", "sentiment", "urgency", "intent"}
     assert set(QUESTIONS.keys()) == expected_questions
 
 
+# REQ-ROUTER-S1-001
 def test_schema_question_structure():
     for qid, q in QUESTIONS.items():
         assert "type" in q, f"{qid} missing 'type'"
@@ -15,6 +17,7 @@ def test_schema_question_structure():
         assert isinstance(q["instructions"], str) and len(q["instructions"]) > 0
 
 
+# REQ-ROUTER-S1-001
 def test_schema_types_and_limits():
     # escalate: noul
     assert QUESTIONS["escalate"]["type"] == "noul"

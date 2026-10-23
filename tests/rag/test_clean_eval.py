@@ -4,16 +4,19 @@ import pytest
 from clean_eval import norm, is_verbatim_citation, main
 
 
+# REQ-RAG-RETR-005
 def test_norm_strips_markdown_and_whitespace():
     raw = "  # Title **Bold** and _italic_ with `code` > quote  "
     assert norm(raw) == "title bold and italic with code quote"
 
 
+# REQ-RAG-RETR-005
 def test_norm_case_and_whitespace():
     raw = "RETURN   within  30 DAYS"
     assert norm(raw) == "return within 30 days"
 
 
+# REQ-RAG-RETR-005
 def test_is_verbatim_citation_exact_and_normalized():
     doc = "# Returns Policy\nYou can return items within 30 days of delivery."
     quote1 = "return items within 30 days of delivery"
@@ -22,6 +25,7 @@ def test_is_verbatim_citation_exact_and_normalized():
     assert is_verbatim_citation(quote2, doc) is True
 
 
+# REQ-RAG-RETR-005
 def test_is_verbatim_citation_missing():
     doc = "# Returns Policy\nYou can return items within 30 days of delivery."
     quote = "return items within 48 hours"
@@ -30,6 +34,7 @@ def test_is_verbatim_citation_missing():
     assert is_verbatim_citation(quote, "") is False
 
 
+# REQ-RAG-RETR-003
 def test_gold_map_resolution():
     gold_map = {"faq-old-account": "faq-new-account"}
     source_doc = "faq-old-account"
@@ -41,6 +46,7 @@ def test_gold_map_resolution():
     assert any(c["doc_id"] == effective_target for c in citations)
 
 
+# REQ-BILLING-002
 def test_reuse_questions_file_loading(tmp_path):
     sample_questions = [
         {"question": "How do I return?", "source_doc": "faq-returns"},
@@ -56,6 +62,7 @@ def test_reuse_questions_file_loading(tmp_path):
     assert loaded[0]["question"] == "How do I return?"
 
 
+# REQ-RAG-RETR-003
 def test_clean_eval_main_runs_with_gold_map_and_reuse_questions(tmp_path, monkeypatch):
     docs_dir = tmp_path / "docs"
     docs_dir.mkdir()
@@ -117,6 +124,7 @@ def test_clean_eval_main_runs_with_gold_map_and_reuse_questions(tmp_path, monkey
     assert rep["B_deterministic"]["citation_precision_verbatim"] == 1.0
 
 
+# REQ-BILLING-001
 def test_clean_eval_skip_judge_flag(tmp_path, monkeypatch):
     docs_dir = tmp_path / "docs"
     docs_dir.mkdir()
@@ -183,6 +191,7 @@ def test_clean_eval_skip_judge_flag(tmp_path, monkeypatch):
     assert not (out_dir / "judge.jsonl").exists()
 
 
+# REQ-RAG-RETR-004
 def test_clean_eval_location_default_global(tmp_path, monkeypatch):
     docs_dir = tmp_path / "docs"
     docs_dir.mkdir()
@@ -239,6 +248,7 @@ def test_clean_eval_location_default_global(tmp_path, monkeypatch):
     assert body["dataStoreSpecs"][0]["dataStore"] == expected_ds
 
 
+# REQ-RAG-RETR-004
 def test_clean_eval_location_us(tmp_path, monkeypatch):
     docs_dir = tmp_path / "docs"
     docs_dir.mkdir()

@@ -14,6 +14,7 @@ from de_endpoint import (
 import search_test
 
 
+# REQ-RAG-RETR-004
 def test_api_base_global_and_defaults():
     assert api_base("global") == "https://discoveryengine.googleapis.com/v1/"
     assert api_base() == "https://discoveryengine.googleapis.com/v1/"
@@ -21,12 +22,14 @@ def test_api_base_global_and_defaults():
     assert api_base(None) == "https://discoveryengine.googleapis.com/v1/"
 
 
+# REQ-RAG-RETR-004
 def test_api_base_regional_and_multi_region():
     assert api_base("us") == "https://us-discoveryengine.googleapis.com/v1/"
     assert api_base("eu") == "https://eu-discoveryengine.googleapis.com/v1/"
     assert api_base("us-central1") == "https://us-central1-discoveryengine.googleapis.com/v1/"
 
 
+# REQ-INFRA-SEARCH-005
 def test_collection_name():
     assert (
         collection_name("test-proj", location="global")
@@ -42,6 +45,7 @@ def test_collection_name():
     )
 
 
+# REQ-INFRA-SEARCH-005
 def test_data_store_name():
     assert (
         data_store_name("test-proj", "faq-articles", location="global")
@@ -53,6 +57,7 @@ def test_data_store_name():
     )
 
 
+# REQ-INFRA-SEARCH-005
 def test_branch_name():
     assert (
         branch_name("test-proj", "faq-articles", location="global")
@@ -64,6 +69,7 @@ def test_branch_name():
     )
 
 
+# REQ-INFRA-SEARCH-005
 def test_engine_name():
     assert (
         engine_name("test-proj", "support-kb-search", location="global")
@@ -75,6 +81,7 @@ def test_engine_name():
     )
 
 
+# REQ-INFRA-SEARCH-005
 def test_serving_config_name():
     assert (
         serving_config_name("test-proj", "support-kb-search", location="global")
@@ -86,6 +93,7 @@ def test_serving_config_name():
     )
 
 
+# REQ-RAG-RETR-004
 def test_search_url():
     assert (
         search_url("test-proj", "support-kb-search", location="global")
@@ -97,6 +105,7 @@ def test_search_url():
     )
 
 
+# REQ-RAG-CORPUS-010
 def test_documents_import_url():
     assert (
         documents_import_url("test-proj", "faq-articles", location="global")
@@ -122,6 +131,7 @@ class DummyHTTPResponse:
         pass
 
 
+# REQ-RAG-RETR-004
 def test_search_test_location_default_global(monkeypatch):
     recorded_requests = []
 
@@ -157,6 +167,7 @@ def test_search_test_location_default_global(monkeypatch):
     )
 
 
+# REQ-RAG-RETR-004
 def test_search_test_location_us(monkeypatch):
     recorded_requests = []
 
@@ -192,6 +203,7 @@ def test_search_test_location_us(monkeypatch):
     )
 
 
+# REQ-RAG-CORPUS-010
 def test_import_threads_trigger_and_poll(monkeypatch):
     import import_threads
 

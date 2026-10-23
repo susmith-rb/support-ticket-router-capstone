@@ -2,6 +2,7 @@ import pytest
 from clean_eval_breakdown import esc, compute_breakdown
 
 
+# REQ-RAG-RETR-006
 def test_esc_logic():
     # escalate=True -> esc() is True regardless of grounded
     assert esc({"gen": {"escalate": True, "grounded": True}}) is True
@@ -20,6 +21,7 @@ def test_esc_logic():
     assert esc({}) is False
 
 
+# REQ-RAG-RETR-006
 def test_compute_breakdown():
     answers = [
         # Hit (rank <= 5), answered, cites source
