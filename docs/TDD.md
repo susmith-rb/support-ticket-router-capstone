@@ -559,7 +559,7 @@ Global guards (externalized config): `MAX_AGENT_HOPS=3`, `MAX_TOOL_CALLS_PER_TUR
 | **GEAP Memory Bank** (scope: pseudonymous `customer_id`) | Generated memories: preferred language, product categories, prior ticket topics and outcomes, `prior_escalation=true/false`, tone sensitivity | Message text, order numbers, emails, addresses, payment data, anything from an injection-flagged turn | 180 d; erasure API wired to `DELETE /v1/customers/{id}/memory` (GDPR/CCPA, §8.5) |
 | **Cloud SQL `tickets`** (system of record) | ticket_id, customer_id (pseudonymous), channel, redacted text, decision JSON, status history, queue, SLA timers, answer + citations, human disposition | Raw PII; redaction map lives in `redaction_maps` with column-level encryption and 30 d TTL | 2 y (illustrative retention policy) |
 | **BigQuery** | Append-only ticket events, eval runs, audit sink, cost export | Raw text beyond redacted form | Partition expiry 400 d |
-| **Semantic cache** (Memorystore Redis, Stretch: AlloyDB pgvector) | `(intent, normalized question embedding) → answer + citations + faq_version` | Any order-specific or customer-specific answer | Invalidate on FAQ version bump; 7 d TTL |
+| **Semantic cache** (Memorystore Redis, Stretch: AlloyDB pgvector) | `(intent, normalized question embedding, ANSWER_MODEL_ID, prompt_version) → answer + citations (article_id@version)` | Any order-specific or customer-specific answer | Evict entries citing a changed `article_id` on publish (§6.6.3); 7 d TTL |
 
 Memory Bank is the right home for cross-session customer context (it is generated, consolidated, and scoped per user); the ticket table is the right home for operational state (transactional, queryable by ops, integrated with the CRM). Mixing them would either put business queries on a session store or put conversation state in a relational schema (ADR-5).
 
@@ -600,8 +600,8 @@ Agent answer schema (FaqResolverAgent, enforced via Gemini `response_schema`):
   "properties": {
     "answer_markdown": {"type": "string", "maxLength": 1200},
     "citations": {"type": "array", "minItems": 0, "maxItems": 5,
-      "items": {"type": "object", "required": ["doc_id", "chunk_id", "quote"],
-        "properties": {"doc_id": {"type": "string"}, "chunk_id": {"type": "string"}, "quote": {"type": "string", "maxLength": 240}}}},
+      "items": {"type": "object", "required": ["doc_id", "doc_version", "chunk_id", "quote"],
+        "properties": {"doc_id": {"type": "string"}, "doc_version": {"type": "integer"}, "chunk_id": {"type": "string"}, "quote": {"type": "string", "maxLength": 240}}}},
     "grounded": {"type": "boolean"},
     "escalate": {"type": "boolean"},
     "escalate_reason": {"type": "string", "enum": ["no_supporting_doc", "out_of_scope", "policy_refusal", "customer_requested_human", null]}
@@ -631,14 +631,14 @@ Resolved threads are noisy and short; they are poor citation targets. We therefo
 
 | Data store | Built how | Chunking | Used for | Citable? |
 | --- | --- | --- | --- | --- |
-| **`faq-articles`** (curated; est. 60–120 articles) | Cluster resolved threads by intent family (teacher labels) → Gemini 3.1 Pro drafts an article per cluster: title, 5–10 question paraphrases, canonical answer, policy constraints, `effective_from` → human review in a sheet → markdown + JSON metadata | **One article = one chunk** (200–600 tokens). Articles are short and self-contained; splitting them separates the question from the policy. Paraphrases go into the title/metadata field, which boosts lexical matching | Grounding and citations | Yes |
+| **`faq-articles`** (curated; est. 60–120 articles) | Cluster resolved threads by intent family (teacher labels) → Gemini 3.1 Pro drafts an article per cluster: title, 5–10 question paraphrases, canonical answer, policy constraints, `effective_from` → human review in a sheet → markdown + JSON metadata (`status`, `version`, `effective_from/to`, §6.6) | **One article = one chunk** (200–600 tokens). Articles are short and self-contained; splitting them separates the question from the policy. Paraphrases go into the title/metadata field, which boosts lexical matching | Grounding and citations | Yes |
 | **`resolved-threads`** (bulk; est. 30–50k threads) | Cleaned threads with inbound/brand turns labeled | **Thread-aware chunking:** one thread per chunk; if > 512 tokens, split at turn boundaries with a 64-token overlap of the preceding brand turn. Fixed-size splitting was rejected because it cuts answers away from the question they answer | Retrieval of similar cases to enrich the prompt and to seed new FAQ articles | Only as secondary evidence; an answer must carry ≥ 1 `faq-articles` citation |
 
 Why not larger chunks? The encoder-side relevance and the answer model both degrade when the prompt carries unrelated policy text; 5 × ≤ 600-token chunks keep the generation prompt ≈ 2k tokens, which is the cost line in §11.4.
 
 ### 6.3 Retrieval
 
-- **Agent Search (GEAP) data stores, unstructured, with document metadata** (`intent_family`, `version`, `effective_from`). Managed embeddings (default) — custom `gemini-embedding-001` embeddings only if the offline eval shows a gain (hill-climb item).
+- **Agent Search (GEAP) data stores, unstructured, with document metadata** (`article_id`, `version`, `status`, `effective_from`/`effective_to`, `intent_family`, `policy_version`; full lifecycle in §6.6). Queries always filter `status = "active"` and the effective window. Managed embeddings (default) — custom `gemini-embedding-001` embeddings only if the offline eval shows a gain (hill-climb item).
 - **Hybrid search** (dense + sparse/keyword) is required, not optional: support queries contain exact tokens (SKU-like strings, "Prime", carrier names, "30-day") where lexical match beats semantic similarity, while paraphrased policy questions need dense retrieval. Offline ablation on the labeled query set decides the final mode (ADR-4); the default hypothesis is hybrid + managed re-ranking, `top_k=20` → rerank → 5.
 - **Filters:** `intent_family` from the router narrows the candidate set (precision up, latency down); if the filtered search returns < 2 results above the score floor, retry unfiltered (second round).
 - **Re-ranking:** the managed ranking step over the 20 candidates; cross-encoder reranking is what makes `top_k=5` safe for a 1.2k-token answer budget.
@@ -662,8 +662,58 @@ Ablations recorded in `eval_runs`: semantic-only vs lexical-only vs hybrid; rera
 
 - **Human-edit feedback loop:** when Marco edits a suggested reply or resolves a ticket that was auto-answered then escalated, the (query, chosen article, edit) triple lands in BigQuery `retrieval_feedback`; weekly job proposes new paraphrases for article metadata and flags articles with low acceptance.
 - **Gap mining:** tickets escalated with `reason=no_supporting_doc` are clustered weekly; clusters > 30 tickets open an FAQ-authoring task.
-- **Versioned corpus:** `faq-articles` re-indexed by Cloud Build on merge to `main` of `corpus/`; semantic cache invalidated on version bump; retrieval gates re-run.
+- **Versioned corpus:** `faq-articles` re-indexed by Cloud Build on merge to `main` of `corpus/`; semantic cache invalidated on version bump; retrieval gates re-run. The lifecycle behind that sentence is §6.6.
 - **Stretch:** Agent Search's own search-quality signals (click/thumbs) wired from the GE App.
+
+### 6.6 Knowledge lifecycle and drift
+
+The router has an explicit drift loop (§5.2, §13). The knowledge side needs one too, because the thing that changes most often in a support system is not the model but the policy: return windows, shipping promises, fees and seasonal exceptions change monthly, and an answer that was correct and cited last week becomes a confidently cited wrong answer. Three kinds of drift are handled separately:
+
+| Drift | What moves | Symptom if ignored |
+| --- | --- | --- |
+| **Knowledge drift** (data drift on the corpus) | Policy facts, article text, article set | Stale answers with valid-looking citations; retired policy still retrievable |
+| **Query drift** (data drift on the input) | What customers ask: new products, new failure modes, new slang/languages, seasonality | Rising zero-result and `no_supporting_doc` rates; recall@5 falls while the corpus is unchanged |
+| **Model/ranker drift** | Managed embeddings and re-ranker in Agent Search; Gemini answer model versions; our prompt | Retrieval or answer quality moves with no change on our side |
+
+**6.6.1 Article lifecycle.** An article is a versioned document, not a file. Metadata carried in the Agent Search `structData` and in the repo manifest `corpus/faq-articles/manifest.jsonl`:
+
+| Field | Meaning | Used by |
+| --- | --- | --- |
+| `article_id` | Stable id (`faq-<intent>-<theme>`); never reused | Citations, cache keys, golden cases |
+| `version` | Integer, bumped when `content_sha256` changes | Citation pinning, cache invalidation |
+| `content_sha256` | Hash of the article body | Detects edits; makes the version bump mechanical |
+| `status` | `draft` → `active` → `retired` | **Only `status = "active"` is retrievable** (query filter); `draft` is indexed for preview runs only |
+| `effective_from` / `effective_to` | Policy validity window (`effective_to` empty = open-ended; used for seasonal exceptions such as holiday returns) | Query filter `effective_from <= now < effective_to`; answer text states the window when it is bounded |
+| `supersedes` | `article_id` of the article this one replaces (merges/splits) | Auto-remaps golden cases and cache entries |
+| `policy_version` | Version of the single-sourced policy file the article was generated/reviewed against | Policy-change impact: "which articles still cite `policy@v3`?" |
+| `reviewed_by`, `reviewed_at` | Human sign-off | `status` cannot become `active` without them |
+| `intent_family`, `theme`, `simulated_policy` | As today | Router filter, provenance |
+
+**6.6.2 Policy facts are single-sourced.** Policy numbers (30-day return window, 3–5 day refunds, 2-day Hub Plus shipping …) live in one file, `corpus/policy.yaml` (today the `SIMULATED_POLICY` block in `build_faq_corpus.py`). Articles are generated or reviewed against a named `policy_version`; a CI lint flags any numeric policy fact in an article body that does not appear in the policy file. Without this, a single policy change requires finding and editing every article that repeats the number, and the one you miss becomes the stale citation. When the policy changes: bump `policy_version` → regenerate or hand-edit the affected articles (the lint lists them) → review → publish.
+
+**6.6.3 Publish path (one script, idempotent).** `rag/publish_faq.py`: diff the docs directory against the previous manifest → bump `version` where `content_sha256` changed, keep it where not → write the new manifest → upload to GCS under `corpus/faq-articles/v<N>/` (object versioning on) → `documents:import` with **`reconciliationMode: FULL`** so the manifest is the source of truth (an article removed from the manifest, or marked `retired`, disappears from the index without a separate purge step) → wait for the import LRO → **smoke-verify** that a search returns the new `version` for a changed article (indexing lag is minutes; do not flip anything until it is served) → bump `FAQ_VERSION` → evict cache entries for the changed `article_id`s (not the whole cache) → run the retrieval regression (§6.6.5). For the 81k `resolved-threads` store the mode is `INCREMENTAL` (append-only), with a recency window at query time (§6.6.7). Rollback = re-publish the previous manifest; nothing else changes. Because **one article = one chunk**, an edit replaces exactly one document — there is no chunk-boundary drift and no orphaned chunk from a re-split, which is a second reason for that chunking decision (§6.2).
+
+**6.6.4 Citations are pinned.** `AgentAnswer.citations[]` carries `doc_id`, `doc_version` and `quote` (§5.5), and the Cloud SQL decision JSON stores them. This turns a policy change into a query, not a guess: `SELECT ticket_id FROM tickets WHERE citations CONTAINS ('faq-returns-window', version < 2) AND answered_at > policy_changed_at` lists the customers who received the old answer, which is what Ops needs for a proactive correction. The `faq-returns-v3#c2` form in §4.6 is this pinning.
+
+**6.6.5 Evaluation sets move with the corpus.** Every retrieval golden case (query → `article_id`s) and every answer-quality golden case that cites an article carries those `article_id`s. On publish: cases whose articles changed are re-run and flagged `needs_review` if the expected document is no longer ranked; cases whose article was superseded are remapped through `supersedes`. The retrieval set is otherwise frozen, so G5 is comparable across publishes. **Gate on every publish:** recall@5 on the frozen set may not drop by more than 0.02 and the per-intent minimum may not drop by more than 0.05 (merging/splitting articles can move one family while the average stays flat). Note that the current silver set (300 queries, one article each) is exactly what breaks when overlapping articles are merged — `supersedes` is how it survives the planned merge.
+
+**6.6.6 Query and ranker drift signals** (BigQuery scheduled query over `audit_events` + `eval_runs`, weekly, alert thresholds in brackets; added to the §13 dashboard):
+
+| Signal | Why | Threshold |
+| --- | --- | --- |
+| Zero-result rate and low-relevance-score rate on `tool.agent_search` | First symptom of new topics; the default threshold already hid 38% of real queries once (§6.4) | > 5% zero-result, or +3 pts vs 4-week baseline |
+| `escalate_reason = no_supporting_doc` rate, clustered weekly (gap mining, §6.5) | Topics without an article | Cluster > 30 tickets → authoring task |
+| Intent/theme mix PSI vs 4-week baseline | Seasonality and product launches | PSI > 0.2 |
+| New-term emergence (query n-grams absent from the corpus, weighted by frequency) | Catches new product names and failure modes before recall drops | Top-20 list reviewed weekly |
+| Citation-drop rate (answers escalated because no citation validated) | Stale or thin articles | +2 pts vs baseline |
+| Thumbs-down rate per `article_id` (GE App feedback) | Article is wrong or stale even though retrieval and grounding pass | Any article > 15% over ≥ 20 answers → review |
+| **Frozen G5 run** on a frozen corpus snapshot and the frozen query set, weekly | Agent Search is managed: embeddings and re-ranker can change under us; the tuned `relevanceThreshold` is itself sensitive to that | recall@5 drop > 0.03 with no publish in the window → open a ticket, re-sweep thresholds |
+
+**6.6.7 Model-side controls.** `ANSWER_MODEL_ID` and the answer prompt are pinned and versioned; a model or prompt bump is a config release that runs G5–G8 before promotion. The semantic cache key includes `(article_ids+versions, ANSWER_MODEL_ID, prompt_version)` in addition to the question embedding, so a model/prompt change cannot serve week-old answers for 7 days. `resolved-threads` is retrieved with a recency filter (production: last 18 months; capstone corpus is 2017 so the filter is a parameter, not a constant) and the generation prompt states that **FAQ articles win on any conflict with threads** — threads from another retailer describe someone else's policy and are evidence of *how* a case was handled, never of *what* the policy is.
+
+**6.6.8 Ownership and cadence.** Knowledge owner: Support Ops lead (RACI §18.1 — accountable for `status` transitions and reviews); Engineering owns the publish path and gates. Cadence: publish on demand (PR-driven), drift report weekly, policy-file review monthly, frozen-G5 weekly. Out of scope for the capstone but noted for production: answers that depend on *when the customer ordered* (a return window that changed between purchase and question) need the order date from `order-lookup` and the policy version effective on that date — `effective_from/effective_to` makes that lookup possible but the agent logic is Phase 2 (§18.3).
+
+**Capstone demo (half a day):** edit the return-window article (30 → 45 days) → `publish_faq.py` → show (a) the cached answer for "how long do I have to return?" is evicted, (b) the new answer cites `faq-returns-window@v2`, (c) the frozen-set regression passes, (d) the BigQuery impact query lists the demo tickets answered under `@v1`.
 
 ---
 
@@ -1031,7 +1081,7 @@ How each estimate becomes a measurement: Billing export to BigQuery labeled by c
 | G2 | Routing invariant | Deterministic (property test) | 100% | Any decision with `escalate=true` lands in a human queue; rules add-only |
 | G3 | Intent macro-F1 / precision | Statistical | macro-F1 ≥ 0.85; false-escalation rate ≤ 8% of neutral | Cost of asymmetry bounded |
 | G4 | Calibration | Statistical | ECE ≤ 0.05 (15-bin); Brier reported | Thresholds only mean something if probabilities are calibrated |
-| G5 | Retrieval | Deterministic | recall@5 ≥ 0.90; MRR ≥ 0.75; nDCG@5 ≥ 0.80 | §6.4 |
+| G5 | Retrieval | Deterministic | recall@5 ≥ 0.90; MRR ≥ 0.75; nDCG@5 ≥ 0.80; on every corpus publish Δrecall@5 ≥ −0.02 overall and ≥ −0.05 per intent family vs previous publish | §6.4, §6.6.5 |
 | G6 | Citation precision | Deterministic | ≥ 0.95 (quote is substring of cited chunk; chunk supports claim per grounding score ≥ 0.7) | No fabricated citations |
 | G7 | Faithfulness / groundedness | LLM judge (Gen AI Eval Service, judge `gemini-3.1-pro`) + human sample | mean ≥ 4.5/5; human κ ≥ 0.7 | Answer claims supported by citations |
 | G8 | Helpfulness & empathy; calming-ack tone | LLM judge + human sample | mean ≥ 4.0/5 | §12.4 rubrics |
@@ -1097,14 +1147,15 @@ Human evaluation: 2 raters on 100 stratified cases per release; Cohen's κ betwe
 - **Metrics / dashboard (Cloud Monitoring, one board):** tier-hit ratio; escalation rate (by queue); router confidence histogram (`p_esc` buckets); Tier-2 trigger reasons; tokens and \$ per agent per hour; breaker state per dependency (0/1/2) and transitions; deflection rate; grounded-answer rate; citation-drop count; cache hit ratio; DB p95; Pub/Sub backlog and DLQ depth; SLA breaches; CSAT proxy (thumbs up/down in GE App).
 - **Alerting:** SLO burn-rate alerts (fast 2%/1 h, slow 5%/6 h) for ingest availability and escalation latency; breaker open > 5 min; DLQ ≥ 1; Tier-1 share < 70% (model or endpoint problem); escalation rate ±5 pts vs 7-day baseline (drift or incident); sampled angry recall < 0.995; PSI > 0.2 on intent prior.
 - **Online eval:** 2% of auto-resolved tickets re-judged asynchronously (G6, G7) by the Evaluation Service; 2% of Tier-1-only decisions shadow-labeled by Flash; weekly human audit 200.
-- **Drift:** weekly job compares Tier-1 vs shadow labels per class, confidence histogram KL vs training distribution, and new-intent clusters among `other`; triggers the retrain runbook.
+- **Drift (router):** weekly job compares Tier-1 vs shadow labels per class, confidence histogram KL vs training distribution, and new-intent clusters among `other`; triggers the retrain runbook.
+- **Drift (knowledge/query/ranker):** weekly scheduled query per §6.6.6 — zero-result and low-score rates, `no_supporting_doc` clusters, intent-mix PSI, new-term emergence, citation-drop rate, thumbs-down per `article_id`, and a frozen-corpus G5 run to catch managed-ranker changes; triggers the FAQ authoring / corpus-publish runbook.
 - **Audit:** Cloud Audit Logs + `audit_events` → BigQuery (§8.5); GE App conversation exports retained per policy.
 
 ---
 
 ## 14. Configuration & Designing for Change
 
-- **Externalized config** (`config/{env}.yaml` rendered to env vars by Terraform; secrets from Secret Manager): `ROUTER_TIER1_ENABLED`, `ROUTER_MODE` (`tiered|gemini_only|rules_only`), `ROUTER_S1_ENDPOINT`, `ROUTER_SHADOW_MODEL`, `TAU_ESC`, `TAU_LOW`, `TAU_INTENT`, `TEMPERATURES` (per head), `TIER2_MODEL_ID`, `ANSWER_MODEL_ID`, `EMERGENCY_MODEL_ID`, `BREAKER_*`, `TIMEOUT_*`, `MAX_*` guards, `CACHE_SIM_THRESHOLD`, `FAQ_VERSION`, retention TTLs, `pricing.yaml`. Threshold changes are config releases with their own eval gate; a kill switch to Gemini-only routing takes effect within one Agent Runtime config refresh.
+- **Externalized config** (`config/{env}.yaml` rendered to env vars by Terraform; secrets from Secret Manager): `ROUTER_TIER1_ENABLED`, `ROUTER_MODE` (`tiered|gemini_only|rules_only`), `ROUTER_S1_ENDPOINT`, `ROUTER_SHADOW_MODEL`, `TAU_ESC`, `TAU_LOW`, `TAU_INTENT`, `TEMPERATURES` (per head), `TIER2_MODEL_ID`, `ANSWER_MODEL_ID`, `EMERGENCY_MODEL_ID`, `BREAKER_*`, `TIMEOUT_*`, `MAX_*` guards, `CACHE_SIM_THRESHOLD`, `FAQ_VERSION`, `POLICY_VERSION`, `PROMPT_VERSION`, `THREADS_RECENCY_MONTHS`, `SEARCH_RELEVANCE_THRESHOLD`, retention TTLs, `pricing.yaml`. Threshold changes are config releases with their own eval gate; a kill switch to Gemini-only routing takes effect within one Agent Runtime config refresh.
 - **Interfaces and DI:** `RouterModel` protocol (`decide(state, questions) -> TypedDecisions`) with implementations `LayaRawPredictRouter`, `GeminiStructuredRouter`, `RulesOnlyRouter`, `ShadowingRouter(primary, shadow)`; `Retriever`, `TicketStore`, `MemoryProvider`, `Breaker` protocols; wiring via a small container in `app/wiring.py` selected by config — tests inject fakes, prod injects clients. Swapping Laya for a Gemma-based classifier is a new `RouterModel` implementation plus a config value.
 - **Plugin patterns:** `ChannelAdapter` (chat/email/social normalizers), `CrmAdapter` (outbound mapping), `IntentPack` (adds an intent family: rules, admissible-set predicate, FAQ data-store filter, eval cases) — registered via entry points, no core edits.
 - **Event-driven extension:** all state changes emit `ticket.*` events on Pub/Sub; webhooks for external consumers; new consumers (agent-assist copilot, analytics) subscribe without touching agents.
@@ -1166,6 +1217,7 @@ Human evaluation: 2 raters on 100 stratified cases per release; Cohen's κ betwe
 | **System-1 endpoint down** | Tier-1 share < 70%; `router.tier1` errors; fallback chain active | 1 Check endpoint deploy state and replica health; 2 If model load issue: roll endpoint traffic to previous model version; 3 If capacity: scale min replicas or switch `laya_region`; 4 Confirm Flash classifier breaker is CLOSED; 5 Leave `ROUTER_MODE=tiered` (fallback is automatic) unless Flash also degraded → `rules_only` |
 | **Quota exhaustion (Gemini)** | 429 rate > 5%; breaker on Flash open | 1 Verify quota dashboard; 2 Enable `EMERGENCY_MODEL_ID` path; 3 Raise `TAU_LOW` to shrink Tier 2; 4 Request quota / PT; 5 Communicate expected deflection dip to ops |
 | **Angry-recall regression alert** | Sampled recall < 0.995 or canary G1 fail | 1 Automatic rollback of `router-s1` traffic split and thresholds; 2 Freeze promotions; 3 Pull the false negatives into the golden set; 4 Check for drift (PSI) and new slang/language; 5 Retrain or lower `TAU_ESC` as interim with a dated revert task |
+| **Policy change / stale-answer report** | Ops reports an outdated answer; thumbs-down spike on one `article_id`; policy file changed | 1 Bump `policy.yaml` version, run the policy lint to list affected articles; 2 Edit → review → `status=active`, retire superseded ids with `supersedes`; 3 `publish_faq.py` (FULL reconcile, LRO wait, smoke-verify served version, evict cache for changed ids); 4 Frozen-set regression G5 (Δrecall@5 ≤ 0.02); 5 Impact query on `tickets.citations` for `article_id@old_version` since the policy date → proactive correction list to Ops; 6 Rollback = re-publish previous manifest |
 | **PII leak suspected** | DLP scan hit in logs/memories/outputs; customer report | 1 Identify scope by `trace_id`; 2 Purge affected log entries (Logging exclusion + deletion), delete Memory Bank memories for scope, rotate any exposed redaction map key; 3 Confirm Model Armor template version and infoTypes; 4 Add the pattern to the adversarial set; 5 File incident with timeline (audit rows) |
 | **Agent Runtime → Cloud Run failover** | Probe failures on Agent Runtime | 1 Set Gateway weight 0/100; 2 Verify Sessions/Memory reachable; 3 Watch latency; 4 Revert when probes green for 15 min |
 | **DLQ non-empty** | Alert | 1 Inspect message, classify (schema, poison, dependency); 2 Fix and `make replay-dlq`; 3 Verify idempotent replay |
@@ -1176,7 +1228,7 @@ Human evaluation: 2 raters on 100 stratified cases per release; Cohen's κ betwe
 | --- | --- | --- |
 | Choice probabilities look shuffled / wrong intent at high confidence | Called `:predict` (sorted keys) instead of `:rawPredict` | Response `routing` field; client config |
 | Tier-1 p95 > 300 ms | Endpoint on CPU fallback or cross-region; serial saturation | `/health`, replica utilization, region |
-| Answers escalate with `no_supporting_doc` for known FAQs | Filter too strict / wrong `intent_family`; FAQ version mismatch with cache | Retry unfiltered flag; `FAQ_VERSION` |
+| Answers escalate with `no_supporting_doc` for known FAQs | Filter too strict / wrong `intent_family`; article `status` not `active` or outside its effective window; FAQ version mismatch with cache | Retry unfiltered flag; check manifest `status`/`effective_*`; `FAQ_VERSION` |
 | Citations dropped | Quote not substring (whitespace, quotes) | Citation validator debug log |
 | Agent fails on Agent Runtime but works locally | ADK version drift between local and runtime `requirements` | Pin `google-adk==` to the local version (lesson L2) |
 | 403 calling `router-s1` | Binding missing at endpoint level | `getIamPolicy` on endpoint |
@@ -1267,6 +1319,7 @@ Cadence: 15-min daily standup; weekly status + code walkthrough; practice panel 
 | R7 | False-escalation rate burdens humans more than expected | Medium | Medium | Tier-2 band; hill-climb; ops-visible dial `TAU_ESC` with eval gate | Ops lead |
 | R8 | Model Armor latency (unpublished; could be 300–700 ms on the escalation path) or false positives on injection / order IDs | Medium | Medium | Measure on day 2; single lean template (PI/JB at MEDIUM, SDP basic + order-ID exclusion rule, malicious URL; RAI on egress only); regex stays as the synchronous floor; if p95 > 300 ms move SDP to regex-only at ingress and keep PI/JB in Model Armor; suspect path is human, not rejection | @susmith |
 | R9 | Promotional Flash pricing ends Dec 2026 | Certain | Low | `pricing.yaml`; break-even recomputed; Flash-Lite in hill-climb | @susmith |
+| R10 | Stale knowledge: policy changes outpace article updates, producing confidently cited wrong answers | High (in production) | High | Single-sourced `policy.yaml` + lint; `status`/`effective_*` filters; versioned citations enabling impact queries; per-publish regression gate; weekly drift signals (§6.6) | Support Ops lead |
 
 Open questions for Dhawal are listed in the Reviewer Notes.
 
@@ -1284,7 +1337,7 @@ Open questions for Dhawal are listed in the Reviewer Notes.
 | **A4 AI-Driven Development** | §17 | `AGENTS.md`, rules, skills, spec-first TDD, in/out-of-loop examples, 6-entry lessons log feeding rules | Shows the harness existed before coding and learns from mistakes |
 | **A5 Futures / Roadmap** | §18.3 | 3 phases with scope and the specific GCP service that makes each cheap | Progressive, production-grade, value-tied |
 | **B1 Agentic & Multi-Agent** | §5.1, §5.3, §5.4, §7, §4.5–4.7 | 4 ADK agents with runtime/model/tools/permissions; router-dispatcher + bounded ReAct; A2A handoffs; MCP tools incl. legacy mock; Sessions + Memory Bank; loop guards; non-blocking time-bound HITL | ≥ 3 sub-points: cognitive architecture, memory/state, tool integration with data boundaries, multi-agent coordination, latency SLAs |
-| **B2 Retrieval & Data Eng** | §6 | Cleaning pipeline; two data stores with trust levels; article-level vs thread-aware chunking with rationale; hybrid + rerank; citation enforcement; recall@5/MRR/nDCG gates; feedback loop | Answers chunking, retrieval eval, hybrid, and continuous improvement explicitly |
+| **B2 Retrieval & Data Eng** | §6 | Cleaning pipeline; two data stores with trust levels; article-level vs thread-aware chunking with rationale; hybrid + rerank; citation enforcement; recall@5/MRR/nDCG gates; feedback loop; knowledge lifecycle (versioned articles, single-sourced policy, pinned citations, drift signals §6.6) | Answers chunking, retrieval eval, hybrid, and continuous improvement explicitly |
 | **B3 Model Selection, Tuning & Optimization** | §5.2, §5.5, ADR-1, ADR-8 | Encoder vs decoder; fine-tune + calibration + distillation; teacher labeling with self-consistency; synthetic hard negatives; structured outputs with schema enforcement; per-tier model choice; token math | ≥ 3 sub-points with numbers and a measurement plan |
 | **B4 LLM Ops & Evaluation** | §12.2–12.5, §13 | 30 + 320 case sets with percentages; 15 gates mostly deterministic/statistical; anchored 5/3/1 judge rubrics with named judge and human κ; regression blocking; drift monitoring; online eval | More than LLM-as-judge; regression detection is automated |
 | **B5 Domain-Applied AI/ML** | §1.1, §2.3, §8.3, §8.5 | CSAT/FRT/AHT/deflection mapped to ML objectives; GDPR/CCPA erasure flow; PCI scope avoidance; CRM integration pattern | Retail support KPIs and consumer-privacy rules drive design |

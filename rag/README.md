@@ -16,7 +16,7 @@ retrieval_eval.py / retrieval_sweep.sh  ──▶ recall@k / MRR on 300 held-out
 
 | Data store | Content | Role |
 | --- | --- | --- |
-| `faq-articles` | 53 help-center articles for the simulated retailer *Global Retail Hub* (unstructured `.txt`; metadata: title, intent_family, theme, version, simulated_policy, reviewed) | **The only citable source.** One article = one chunk (200–600 tokens), so the question and its policy stay together |
+| `faq-articles` | 53 help-center articles for the simulated retailer *Global Retail Hub* (unstructured `.txt`; metadata: article_id, version, content_sha256, status, effective_from/to, supersedes, policy_version, reviewed_by/at, intent_family, theme) | **The only citable source.** One article = one chunk (200–600 tokens), so the question and its policy stay together |
 | `resolved-threads` | 81,103 AmazonHelp customer↔agent threads, one thread per document (thread-aware; tweets are short, nothing is split mid-conversation), teacher labels as metadata where available | Secondary evidence (how similar cases were handled); never cited alone |
 
 Search app: `support-kb-search` (Enterprise tier + LLM add-on) over both stores. Queries pass
@@ -28,6 +28,32 @@ Search app: `support-kb-search` (Enterprise tier + LLM add-on) over both stores.
 2. For each theme, Gemini wrote one article from up to 15 real threads on that theme (customer language and agents' troubleshooting steps), using **one canonical simulated policy block** (`SIMULATED_POLICY` in `build_faq_corpus.py`) so articles never contradict each other on windows, fees or timelines.
 3. Three "positive feedback" themes produced nothing answerable and were dropped (`drop_articles.sh`) → **53 articles**.
 4. All articles carry `reviewed: false` until a human review pass.
+
+## Knowledge lifecycle (TDD §6.6)
+
+Articles are versioned documents. `build_faq_corpus.py` now stamps lifecycle metadata into `structData`
+(`article_id, version, content_sha256, status ∈ {draft, active, retired}, effective_from/to, supersedes,
+policy_version, reviewed_by/at`), and `publish_faq.py` is the only way the index changes:
+
+```
+python publish_faq.py --work <dir> --lint-only            # numeric policy facts must come from SIMULATED_POLICY
+python publish_faq.py --work <dir> --dry-run              # what would change (added / changed@version / retired)
+python publish_faq.py --work <dir> --activate <id> --reviewed-by <ldap>
+python publish_faq.py --work <dir> --retire <old-id> --supersedes <new-id>
+python publish_faq.py --work <dir>                        # stamp → upload v<N> → FULL import → wait → verify served version
+```
+
+Rules the script enforces: an edited article gets `version+1`, loses its review and drops back to `draft`;
+the manifest is the source of truth (`reconciliationMode: FULL`), so retired/removed articles leave the
+index without a purge step; nothing is reported as published until a search returns the new version.
+Rollback = re-publish the previous release's manifest (GCS keeps every `v<N>/`). After a publish: bump
+`FAQ_VERSION`, evict cache entries for the changed `article_id`s, and re-run `retrieval_eval.py` on the
+frozen query set (gate: Δrecall@5 ≥ −0.02 overall, ≥ −0.05 per intent family).
+
+First lint result on the v1 articles (2026-10-23): `faq-account-payment-account-locked-blocked` states
+"respond within 48 hours" — a number the generator invented; it is not in the canonical policy. That is
+exactly the stale/invented-fact class the lint exists for; fix = add the fact to the policy or remove it
+from the article, then publish as `@2`.
 
 Cost: ≈ 163k input / 81k output (incl. thinking) tokens ≈ \$1.30 (est., Gemini 3.1 Pro preview list prices).
 

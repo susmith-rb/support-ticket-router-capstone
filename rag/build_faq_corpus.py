@@ -13,8 +13,9 @@ Uses Vertex AI REST with the caller's gcloud token (urllib only).
 
   python build_faq_corpus.py --labels labels.jsonl --threads threads.jsonl --out out_dir --project P
 """
-import argparse, collections, concurrent.futures as cf, json, pathlib, re, subprocess, time, urllib.error, urllib.request
+import argparse, collections, concurrent.futures as cf, datetime, hashlib, json, pathlib, re, subprocess, time, urllib.error, urllib.request
 
+POLICY_VERSION = "policy-v1"  # bump when any fact below changes (TDD §6.6.2); publish_faq.py lint checks articles against it
 SIMULATED_POLICY = """Global Retail Hub (simulated retailer) — canonical policy facts. Use ONLY these numbers.
 - Membership: "Hub Plus" (paid; free 2-day shipping on eligible items, video/music streaming, e-book lending).
 - Standard shipping: 4-6 business days; free over $35. Hub Plus: 2 business days on eligible items. Same-day in select cities.
@@ -79,6 +80,7 @@ def main():
     ap.add_argument("--out", required=True); ap.add_argument("--project", required=True)
     ap.add_argument("--min-theme-size", type=int, default=6); ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--gcs-prefix", default="gs://susmith-fde-ticket-router-laya/corpus/faq-articles/v1")
+    ap.add_argument("--effective-from", default=datetime.date.today().isoformat())
     a = ap.parse_args()
     tok = Tok(); out = pathlib.Path(a.out); (out / "docs").mkdir(parents=True, exist_ok=True)
     threads = {str(json.loads(l)["thread_id"]): json.loads(l) for l in open(a.threads)}
@@ -141,10 +143,15 @@ def main():
                     "\n\n## When we connect you with a specialist\n" + "\n".join(f"- {c}" for c in art["escalate_when"]) +
                     "\n\n_Global Retail Hub is a simulated retailer; policy details are illustrative._\n")
             (out / "docs" / f"{doc_id}.txt").write_text(body, encoding="utf-8")
-            articles.append({"id": doc_id, "structData": {"title": art["title"], "intent_family": th["intent_family"],
-                             "theme": th["title"], "version": 1, "n_source_messages": len(th["thread_ids"]),
-                             "n_example_threads": n_ex, "simulated_policy": True, "reviewed": False},
-                             "content": {"mimeType": "text/plain", "uri": f"{a.gcs_prefix}/docs/{doc_id}.txt"}})
+            # Lifecycle metadata (TDD §6.6.1). `version`/`content_sha256` are (re)stamped by publish_faq.py;
+            # `status` starts as "draft" and becomes "active" only after human review (reviewed_by/at set).
+            articles.append({"id": doc_id, "structData": {
+                "article_id": doc_id, "title": art["title"], "intent_family": th["intent_family"], "theme": th["title"],
+                "version": 1, "content_sha256": hashlib.sha256(body.encode()).hexdigest(),
+                "status": "draft", "effective_from": a.effective_from, "effective_to": "",
+                "supersedes": "", "policy_version": POLICY_VERSION, "reviewed_by": "", "reviewed_at": "",
+                "n_source_messages": len(th["thread_ids"]), "n_example_threads": n_ex, "simulated_policy": True},
+                "content": {"mimeType": "text/plain", "uri": f"{a.gcs_prefix}/docs/{doc_id}.txt"}})
     with open(out / "faq_articles_import.jsonl", "w") as fh:
         for x in articles: fh.write(json.dumps(x) + "\n")
     print(f"articles: {len(articles)} (themes {len(themes)}, skipped small {len(themes) - len(todo)}); usage {dict(usage)}")
