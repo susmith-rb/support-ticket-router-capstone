@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""retrieval_eval.py — recall@k / MRR of Agent Search over `faq-articles` (silver-standard query set).
+
+Queries: real customer first messages whose teacher topic was clustered into a theme that became an
+article; the relevant doc is that theme's article. Threads used as writing examples for the article
+(the first 15 with an agent reply, same rule as build_faq_corpus.py) are excluded to avoid leakage.
+This is a silver set (teacher topic -> theme mapping), not human-judged; report it as such.
+
+  python retrieval_eval.py --themes themes.json --threads threads.jsonl --import faq_articles_import.jsonl --n 300
+"""
+import argparse, json, random, re, subprocess, time, urllib.error, urllib.request
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--themes", required=True); ap.add_argument("--threads", required=True); ap.add_argument("--import", dest="imp", required=True)
+ap.add_argument("--project", default="susmith-fde-ticket-router"); ap.add_argument("--engine", default="support-kb-search")
+ap.add_argument("--n", type=int, default=300); ap.add_argument("--k", type=int, default=5); ap.add_argument("--out", default="retrieval_eval.json")
+ap.add_argument("--threshold", default="", help="relevanceThreshold: LOWEST|LOW|MEDIUM|HIGH ('' = API default)")
+ap.add_argument("--expansion", action="store_true", help="queryExpansionSpec AUTO + spellCorrection AUTO")
+ap.add_argument("--clean", action="store_true", help="strip @mentions, [URL]/[ORDER] tokens, hashtags marks before searching")
+ap.add_argument("--sleep", type=float, default=0.7, help="seconds between queries (search quota)")
+a = ap.parse_args()
+threads = {str(json.loads(l)["thread_id"]): json.loads(l) for l in open(a.threads)}
+live = {json.loads(l)["id"] for l in open(a.imp)}
+themes = json.load(open(a.themes))
+cands = []
+for th in themes:
+    doc = re.sub(r"[^a-z0-9-]", "-", f"faq-{th['intent_family']}-{th['theme_id']}".lower().replace("_", "-"))[:120]
+    if doc not in live: continue
+    with_agent = [t for t in th["thread_ids"] if t in threads and any(x["role"] == "agent" for x in threads[t]["turns"])]
+    examples = set(with_agent[:15])
+    for t in th["thread_ids"]:
+        if t in threads and t not in examples:
+            cands.append((threads[t]["turns"][0]["text"], doc, th["intent_family"]))
+random.Random(13).shuffle(cands)
+qs = cands[: a.n]
+
+tok = subprocess.check_output(["gcloud", "auth", "application-default", "print-access-token"], text=True).strip()
+url = (f"https://discoveryengine.googleapis.com/v1/projects/{a.project}/locations/global/collections/default_collection/"
+       f"engines/{a.engine}/servingConfigs/default_search:search")
+ds = f"projects/{a.project}/locations/global/collections/default_collection/dataStores/faq-articles"
+def clean(q):
+    q = re.sub(r"@\w+|\[(URL|ORDER|EMAIL|PHONE|CARD)\]", " ", q)
+    return re.sub(r"\s+", " ", q.replace("#", " ")).strip() or q
+
+def search(q):
+    body = {"query": (clean(q) if a.clean else q)[:1000], "pageSize": 10, "dataStoreSpecs": [{"dataStore": ds}]}
+    if a.threshold: body["relevanceThreshold"] = a.threshold
+    if a.expansion:
+        body["queryExpansionSpec"] = {"condition": "AUTO"}; body["spellCorrectionSpec"] = {"mode": "AUTO"}
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers={
+        "Authorization": f"Bearer {tok}", "x-goog-user-project": a.project, "Content-Type": "application/json"})
+    for attempt in range(8):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                time.sleep(a.sleep)   # stay under the per-minute search quota of a new project
+                return [x["document"]["id"] for x in json.loads(r.read()).get("results", [])]
+        except urllib.error.HTTPError as e:
+            err = e.read().decode()[:200]
+            if e.code == 429: time.sleep(min(60, 5 * (attempt + 1))); continue
+            break
+    raise SystemExit(err)
+
+rows, rr = [], []
+for q, doc, intent in qs:
+    ids = search(q)
+    rank = ids.index(doc) + 1 if doc in ids else None
+    rows.append({"query": q, "relevant": doc, "intent": intent, "rank": rank, "top3": ids[:3]})
+    rr.append(1 / rank if rank else 0.0)
+n = len(rows)
+def rec(k): return sum(1 for r in rows if r["rank"] and r["rank"] <= k) / n
+by = {}
+for r in rows: by.setdefault(r["intent"], []).append(r)
+rep = {"config": {"threshold": a.threshold or "default", "expansion": a.expansion, "clean": a.clean},
+       "n": n, "zero_result_queries": sum(1 for r in rows if not r["top3"]),
+       "recall@1": round(rec(1), 3), "recall@3": round(rec(3), 3), "recall@5": round(rec(5), 3), "recall@10": round(rec(10), 3),
+       "mrr@10": round(sum(rr) / n, 3),
+       "by_intent": {k: {"n": len(v), "recall@5": round(sum(1 for r in v if r["rank"] and r["rank"] <= 5) / len(v), 3)} for k, v in sorted(by.items())},
+       "misses_sample": [r for r in rows if not r["rank"] or r["rank"] > 5][:15]}
+json.dump({"report": rep, "rows": rows}, open(a.out, "w"), indent=1)
+print(json.dumps({k: v for k, v in rep.items() if k != "misses_sample"}, indent=1))
+for m in rep["misses_sample"][:8]: print(f"  miss: rel={m['relevant']} got={m['top3'][:2]} q={m['query'][:110]}")
