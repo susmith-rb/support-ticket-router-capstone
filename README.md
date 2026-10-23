@@ -15,13 +15,15 @@ The centerpiece is **System-1 / System-2 tiered routing**:
 | 2 | Gemini Flash (structured output) | Only the uncertainty band, `intent=other`, entity gaps | ~1–2 s |
 | 3 | Gemini Flash with thinking / Pro (hill-climb candidate) | Multi-hop answer synthesis only | seconds |
 
-The full design is in the spec: **[docs/TDD.md](docs/TDD.md)**.
+The concise Technical Design Doc is in **[docs/TDD.md](docs/TDD.md)**, and the full 20-section reference design is in **[docs/TDD_DETAILED.md](docs/TDD_DETAILED.md)**. Component specifications and requirement traceability live in **[specs/](specs/README.md)**.
 
 ## Repository layout
 
 | Path | What |
 | --- | --- |
-| [docs/TDD.md](docs/TDD.md) | Technical Design Doc (the spec): CUJs, architecture, routing design, security, reliability, eval gates, ADRs, runbooks |
+| [specs/](specs/) | Component specifications and requirement traceability matrix ([specs/README.md](specs/README.md)) |
+| [docs/TDD.md](docs/TDD.md) | Concise Technical Design Doc (team review version): Executive Summary, Architecture, Components, Security, RAG, Evals/CI/CD, Observability |
+| [docs/TDD_DETAILED.md](docs/TDD_DETAILED.md) | Full 20-section reference TDD: CUJs, architecture, routing design, security, reliability, TCO, eval gates, ADRs, runbooks |
 | [AGENTS.md](AGENTS.md) | Rules for coding agents (Jetski/AGY) working in this repo |
 | [docs/LESSONS.md](docs/LESSONS.md) | Lessons log: agent/harness mistakes and environment gotchas, fed back into `AGENTS.md` |
 | [training/router_s1/](training/router_s1/) | Reproducible Laya Tier-1 fine-tuning pipeline (prepare → teacher labels → dataset → train → evaluate), with its own [runbook](training/router_s1/README.md) |
