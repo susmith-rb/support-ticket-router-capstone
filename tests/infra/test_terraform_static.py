@@ -112,14 +112,15 @@ def test_agent_search_contract():
   """Agent Search module must declare faq-articles, resolved-threads, and support-kb-search."""
   main_tf = (SINGLE_PROJECT_DIR / "modules" / "agent-search" / "main.tf").read_text()
 
-  # Data store: faq-articles
+  # Data store: faq-articles (requires unstructured content for text matching)
   assert 'data_store_id               = "faq-articles"' in main_tf
   assert 'industry_vertical           = "GENERIC"' in main_tf
   assert 'content_config              = "CONTENT_REQUIRED"' in main_tf
   assert 'solution_types              = ["SOLUTION_TYPE_SEARCH"]' in main_tf
 
-  # Data store: resolved-threads
+  # Data store: resolved-threads (structured data only, NO_CONTENT)
   assert 'data_store_id               = "resolved-threads"' in main_tf
+  assert 'content_config              = "NO_CONTENT"' in main_tf
 
   # Search engine: support-kb-search
   assert 'engine_id         = "support-kb-search"' in main_tf
@@ -129,6 +130,35 @@ def test_agent_search_contract():
   assert "resolved_threads.data_store_id" in main_tf
   assert "search_engine_config {" in main_tf
   assert "search_tier    = var.search_tier" in main_tf
+
+
+def test_resolved_threads_schema_matches_content_config():
+  """Assert resolved-threads content_config matches schema fixture (NO_CONTENT iff no 'content' key)."""
+  import json
+  # Tiny fixture copied from the real resolved-threads schema / import JSONL:
+  # structData only (thread_id, text, etc.), no "content" key.
+  sample_line = (
+      '{"id": "thread-272", "structData": {"thread_id": "272", "text": "Customer: problem\\nAgent: reply"}}'
+  )
+  record = json.loads(sample_line)
+
+  main_tf = (SINGLE_PROJECT_DIR / "modules" / "agent-search" / "main.tf").read_text()
+  match = re.search(
+      r'resource\s+"google_discovery_engine_data_store"\s+"resolved_threads"\s+\{[^}]+content_config\s+=\s+"([^"]+)"',
+      main_tf,
+  )
+  assert match, "Could not find content_config in google_discovery_engine_data_store.resolved_threads"
+  configured_content_config = match.group(1)
+
+  has_content_key = "content" in record
+  if not has_content_key:
+    assert configured_content_config == "NO_CONTENT", (
+        f"Record has no 'content' key, expected content_config='NO_CONTENT', got {configured_content_config}"
+    )
+  else:
+    assert configured_content_config == "CONTENT_REQUIRED", (
+        f"Record has 'content' key, expected content_config='CONTENT_REQUIRED', got {configured_content_config}"
+    )
 
 
 def test_corpus_bucket_data_source_not_managed():

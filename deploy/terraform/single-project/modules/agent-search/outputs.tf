@@ -8,6 +8,11 @@ output "faq_articles_data_store_name" {
   value       = google_discovery_engine_data_store.faq_articles.name
 }
 
+output "faq_articles_content_config" {
+  description = "Content config for faq-articles"
+  value       = google_discovery_engine_data_store.faq_articles.content_config
+}
+
 output "resolved_threads_data_store_id" {
   description = "Data store ID for resolved-threads"
   value       = google_discovery_engine_data_store.resolved_threads.data_store_id
@@ -16,6 +21,11 @@ output "resolved_threads_data_store_id" {
 output "resolved_threads_data_store_name" {
   description = "Full resource name of resolved-threads data store"
   value       = google_discovery_engine_data_store.resolved_threads.name
+}
+
+output "resolved_threads_content_config" {
+  description = "Content config for resolved-threads"
+  value       = google_discovery_engine_data_store.resolved_threads.content_config
 }
 
 output "search_engine_id" {

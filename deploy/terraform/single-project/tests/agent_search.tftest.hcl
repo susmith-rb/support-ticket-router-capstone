@@ -20,8 +20,18 @@ run "verify_agent_search_defaults" {
   }
 
   assert {
+    condition     = module.agent_search.faq_articles_content_config == "CONTENT_REQUIRED"
+    error_message = "Expected faq-articles content_config to be CONTENT_REQUIRED"
+  }
+
+  assert {
     condition     = module.agent_search.resolved_threads_data_store_id == "resolved-threads"
     error_message = "Expected resolved-threads data store ID"
+  }
+
+  assert {
+    condition     = module.agent_search.resolved_threads_content_config == "NO_CONTENT"
+    error_message = "Expected resolved-threads content_config to be NO_CONTENT"
   }
 
   assert {

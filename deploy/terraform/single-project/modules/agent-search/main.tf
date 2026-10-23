@@ -21,7 +21,7 @@ resource "google_discovery_engine_data_store" "resolved_threads" {
   data_store_id               = "resolved-threads"
   display_name                = "Resolved Threads"
   industry_vertical           = "GENERIC"
-  content_config              = "CONTENT_REQUIRED"
+  content_config              = "NO_CONTENT"
   solution_types              = ["SOLUTION_TYPE_SEARCH"]
   create_advanced_site_search = false
 
