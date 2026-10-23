@@ -9,7 +9,6 @@ Usage: python prepare_twcs.py --csv twcs.csv --brand AmazonHelp --out out/
 Run on the Workbench VM or Cloud Shell (twcs.csv from kaggle datasets download -d thoughtvector/customer-support-on-twitter).
 """
 import argparse, json, re, hashlib, pathlib
-import pandas as pd
 
 ORDER = re.compile(r"(?i)\b(?:order|ord)\.?\s*(?:no\.?|number|#|id)?\s*[:\-#]?\s*(\d{3}-\d{7}-\d{7}|\d{5,12})\b|\b\d{3}-\d{7}-\d{7}\b")
 CARD = re.compile(r"\b(?:\d[ -]?){12,18}\d\b")
@@ -21,9 +20,11 @@ PII = [
 PHONE = re.compile(r"\+?\d[\d\s().-]{8,}\d")
 SIG = re.compile(r"\s*[\^\-–—]\s?[A-Z]{1,3}\b\s*$")                 # agent signatures like ^AB / -JL
 
+
 def luhn_ok(digits: str) -> bool:
     d = [int(c) for c in digits][::-1]
     return len(d) >= 13 and sum(x if i % 2 == 0 else (x * 2 - 9 if x * 2 > 9 else x * 2) for i, x in enumerate(d)) % 10 == 0
+
 
 def redact(t: str) -> str:
     t = SIG.sub("", str(t))
@@ -34,11 +35,14 @@ def redact(t: str) -> str:
     t = PHONE.sub(lambda m: "[PHONE]" if len(re.sub(r"\D", "", m.group(0))) >= 10 else m.group(0), t)
     return re.sub(r"\s+", " ", t).strip()
 
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--csv", required=True); ap.add_argument("--brand", default="AmazonHelp")
     ap.add_argument("--out", default="out"); ap.add_argument("--max_threads", type=int, default=0)
-    a = ap.parse_args(); out = pathlib.Path(a.out); out.mkdir(parents=True, exist_ok=True)
+    a = ap.parse_args()
+    import pandas as pd
+    out = pathlib.Path(a.out); out.mkdir(parents=True, exist_ok=True)
 
     df = pd.read_csv(a.csv, dtype={"tweet_id": "int64", "author_id": str, "text": str,
                                    "response_tweet_id": str, "in_response_to_tweet_id": "float64"})
@@ -97,6 +101,7 @@ def main():
                                "n_turns": len(turns)})
     pd.DataFrame(first_rows).to_parquet(out / "inbound_first_turn.parquet", index=False)
     print(f"wrote {len(first_rows):,} first-turn messages and threads to {out}/")
+
 
 if __name__ == "__main__":
     main()

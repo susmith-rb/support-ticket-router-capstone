@@ -48,7 +48,8 @@ def sha(text): return hashlib.sha256(text.encode()).hexdigest()
 
 
 # ---------- 1. policy lint ----------
-NUM = re.compile(r"\b(\d+)\s*(business day|day|hour|h\b|%|\$)", re.I)
+NUM = re.compile(r"\$\s*(\d+)|\b(\d+)\s*(business day|day|hour|h\b|%|\$)", re.I)
+RANGE = re.compile(r"\b(\d+)\s*[-–]\s*(\d+)\s*(business day|day|hour|h\b|%|\$)", re.I)
 
 
 def answer_only(body):
@@ -62,11 +63,31 @@ def answer_only(body):
 
 
 def lint(docs):
-    allowed = set(m.group(1) for m in NUM.finditer(SIMULATED_POLICY)) | set(re.findall(r"\$(\d+)", SIMULATED_POLICY))
+    allowed = set()
+    for m in NUM.finditer(SIMULATED_POLICY):
+        if m.group(1):
+            allowed.add(m.group(1))
+        elif m.group(2):
+            allowed.add(m.group(2))
+    allowed |= set(re.findall(r"\$\s*(\d+)", SIMULATED_POLICY))
+    for m in RANGE.finditer(SIMULATED_POLICY):
+        allowed.add(m.group(1))
+        allowed.add(m.group(2))
+
     bad = {}
     for doc_id, body in docs.items():
-        hits = sorted({f"{m.group(1)} {m.group(2)}" for m in NUM.finditer(answer_only(body)) if m.group(1) not in allowed})
-        if hits: bad[doc_id] = hits
+        hits = set()
+        for m in NUM.finditer(answer_only(body)):
+            if m.group(1):
+                num = m.group(1)
+                hit_str = f"${num}"
+            else:
+                num = m.group(2)
+                hit_str = f"{num} {m.group(3)}"
+            if num not in allowed:
+                hits.add(hit_str)
+        if hits:
+            bad[doc_id] = sorted(hits)
     return bad
 
 

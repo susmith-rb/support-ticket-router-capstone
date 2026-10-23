@@ -24,14 +24,20 @@ DS = f"projects/{P}/locations/global/collections/default_collection/dataStores/f
 SEARCH = (f"https://discoveryengine.googleapis.com/v1/projects/{P}/locations/global/collections/default_collection/"
           "engines/support-kb-search/servingConfigs/default_search:search")
 
+
 class Tok:
-    def __init__(self): self.t, self.at = None, 0
+    def __init__(self):
+        self.t, self.at = None, 0
+
     def __call__(self):
         if not self.t or time.time() - self.at > 2400:
             self.t = subprocess.check_output(["gcloud", "auth", "application-default", "print-access-token"], text=True).strip()
             self.at = time.time()
         return self.t
+
+
 tok = Tok()
+
 
 def post(url, body, extra=None, retries=6, timeout=300):
     h = {"Authorization": f"Bearer {tok()}", "Content-Type": "application/json", "x-goog-user-project": P, **(extra or {})}
@@ -43,8 +49,10 @@ def post(url, body, extra=None, retries=6, timeout=300):
         except urllib.error.HTTPError as e:
             msg = e.read().decode()[:400]
             if e.code in (429, 500, 503, 529) and attempt < retries - 1:
-                time.sleep(min(60, 4 * (attempt + 1))); continue
+                time.sleep(min(60, 4 * (attempt + 1)))
+                continue
             raise RuntimeError(f"HTTP {e.code}: {msg}")
+
 
 def claude(model, prompt, effort="high", max_tokens=8000):
     url = f"https://aiplatform.googleapis.com/v1/projects/{P}/locations/global/publishers/anthropic/models/{model}:rawPredict"
@@ -54,6 +62,7 @@ def claude(model, prompt, effort="high", max_tokens=8000):
     text = "".join(b.get("text", "") for b in r.get("content", []) if b.get("type") == "text")
     return json.loads(re.search(r"\{.*\}|\[.*\]", text, re.S).group(0)), r.get("usage", {})
 
+
 def gemini(model, prompt, schema):
     url = f"https://aiplatform.googleapis.com/v1/projects/{P}/locations/global/publishers/google/models/{model}:generateContent"
     body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}],
@@ -62,17 +71,29 @@ def gemini(model, prompt, schema):
     text = "".join(p.get("text", "") for p in r["candidates"][0]["content"]["parts"] if not p.get("thought"))
     return json.loads(text), r.get("usageMetadata", {})
 
+
 def search(q):
     r = post(SEARCH, {"query": q, "pageSize": 10, "relevanceThreshold": "LOWEST", "dataStoreSpecs": [{"dataStore": DS}]})
     time.sleep(0.7)
     return [x["document"]["id"] for x in r.get("results", [])]
 
-def norm(s): return re.sub(r"\s+", " ", re.sub(r"[*_`#>]", "", s)).strip().lower()
+
+def norm(s):
+    return re.sub(r"\s+", " ", re.sub(r"[*_`#>]", "", s)).strip().lower()
+
+
+def is_verbatim_citation(quote, doc_text):
+    """Check if the quote appears verbatim (modulo light formatting/spacing) in doc_text."""
+    if not quote or not doc_text:
+        return False
+    return norm(quote) in norm(doc_text)
+
 
 ANSWER_SCHEMA = {"type": "object", "required": ["answer", "citations", "grounded", "escalate"], "properties": {
     "answer": {"type": "string"}, "grounded": {"type": "boolean"}, "escalate": {"type": "boolean"},
     "citations": {"type": "array", "items": {"type": "object", "required": ["doc_id", "quote"],
                   "properties": {"doc_id": {"type": "string"}, "quote": {"type": "string"}}}}}}
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -80,15 +101,38 @@ def main():
     ap.add_argument("--per-article", type=int, default=2); ap.add_argument("--gen-model", default="gemini-3.8-flash")
     ap.add_argument("--qmodel", default="claude-sonnet-5-5"); ap.add_argument("--judge", default="claude-opus-5-5")
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--gold-map", default=None, help="path to gold map JSON (old_id -> new_id)")
+    ap.add_argument("--reuse-questions", nargs="?", const=True, default=None,
+                    help="reuse existing questions.jsonl (path or true to use --out/questions.jsonl)")
     a = ap.parse_args()
     out = pathlib.Path(a.out); out.mkdir(parents=True, exist_ok=True)
     ids = [json.loads(l)["id"] for l in open(a.imp)]
     docs = {i: (pathlib.Path(a.docs) / f"{i}.txt").read_text(encoding="utf-8") for i in ids}
     usage = {"qgen": [0, 0], "answer": [0, 0], "judge": [0, 0]}
 
+    gold_map = json.load(open(a.gold_map)) if a.gold_map else {}
+
     # ---- A1. question generation
     qf = out / "questions.jsonl"
-    if not qf.exists():
+    if a.reuse_questions:
+        if isinstance(a.reuse_questions, str):
+            src_q = pathlib.Path(a.reuse_questions)
+            if not src_q.exists():
+                raise FileNotFoundError(f"Questions file not found: {a.reuse_questions}")
+            if src_q.resolve() != qf.resolve():
+                qf.write_text(src_q.read_text(encoding="utf-8"), encoding="utf-8")
+        else:
+            if not qf.exists():
+                candidates = [pathlib.Path("rag/results/clean_eval/questions.jsonl"), pathlib.Path("clean_eval/questions.jsonl")]
+                found = False
+                for c in candidates:
+                    if c.exists():
+                        qf.write_text(c.read_text(encoding="utf-8"), encoding="utf-8")
+                        found = True
+                        break
+                if not found:
+                    raise FileNotFoundError(f"No existing questions.jsonl found to reuse in {out}")
+    elif not qf.exists():
         def gen(doc_id):
             prompt = (f"Here is a help-center article from an online retailer:\n\n{docs[doc_id]}\n\n"
                       f"Write {a.per_article} NEW questions a real customer might type into a support chat that this article answers. "
@@ -100,7 +144,8 @@ def main():
         with cf.ThreadPoolExecutor(a.workers) as ex, open(qf, "w") as fh:
             for doc_id, qs, u in ex.map(gen, ids):
                 usage["qgen"][0] += u.get("input_tokens", 0); usage["qgen"][1] += u.get("output_tokens", 0)
-                for q in qs: fh.write(json.dumps({"question": q, "source_doc": doc_id}) + "\n")
+                for q in qs:
+                    fh.write(json.dumps({"question": q, "source_doc": doc_id}) + "\n")
     Q = [json.loads(l) for l in open(qf)]
     print(f"questions: {len(Q)}", flush=True)
 
@@ -109,8 +154,14 @@ def main():
     if not rf.exists():
         with open(rf, "w") as fh:
             for q in Q:
-                top = search(q["question"]); rank = top.index(q["source_doc"]) + 1 if q["source_doc"] in top else None
-                fh.write(json.dumps({**q, "top": top, "rank": rank}) + "\n")
+                target = gold_map.get(q["source_doc"], q["source_doc"]) if gold_map else q["source_doc"]
+                top = search(q["question"])
+                if isinstance(target, (list, tuple, set)):
+                    matched_ranks = [top.index(t) + 1 for t in target if t in top]
+                    rank = min(matched_ranks) if matched_ranks else None
+                else:
+                    rank = top.index(target) + 1 if target in top else None
+                fh.write(json.dumps({**q, "top": top, "rank": rank, "effective_gold": target}) + "\n")
     RET = [json.loads(l) for l in open(rf)]
     n = len(RET)
     rec = {k: round(sum(1 for r in RET if r["rank"] and r["rank"] <= k) / n, 3) for k in (1, 3, 5, 10)}
@@ -142,10 +193,14 @@ def main():
         g = x["gen"]; cits = g.get("citations", [])
         abstain += bool(g.get("escalate")) or not g.get("grounded", True)
         with_cit += bool(cits)
-        src_cited += any(c["doc_id"] == x["source_doc"] for c in cits)
+        target = gold_map.get(x["source_doc"], x["source_doc"]) if gold_map else x["source_doc"]
+        if isinstance(target, (list, tuple, set)):
+            src_cited += any(c["doc_id"] in target for c in cits)
+        else:
+            src_cited += any(c["doc_id"] == target for c in cits)
         for c in cits:
             cit_total += 1
-            cit_ok += c["doc_id"] in docs and norm(c["quote"]) in norm(docs[c["doc_id"]])
+            cit_ok += c["doc_id"] in docs and is_verbatim_citation(c["quote"], docs[c["doc_id"]])
     det = {"answers": len(ANS), "answers_with_citation": round(with_cit / len(ANS), 3),
            "citation_precision_verbatim": round(cit_ok / max(1, cit_total), 3), "citations": cit_total,
            "cites_source_article": round(src_cited / len(ANS), 3), "abstained_or_escalated": round(abstain / len(ANS), 3)}
@@ -163,7 +218,8 @@ def main():
             except Exception as e:
                 return {"error": str(e)[:300]}
         with cf.ThreadPoolExecutor(4) as ex, open(ef, "w") as fh:
-            for x, r in zip(ANS, ex.map(ev, ANS)): fh.write(json.dumps({"question": x["question"], **r}) + "\n")
+            for x, r in zip(ANS, ex.map(ev, ANS)):
+                fh.write(json.dumps({"question": x["question"], **r}) + "\n")
     EV = [json.loads(l) for l in open(ef)]
     sc = [e["score"] for e in EV if e.get("score") is not None]
     evalsvc = {"scored": len(sc), "errors": len(EV) - len(sc), "groundedness_mean": round(sum(sc) / len(sc), 3) if sc else None,
@@ -207,6 +263,7 @@ def main():
     misses = [r for r in RET if not r["rank"] or r["rank"] > 5][:10]
     json.dump(misses, open(out / "retrieval_misses.json", "w"), indent=1)
     print(json.dumps(rep, indent=1))
+
 
 if __name__ == "__main__":
     main()

@@ -17,7 +17,6 @@ the checkpoint is servable. Reports:
   python evaluate.py --ckpt convaiinnovations/laya --subfolder typed-decisions ...    # base typed-decisions
 """
 import argparse, json, statistics, time
-import laya
 from router_schema import QUESTIONS, SENTIMENTS, INTENTS
 
 TAUS = [round(i / 100, 2) for i in range(1, 100)]
@@ -65,6 +64,7 @@ def main():
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--dump", default=None, help="write per-row predictions (JSONL) for system simulation")
     a = ap.parse_args()
+    import laya
     agent = laya.load(a.ckpt, subfolder=a.subfolder) if a.subfolder else laya.load(a.ckpt)
     rows = [json.loads(l) for l in open(a.data)]
     if a.limit: rows = rows[: a.limit]

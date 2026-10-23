@@ -1,0 +1,117 @@
+import json
+import pathlib
+import pytest
+from clean_eval import norm, is_verbatim_citation, main
+
+
+def test_norm_strips_markdown_and_whitespace():
+    raw = "  # Title **Bold** and _italic_ with `code` > quote  "
+    assert norm(raw) == "title bold and italic with code quote"
+
+
+def test_norm_case_and_whitespace():
+    raw = "RETURN   within  30 DAYS"
+    assert norm(raw) == "return within 30 days"
+
+
+def test_is_verbatim_citation_exact_and_normalized():
+    doc = "# Returns Policy\nYou can return items within 30 days of delivery."
+    quote1 = "return items within 30 days of delivery"
+    quote2 = "**return items** within   30 days"
+    assert is_verbatim_citation(quote1, doc) is True
+    assert is_verbatim_citation(quote2, doc) is True
+
+
+def test_is_verbatim_citation_missing():
+    doc = "# Returns Policy\nYou can return items within 30 days of delivery."
+    quote = "return items within 48 hours"
+    assert is_verbatim_citation(quote, doc) is False
+    assert is_verbatim_citation("", doc) is False
+    assert is_verbatim_citation(quote, "") is False
+
+
+def test_gold_map_resolution():
+    gold_map = {"faq-old-account": "faq-new-account"}
+    source_doc = "faq-old-account"
+    effective_target = gold_map.get(source_doc, source_doc)
+    assert effective_target == "faq-new-account"
+
+    # Citation check with gold map:
+    citations = [{"doc_id": "faq-new-account", "quote": "something"}]
+    assert any(c["doc_id"] == effective_target for c in citations)
+
+
+def test_reuse_questions_file_loading(tmp_path):
+    sample_questions = [
+        {"question": "How do I return?", "source_doc": "faq-returns"},
+        {"question": "Where is my package?", "source_doc": "faq-order"},
+    ]
+    qfile = tmp_path / "custom_questions.jsonl"
+    with open(qfile, "w") as fh:
+        for q in sample_questions:
+            fh.write(json.dumps(q) + "\n")
+
+    loaded = [json.loads(l) for l in open(qfile)]
+    assert len(loaded) == 2
+    assert loaded[0]["question"] == "How do I return?"
+
+
+def test_clean_eval_main_runs_with_gold_map_and_reuse_questions(tmp_path, monkeypatch):
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    doc_text = "# Order Policy\nStandard orders arrive within 4-6 business days."
+    (docs_dir / "faq-order-v2.txt").write_text(doc_text, encoding="utf-8")
+
+    import_file = tmp_path / "faq_articles_import.jsonl"
+    import_file.write_text(json.dumps({"id": "faq-order-v2"}) + "\n")
+
+    questions_file = tmp_path / "questions.jsonl"
+    questions_file.write_text(json.dumps({
+        "question": "When will my package arrive?",
+        "source_doc": "faq-order-v1"
+    }) + "\n")
+
+    gold_map_file = tmp_path / "gold_map.json"
+    gold_map_file.write_text(json.dumps({"faq-order-v1": "faq-order-v2"}))
+
+    out_dir = tmp_path / "out"
+
+    # Mock external calls
+    monkeypatch.setattr("clean_eval.search", lambda q: ["faq-order-v2"])
+    monkeypatch.setattr("clean_eval.gemini", lambda model, prompt, schema: (
+        {
+            "answer": "Orders arrive within 4-6 business days.",
+            "citations": [{"doc_id": "faq-order-v2", "quote": "arrive within 4-6 business days"}],
+            "grounded": True,
+            "escalate": False,
+        },
+        {"promptTokenCount": 50, "candidatesTokenCount": 20, "thoughtsTokenCount": 0}
+    ))
+    monkeypatch.setattr("clean_eval.claude", lambda model, prompt, effort="high", max_tokens=8000: (
+        {"claims": [{"claim": "Orders arrive within 4-6 business days.", "supported": True}], "faithfulness": 5},
+        {"input_tokens": 100, "output_tokens": 50}
+    ))
+    monkeypatch.setattr("clean_eval.post", lambda url, body, **kw: {
+        "groundednessResult": {"score": 5, "explanation": "grounded"}
+    })
+
+    monkeypatch.setattr("sys.argv", [
+        "clean_eval.py",
+        "--docs", str(docs_dir),
+        "--import", str(import_file),
+        "--out", str(out_dir),
+        "--gold-map", str(gold_map_file),
+        "--reuse-questions", str(questions_file),
+        "--workers", "1",
+    ])
+
+    main()
+
+    report_file = out_dir / "report.json"
+    assert report_file.exists()
+    rep = json.load(open(report_file))
+    assert rep["A_retrieval"]["n"] == 1
+    assert rep["A_retrieval"]["recall@1"] == 1.0
+    assert rep["B_deterministic"]["answers"] == 1
+    assert rep["B_deterministic"]["cites_source_article"] == 1.0
+    assert rep["B_deterministic"]["citation_precision_verbatim"] == 1.0

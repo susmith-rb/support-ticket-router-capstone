@@ -42,3 +42,20 @@ Training data comes only from the public Kaggle dataset
 [Customer Support on Twitter](https://www.kaggle.com/datasets/thoughtvector/customer-support-on-twitter)
 (customers are pseudonymized numeric IDs; residual PII is redacted by `prepare_twcs.py`).
 No raw or processed data is committed. It lives in the project's GCS bucket (see the training runbook).
+
+## Running tests
+
+Run the full offline unit test suite:
+
+```bash
+# via pytest directly in .venv
+.venv/bin/python -m pytest
+
+# or via the helper script
+./scripts/test.sh
+
+# or via make
+make test
+```
+
+All unit tests run offline without network access or cloud credentials.

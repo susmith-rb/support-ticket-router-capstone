@@ -7,9 +7,6 @@ Writes data/labels/labels.jsonl (append + resume): one record per message with v
   PROJECT=<id> python label_teacher.py --n 2000 --samples 3 --model gemini-3.1-pro-preview --location global
 """
 import argparse, asyncio, json, os, pathlib, random, time
-import pandas as pd
-from google import genai
-from google.genai import types
 from router_schema import QUESTIONS, SENTIMENTS, INTENTS, URGENCY_LEVELS
 
 SCHEMA = {
@@ -48,6 +45,7 @@ PROMPT = (
 )
 
 async def call(client, model, text, seed, thinking):
+    from google.genai import types
     cfg = dict(response_mime_type="application/json", response_schema=SCHEMA, temperature=0.7, seed=seed)
     if thinking:
         cfg["thinking_config"] = types.ThinkingConfig(thinking_level=thinking)
@@ -90,8 +88,9 @@ async def main():
     ap.add_argument("--seed", type=int, default=7)
     a = ap.parse_args()
 
+    import pandas as pd
+    from google import genai
     client = genai.Client(vertexai=True, project=os.environ["PROJECT"], location=a.location)
-    df = pd.read_parquet(a.inp).sample(frac=1, random_state=a.seed).head(a.n)
     out = pathlib.Path(a.out); out.parent.mkdir(parents=True, exist_ok=True)
     done = set()
     if out.exists():
