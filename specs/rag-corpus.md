@@ -53,6 +53,7 @@ labels.jsonl (teacher topics) ─────────┴──▶ rag/regrou
 | `REQ-RAG-CORPUS-014` | Theme Clustering with Injectable LLM | `done` | `tests/rag/test_regroup_themes.py::test_cluster_other_injectable_fake_llm` |
 | `REQ-RAG-CORPUS-015` | Publish, Verification, and Rollback Operations | `done` | `manual: python rag/publish_faq.py --work rag/corpus_v2/ --dry-run` |
 | `REQ-RAG-CORPUS-016` | Human Review for Knowledge Activation | `open` | `manual: python rag/publish_faq.py --work rag/corpus_v2/ --activate faq-order-status-late-or-not-arrived-order --reviewed-by susmith` |
+| `REQ-RAG-CORPUS-017` | Index-Side Paraphrase Augmentation and Leakage Guard | `done` | `tests/rag/test_augment_paraphrases.py::test_paraphrases_v1_leakage_and_lint` |
 
 ---
 
@@ -168,6 +169,13 @@ labels.jsonl (teacher topics) ─────────┴──▶ rag/regrou
 - **Rationale**: Prevents unreviewed LLM-generated policies from being served to live customers (TDD §6.6).
 - **Acceptance**: `manual: python rag/publish_faq.py --work rag/corpus_v2/ --activate faq-order-status-late-or-not-arrived-order --reviewed-by susmith`
 - **Status**: open
+- **Owner**: rag-corpus
+
+### REQ-RAG-CORPUS-017: Index-Side Paraphrase Augmentation and Leakage Guard
+- **Statement**: FAQ articles MAY be augmented with targeted "Also asked as" customer-phrasing paraphrases derived from historical threads matching the article's theme (`themes_v2.json`). All source threads MUST be provably disjoint from both the DEV and TEST evaluation query sets (`source_thread_id ∉ dev ∪ test` by `thread_id`). Paraphrase text MUST be synthesized in natural customer phrasing (slang, emotional tone, typos, colloquialisms) rather than copied verbatim, MUST redact handles and PII tokens, and MUST NOT match or near-duplicate any query in `dev.jsonl` or `test.jsonl` under case-insensitive whitespace/punctuation-normalized matching. Augmentations MUST be tracked in `rag/corpus_v2/agent_decisions/paraphrases_v1.json` recording `{doc_id: {paraphrases: [...], source_thread_ids: [...]}}`, with author provenance (`authored_by: jetski-agent:gemini-3.8-flash-high`) recorded in article metadata. Merging paraphrases MUST be idempotent.
+- **Rationale**: Real customer inquiries on social channels exhibit vocabulary diversity, misspellings, and emotional phrasing distinct from formal help titles. Augmenting the "Also asked as" section enriches the document's lexical and semantic embedding representation without altering core policy content (TDD §6.1, §6.4). Strict leakage prevention guarantees that retrieval gains reflect genuine generalization rather than memorized evaluation queries (PLAN3 D6c).
+- **Acceptance**: `tests/rag/test_augment_paraphrases.py::test_paraphrases_v1_leakage_and_lint`
+- **Status**: done
 - **Owner**: rag-corpus
 
 ---

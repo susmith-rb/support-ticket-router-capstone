@@ -62,6 +62,8 @@ Evaluation is stratified across three tiers to balance realism, benchmarking, an
 | `REQ-RAG-RETR-010` | Intent Family Query Boost and Fallback | `done` | `tests/rag/test_search_client.py::test_search_client_intent_fallback_triggers_when_insufficient` |
 | `REQ-RAG-RETR-011` | TDD §6.4 Retrieval Quality Targets (recall@5, MRR, nDCG, p95) | `partial` | `manual: python rag/retrieval_eval.py --threshold LOWEST --clean` |
 | `REQ-RAG-RETR-012` | Regression Gate on Corpus Re-Publishing | `done` | `manual: python rag/retrieval_eval.py --threshold LOWEST --clean --gold-map rag/corpus_v2/gold_map_v1_v2.json` |
+| `REQ-RAG-RETR-013` | Evaluation Set Split and Metric Standards | `done` | `tests/rag/test_build_eval_splits.py::test_splits_disjointness` |
+| `REQ-RAG-RETR-014` | Paraphrase Augmentation Retrieval Parity Gate | `done` | `tests/rag/test_augment_paraphrases.py` |
 
 ---
 
@@ -220,5 +222,12 @@ Evaluation is stratified across three tiers to balance realism, benchmarking, an
 - **Statement**: Evaluation of retrieval quality MUST maintain strict split discipline between a frozen TEST set (300 queries from release 2b) and a disjoint DEV set (300 queries from non-example held-out threads). Both sets MUST be completely disjoint from each other and from each theme's first 15 agent example threads. All offline tuning and ablation sweeps MUST be executed exclusively on DEV; TEST is evaluated once per finalist configuration. Offline metrics MUST compute recall@k (k in {1, 3, 5, 10}), MRR@10, single-gold binary nDCG@k, and client-observed latency percentiles (p50/p95).
 - **Rationale**: Prevents overfitting to the test distribution during search parameter tuning and ablation studies (TDD §6.4; PLAN3.md D3, D4).
 - **Acceptance**: `tests/rag/test_build_eval_splits.py::test_splits_disjointness`
+- **Status**: done
+- **Owner**: rag-retrieval
+
+### REQ-RAG-RETR-014: Paraphrase Augmentation Retrieval Parity Gate
+- **Statement**: Publishing an augmented corpus release MUST satisfy the corpus regression gate on DEV under the production configuration (`intent_soft_0.2`, `relevanceThreshold=LOWEST`, `clean=True`): `Δrecall@5 ≥ −0.02` overall and `Δrecall@5 ≥ −0.05` per intent family relative to pre-augmentation baseline (DEV r@5 = 0.8403). If the gate fails, immediate rollback to the prior release MUST be executed.
+- **Rationale**: Confirms that adding customer phrasing paraphrases improves or maintains retrieval quality without introducing regressions across intents (TDD §6.4, §6.6; PLAN3 D6c).
+- **Acceptance**: `tests/rag/test_augment_paraphrases.py` & manual publish verification
 - **Status**: done
 - **Owner**: rag-retrieval

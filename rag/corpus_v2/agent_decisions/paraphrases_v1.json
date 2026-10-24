@@ -1,0 +1,304 @@
+{
+  "faq-returns-refunds-return-policy-and-process": {
+    "paraphrases": [
+      "my returned package was sent back, how do I reorder?",
+      "ordered wrong model by mistake, can I return or get credit?",
+      "how long after sending back a return do I hear about my replacement?",
+      "can I return multiple items in one box if they have different return labels?",
+      "why am I being charged shipping fees for returning an eligible item?",
+      "do holiday purchases have an extended return window?",
+      "getting an error on the site when trying to start a return",
+      "are open box and warehouse deals eligible for return?"
+    ],
+    "source_thread_ids": [
+      "99967",
+      "126823",
+      "152139",
+      "197688",
+      "322614",
+      "1509328",
+      "277",
+      "163"
+    ]
+  },
+  "faq-other-app-and-website-issues": {
+    "paraphrases": [
+      "app keeps kicking me to the home screen whenever I try to place order",
+      "item shows in stock but the add to cart button isn't working",
+      "mobile app keeps crashing on launch even after reinstalling",
+      "downloads keep pausing and restarting when switching between apps",
+      "my order history is completely blank on the phone app",
+      "site won't load during sale hours, just getting constant crashes",
+      "keep getting something went wrong on our end error when browsing",
+      "search bar isn't showing relevant products, only weird bundles"
+    ],
+    "source_thread_ids": [
+      "129643",
+      "131701",
+      "150485",
+      "156741",
+      "235672",
+      "2841891",
+      "179",
+      "4"
+    ]
+  },
+  "faq-other-device-and-hardware-issues": {
+    "paraphrases": [
+      "smart speaker stopped responding to voice commands after reset",
+      "digital game voucher code gives an invalid error during redemption",
+      "can I install third party app stores on my brand tablet?",
+      "desktop helper software won't uninstall and keeps causing glitches",
+      "how do I stop unwanted hardware notifications and promo popups?",
+      "charging cable that came with my device stopped charging completely",
+      "where can I schedule technician installation setup for my new appliance?",
+      "carrier unlock steps aren't working on the phone I bought"
+    ],
+    "source_thread_ids": [
+      "80619",
+      "179622",
+      "334884",
+      "340526",
+      "2806621",
+      "282",
+      "96",
+      "524265"
+    ]
+  },
+  "faq-account-payment-checkout-payment-errors": {
+    "paraphrases": [
+      "order went through but got auto-cancelled minutes later with money deducted",
+      "getting security verification errors on my saved debit card at checkout",
+      "how do I open a dispute for a charge on an order that failed?",
+      "getting error during final checkout step and order won't submit",
+      "card was debited for an order that never showed up in my order history",
+      "bank account debited but checkout shows payment pending or failed",
+      "why is my valid credit card declining when funds are available?",
+      "payment screen stuck in an infinite loading loop when submitting"
+    ],
+    "source_thread_ids": [
+      "42546",
+      "1161606",
+      "1746097",
+      "736473",
+      "2343925",
+      "2386381",
+      "1137427",
+      "1862630"
+    ]
+  },
+  "faq-other-product-availability-and-inquiries": {
+    "paraphrases": [
+      "presale tickets aren't showing up on the event page, are they sold out?",
+      "why is an item only listed through third-party sellers and not directly?",
+      "what is the difference between a single issue purchase and a subscription?",
+      "how do marketplace seller applications and brand approvals work?",
+      "is this digital download license compatible with all operating systems?",
+      "how do I get an invite or join the waiting list for an exclusive item?",
+      "when is the official release date and restock for this preorder item?"
+    ],
+    "source_thread_ids": [
+      "20423",
+      "22505",
+      "174505",
+      "304556",
+      "2133271",
+      "430618",
+      "897559"
+    ]
+  },
+  "faq-order-status-tracking-and-status": {
+    "paraphrases": [
+      "tracking pushed my delivery date back by several days with no reason",
+      "tracking page has not updated in over a week, where is my package?",
+      "order status says preparing for dispatch for over five days now",
+      "expected delivery date has passed but the carrier tracking is completely frozen",
+      "getting conflicting delivery dates between the app and the carrier tracker",
+      "why is my order still showing processing when it should be shipped?",
+      "delivery date changes every morning but it still has not left the warehouse",
+      "tracking status jumped from out for delivery back to in transit"
+    ],
+    "source_thread_ids": [
+      "2276513",
+      "1699925",
+      "609419",
+      "619303",
+      "761250",
+      "985102",
+      "1227995",
+      "1288169"
+    ]
+  },
+  "faq-order-status-late-or-not-arrived-order": {
+    "paraphrases": [
+      "package was supposed to be here today and now delayed until next week",
+      "paid for fast delivery but my package is already five days overdue",
+      "carrier missed guaranteed arrival date, how do I report a late delivery?",
+      "what happens when guaranteed delivery fails to arrive on the promised date?",
+      "next day delivery never arrived, who do I contact for late order support?",
+      "order is significantly overdue and customer support hasn't updated me",
+      "why do two-day delivery orders keep arriving four or five days late?",
+      "item was marked out for delivery all day but never showed up"
+    ],
+    "source_thread_ids": [
+      "10660",
+      "16827",
+      "86126",
+      "99945",
+      "111966",
+      "128835",
+      "167948",
+      "206769"
+    ]
+  },
+  "faq-other-pricing-promotions-and-discounts": {
+    "paraphrases": [
+      "item price dropped right after I ordered, will you refund the difference?",
+      "what are the minimum purchase terms and cap for the checkout promo discount?",
+      "why isn't the trade-in or exchange discount available on this specific model?",
+      "price changed while item was sitting in my cart, do you honor the lower price?",
+      "why is the discount code not applying to items already marked on sale?",
+      "saw a promotional bundle deal advertised earlier but it vanished at checkout",
+      "promo voucher says valid but checkout says code invalid or expired"
+    ],
+    "source_thread_ids": [
+      "395394",
+      "798742",
+      "1433983",
+      "1714295",
+      "2436871",
+      "2966542",
+      "219025"
+    ]
+  },
+  "faq-shipping-policy-prime-delivery-speed-delays": {
+    "paraphrases": [
+      "why is premium member two-day shipping taking three to four days to arrive?",
+      "countdown timer said order within 2 hours for tomorrow, but checkout shows later date",
+      "why does shipping time increase only after I click place order?",
+      "does expedited shipping include weekend Saturday and Sunday deliveries?",
+      "are all catalog items eligible for free two-day member shipping?",
+      "why are delivery transit speeds so slow in my postal code area?",
+      "paid extra surcharge for priority one-day shipping and it was delayed",
+      "what compensation or shipping refund is provided when express delivery misses SLA?"
+    ],
+    "source_thread_ids": [
+      "136190",
+      "223887",
+      "235128",
+      "284864",
+      "300499",
+      "320847",
+      "373303",
+      "399126"
+    ]
+  },
+  "faq-other-prime-video-and-streaming": {
+    "paraphrases": [
+      "how do I stream live sports and broadcast games included with my membership?",
+      "subtitles and audio track are out of sync while streaming video",
+      "when are new episodes and seasons of TV series added to the catalog?",
+      "middle episodes of a season are showing unavailable or greyed out",
+      "how can I filter video search results to only show titles free with membership?",
+      "why are certain episodes skipped or missing from a show's listing?",
+      "purchased a season pass but the latest aired episode is still locked",
+      "streaming app won't launch live video feed on connected streaming stick"
+    ],
+    "source_thread_ids": [
+      "262187",
+      "321158",
+      "508208",
+      "643772",
+      "671703",
+      "1021678",
+      "1104388",
+      "1872274"
+    ]
+  },
+  "faq-other-general-complaints-and-feedback": {
+    "paraphrases": [
+      "how can I request a direct phone callback from customer service?",
+      "support representative abruptly ended the conversation without resolving my inquiry",
+      "where can I submit formal executive feedback or an official written complaint?",
+      "is there an official customer care email address to send supporting documents?",
+      "how do I escalate an unresolved complaint beyond tier one front-line support?",
+      "how do I connect with a live chat agent instead of automated phone menu?",
+      "where can I report inaccurate information or typos on the help page?"
+    ],
+    "source_thread_ids": [
+      "420975",
+      "427296",
+      "1286999",
+      "1495602",
+      "1519097",
+      "2490640",
+      "1391827"
+    ]
+  },
+  "faq-account-payment-payment-methods-emi": {
+    "paraphrases": [
+      "debit card keeps failing even though my bank account has sufficient balance",
+      "cannot update billing details and system keeps rejecting the replacement card",
+      "how does installment or monthly payment financing work at checkout?",
+      "is zero percent interest or no cost installment available on all cards?",
+      "why does my new store credit card require telephone verification before charging?",
+      "how do I change my monthly installment payment plan after purchasing?",
+      "selected monthly installment plan but credit card statement was charged the full lump sum",
+      "financing installment breakdown does not show up on the final payment review page"
+    ],
+    "source_thread_ids": [
+      "25283",
+      "171006",
+      "235765",
+      "242504",
+      "486749",
+      "780818",
+      "1065649",
+      "1137427"
+    ]
+  },
+  "faq-account-payment-account-locked-blocked": {
+    "paraphrases": [
+      "how do I permanently delete and close an existing customer account?",
+      "account got suspended immediately after redeeming a gift voucher",
+      "how can I deactivate or close my profile when receiving repetitive emails?",
+      "received sudden account suspension notification without any explanation",
+      "reported suspicious activity and now I cannot log into my own profile",
+      "fraud detection triggered a lock on my account and I cannot verify login",
+      "unable to reset forgotten password or receive one-time password verification",
+      "prompt says check email for unlock instructions but no recovery message arrives"
+    ],
+    "source_thread_ids": [
+      "17231",
+      "115923",
+      "180758",
+      "206160",
+      "298960",
+      "483054",
+      "487652",
+      "553334"
+    ]
+  },
+  "faq-order-status-cancellations-and-refunds": {
+    "paraphrases": [
+      "why was my placed order cancelled automatically without my authorization?",
+      "order was scheduled for delivery today but suddenly switched to cancelled status",
+      "warehouse shipped an item that I had already submitted a cancellation request for",
+      "can a merchant cancel my purchase due to pricing or inventory stock error?",
+      "what are the most common reasons an order is unexpectedly cancelled?",
+      "order was voided by the system, when will my held funds be released back to my bank?",
+      "cancel order button is greyed out or missing from my order details page",
+      "cancelled order was never delivered but my refund has not been credited back"
+    ],
+    "source_thread_ids": [
+      "350603",
+      "510257",
+      "687839",
+      "740380",
+      "976728",
+      "1127985",
+      "1862630",
+      "1993267"
+    ]
+  }
+}
