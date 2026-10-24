@@ -251,3 +251,82 @@ def test_retrieval_eval_location_us(tmp_path, monkeypatch):
     )
     assert captured["url"] == expected_url
     assert captured["ds"] == expected_ds
+
+
+# REQ-RAG-RETR-009
+def test_retrieval_eval_queries_file_and_status_filter(tmp_path, monkeypatch):
+    queries_file = tmp_path / "queries.jsonl"
+    out_file = tmp_path / "out.json"
+
+    queries_file.write_text(
+        json.dumps({
+            "qid": "q001",
+            "query": "Where is my parcel?",
+            "relevant": "faq-order-status-late-delivery",
+            "original_gold": "faq-order-status-late-delivery",
+            "intent": "order_status",
+        }) + "\n"
+    )
+
+    captured_kwargs = []
+
+    def mock_search(*args, **kwargs):
+        captured_kwargs.append(kwargs)
+        return ["faq-order-status-late-delivery"]
+
+    monkeypatch.setattr("subprocess.check_output", lambda *a, **kw: "dummy-tok\n")
+    monkeypatch.setattr("retrieval_eval.search", mock_search)
+    monkeypatch.setattr("sys.argv", [
+        "retrieval_eval.py",
+        "--queries", str(queries_file),
+        "--filter-status", "active,draft",
+        "--out", str(out_file),
+    ])
+
+    main()
+
+    res = json.load(open(out_file))
+    assert res["report"]["n"] == 1
+    assert res["report"]["recall@1"] == 1.0
+    assert len(captured_kwargs) == 1
+    assert captured_kwargs[0]["allowed_statuses"] == ["active", "draft"]
+    assert captured_kwargs[0]["intent_family"] is None
+
+
+# REQ-RAG-RETR-010
+def test_retrieval_eval_intent_filter_oracle(tmp_path, monkeypatch):
+    queries_file = tmp_path / "queries.jsonl"
+    out_file = tmp_path / "out.json"
+
+    queries_file.write_text(
+        json.dumps({
+            "qid": "q002",
+            "query": "How do I return my shoes?",
+            "relevant": "faq-returns-refunds-process",
+            "original_gold": "faq-returns-refunds-process",
+            "intent": "returns_refunds",
+        }) + "\n"
+    )
+
+    captured_kwargs = []
+
+    def mock_search(*args, **kwargs):
+        captured_kwargs.append(kwargs)
+        return ["faq-returns-refunds-process"]
+
+    monkeypatch.setattr("subprocess.check_output", lambda *a, **kw: "dummy-tok\n")
+    monkeypatch.setattr("retrieval_eval.search", mock_search)
+    monkeypatch.setattr("sys.argv", [
+        "retrieval_eval.py",
+        "--queries", str(queries_file),
+        "--intent-filter", "oracle",
+        "--out", str(out_file),
+    ])
+
+    main()
+
+    res = json.load(open(out_file))
+    assert res["report"]["n"] == 1
+    assert res["report"]["recall@1"] == 1.0
+    assert len(captured_kwargs) == 1
+    assert captured_kwargs[0]["intent_family"] == "returns_refunds"
