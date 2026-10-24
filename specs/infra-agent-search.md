@@ -58,11 +58,11 @@ deploy/terraform/
 | `REQ-INFRA-SEARCH-001` | Terraform Modular Directory Layout | `done` | `tests/infra/test_terraform_static.py::test_terraform_directories_exist` |
 | `REQ-INFRA-SEARCH-002` | VM-Only Execution Invariant | `done` | `manual: ./scripts/tf_vm.sh validate single-project` |
 | `REQ-INFRA-SEARCH-003` | Remote State Bucket Configuration | `done` | `tests/infra/test_terraform_static.py::test_backend_bucket_name` |
-| `REQ-INFRA-SEARCH-004` | Regional and Search Resource Placement | `done` | `tests/infra/test_terraform_static.py::test_no_global_location_when_search_location_is_us` |
+| `REQ-INFRA-SEARCH-004` | Regional and Search Resource Placement | `done` | `tests/infra/test_terraform_static.py::test_search_location_defaults_to_global` |
 | `REQ-INFRA-SEARCH-005` | Discovery Engine Stores and Search Engine Contract | `done` | `tests/infra/test_terraform_static.py::test_agent_search_contract` |
 | `REQ-INFRA-SEARCH-006` | Least-Privilege IAM and Security Policy | `done` | `tests/infra/test_terraform_static.py::test_tdd_12_6_security_policy_no_forbidden_iam` |
 | `REQ-INFRA-SEARCH-007` | Read-Only Corpus Bucket Data Source | `done` | `tests/infra/test_terraform_static.py::test_corpus_bucket_data_source_not_managed` |
-| `REQ-INFRA-SEARCH-008` | Agent Search Global to US Migration | `partial` | `manual: ./scripts/tf_vm.sh logged-run single-project single_project_plan plan` |
+| `REQ-INFRA-SEARCH-008` | Agent Search Global to US Migration | `done` | `tests/infra/test_terraform_static.py::test_import_blocks_target_global_resources` |
 | `REQ-INFRA-SEARCH-009` | Discovery Engine Soft-Delete Lifecycle Awareness | `done` | `manual: gcloud compute ssh laya-tune --command "terraform state list"` |
 
 ---
@@ -91,9 +91,9 @@ deploy/terraform/
 - **Owner**: infra-agent-search
 
 ### REQ-INFRA-SEARCH-004: Regional and Search Resource Placement
-- **Statement**: All regional infrastructure (compute VMs, Cloud SQL, Cloud Run, GCS buckets) MUST be deployed in `us-central1`, while Agent Search data stores and search engines MUST be deployed in the `us` multi-region (host `us-discoveryengine.googleapis.com`).
-- **Rationale**: Co-locates runtime compute and persistence for low-latency routing while placing Agent Search in a supported multi-region location (TDD §4.1; PLAN2.md).
-- **Acceptance**: `tests/infra/test_terraform_static.py::test_no_global_location_when_search_location_is_us`
+- **Statement**: All regional infrastructure (compute VMs, Cloud SQL, Cloud Run, GCS buckets) MUST be deployed in `us-central1`. Agent Search data stores and search engines MUST default to `global` multi-region (host `discoveryengine.googleapis.com`), while supporting parameterized override to regional/multi-region endpoints (e.g. `us`).
+- **Rationale**: Co-locates runtime compute and persistence in `us-central1` while serving Agent Search from `global`, where empirical retrieval evaluation demonstrates superior retrieval quality (`recall@5` of 0.780 global vs 0.753 `us`), zero stochastic noise across runs, and where existing production datasets (`faq-articles` 50 docs, `resolved-threads` 81,103 docs) are live and verified (specs/rag-retrieval.md §REQ-RAG-RETR-004).
+- **Acceptance**: `tests/infra/test_terraform_static.py::test_search_location_defaults_to_global`
 - **Status**: done
 - **Owner**: infra-agent-search
 
@@ -119,12 +119,16 @@ deploy/terraform/
 - **Owner**: infra-agent-search
 
 ### REQ-INFRA-SEARCH-008: Agent Search Global to US Migration
-- **Statement**: Migration of Agent Search from legacy `global` data stores to `us` multi-region stores SHOULD demonstrate retrieval quality parity on held-out queries before updating script default locations and decommissioning legacy resources.
-- **Rationale**: Guarantees zero downtime and prevents search regression during cross-region migration (PLAN2.md §Phase 3).
-- **Acceptance**: `manual: ./scripts/tf_vm.sh logged-run single-project single_project_plan plan`
-- **Status**: partial
+- **Statement**: Migration of Agent Search from legacy `global` data stores to `us` multi-region stores is reversed: all production Agent Search serving MUST be served from `global`, and existing `global` resources MUST be brought under Terraform management. Unmanaged `us` copies MUST be decommissioned.
+- **Rationale**: The empirical migration parity evaluation on held-out slice (b) (n=287) failed the gate (`Δrecall@5 = −0.027 < −0.020`). Because the simulated enterprise customer has no geographic data residency restrictions and queries in English, the deterministic `global` index is the superior serving choice. The user finalized this decision on 2026-10-24.
+- **Acceptance**: `tests/infra/test_terraform_static.py::test_import_blocks_target_global_resources`
+- **Status**: done
 - **Owner**: infra-agent-search
-- **Evidence**: `faq-articles` provisioned and loaded with 50 documents in `us` multi-region (recall@5 parity measured at 0.753 `us` vs 0.780 `global` in commit `a6f621c`). Search engine `support-kb-search` active in `us` linked to `faq-articles`. Data store `resolved-threads` definition updated to `content_config = "NO_CONTENT"` (matching structData schema); recreation in `us` and 81,103 thread document import pending clearance of Discovery Engine soft-delete tombstone.
+- **Outcome & Evidence (2026-10-24)**:
+  - Parity test on held-out slice (b) (n=287): Global baseline `recall@5 = 0.780` vs US `recall@5 = 0.753` (`Δ = −0.027`, failing the `≥ −0.020` threshold).
+  - Decision finalized by user on 2026-10-24: retain `global` as primary serving location.
+  - Terraform imports codified in `deploy/terraform/single-project/imports.tf` importing the live `global` `faq-articles`, `resolved-threads`, and `support-kb-search` resources into state without in-place drift or recreation.
+  - Unmanaged `us` data stores and search engines decommissioned.
 
 ### REQ-INFRA-SEARCH-009: Discovery Engine Soft-Delete Lifecycle Awareness
 - **Statement**: Operations and disaster-recovery runbooks MUST account for Discovery Engine's asynchronous purge pipeline (`discovery-ds-deletion-pipeline`), which holds deleted data store IDs in soft-deleted state for hours to days and rejects immediate re-creation with HTTP 400 `FAILED_PRECONDITION`.
@@ -138,6 +142,8 @@ deploy/terraform/
 
 ## 4. Open Questions / Deltas
 
-1. **Active Location Delta (Global vs. US)**: TDD §4.1 specifies that Agent Search data stores reside in `us` multi-region. Stage 1 Terraform has successfully provisioned `faq-articles` and `resolved-threads` in `us`, and `faq-articles` in `us` is loaded with 50 articles (measured recall@5 of 0.753 on `us` vs 0.780 on `global` in commit `a6f621c` parity evaluation; PLAN2.md §Phase 3). However, runtime scripts and evaluation tools still default to `global` via `--location` until final parity verification and index stabilization are complete.
+1. **Active Location Delta (Global vs. US)**: TDD §4.1 specifies that Agent Search data stores reside in `us` multi-region. However, rigorous empirical evaluation on held-out queries demonstrated that `global` achieves higher retrieval accuracy (`recall@5` 0.780 vs 0.753) with zero stochastic drift across test runs. Furthermore, the simulated customer has no regulatory data residency constraints for English-only customer support. Per user architectural decision on 2026-10-24, Agent Search is permanently served from `global`, with existing `global` resources imported into Terraform management and `us` resources decommissioned. Regional infrastructure remains in `us-central1`.
+2. **Omission of `google_discovery_engine_schema` Resource**: Terraform initially attempted to define schema resources. Discovery Engine automatically creates and updates `default_schema` upon ingestion for generic industry verticals; declaring static schema resources in Terraform triggered schema collision errors and was intentionally omitted (deploy/terraform/README.md lines 95–97).
+3. **Lifecycle Ignore Changes for `document_processing_config`**: Discovery Engine injects default `digital_parsing_config` server-side upon creating `CONTENT_REQUIRED` data stores. Terraform plans detect this as drift and attempt to remove it, which forces resource replacement. A `lifecycle { ignore_changes = [document_processing_config] }` block is required on data store resources (deploy/terraform/README.md lines 98–99).
 2. **Omission of `google_discovery_engine_schema` Resource**: Terraform initially attempted to define schema resources. Discovery Engine automatically creates and updates `default_schema` upon ingestion for generic industry verticals; declaring static schema resources in Terraform triggered schema collision errors and was intentionally omitted (deploy/terraform/README.md lines 95–97).
 3. **Lifecycle Ignore Changes for `document_processing_config`**: Discovery Engine injects default `digital_parsing_config` server-side upon creating `CONTENT_REQUIRED` data stores. Terraform plans detect this as drift and attempt to remove it, which forces resource replacement. A `lifecycle { ignore_changes = [document_processing_config] }` block is required on data store resources (deploy/terraform/README.md lines 98–99).

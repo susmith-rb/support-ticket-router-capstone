@@ -1,12 +1,24 @@
 mock_provider "google" {}
 mock_provider "google-beta" {}
 
+override_resource {
+  target = module.agent_search.google_discovery_engine_data_store.faq_articles
+}
+
+override_resource {
+  target = module.agent_search.google_discovery_engine_data_store.resolved_threads
+}
+
+override_resource {
+  target = module.agent_search.google_discovery_engine_search_engine.support_kb_search
+}
+
 run "verify_agent_search_defaults" {
   command = plan
 
   assert {
-    condition     = module.agent_search.search_location == "us"
-    error_message = "Expected search_location to default to us"
+    condition     = module.agent_search.search_location == "global"
+    error_message = "Expected search_location to default to global"
   }
 
   assert {

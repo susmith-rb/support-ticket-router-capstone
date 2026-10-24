@@ -2,7 +2,7 @@ resource "google_discovery_engine_data_store" "faq_articles" {
   project                     = var.project_id
   location                    = var.search_location
   data_store_id               = "faq-articles"
-  display_name                = "FAQ Articles"
+  display_name                = "faq-articles"
   industry_vertical           = "GENERIC"
   content_config              = "CONTENT_REQUIRED"
   solution_types              = ["SOLUTION_TYPE_SEARCH"]
@@ -19,7 +19,7 @@ resource "google_discovery_engine_data_store" "resolved_threads" {
   project                     = var.project_id
   location                    = var.search_location
   data_store_id               = "resolved-threads"
-  display_name                = "Resolved Threads"
+  display_name                = "resolved-threads"
   industry_vertical           = "GENERIC"
   content_config              = "NO_CONTENT"
   solution_types              = ["SOLUTION_TYPE_SEARCH"]
@@ -37,7 +37,7 @@ resource "google_discovery_engine_search_engine" "support_kb_search" {
   engine_id         = "support-kb-search"
   collection_id     = "default_collection"
   location          = var.search_location
-  display_name      = "Support KB Search"
+  display_name      = "Support KB search"
   industry_vertical = "GENERIC"
   data_store_ids = [
     google_discovery_engine_data_store.faq_articles.data_store_id,

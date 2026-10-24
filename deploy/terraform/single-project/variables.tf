@@ -13,7 +13,7 @@ variable "region" {
 variable "search_location" {
   description = "Multi-region location for Agent Search (Discovery Engine)"
   type        = string
-  default     = "us"
+  default     = "global"
 }
 
 variable "search_tier" {

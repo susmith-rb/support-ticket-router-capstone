@@ -6,7 +6,7 @@ variable "project_id" {
 variable "search_location" {
   description = "Discovery Engine location (e.g. us, global, eu)"
   type        = string
-  default     = "us"
+  default     = "global"
 }
 
 variable "search_tier" {

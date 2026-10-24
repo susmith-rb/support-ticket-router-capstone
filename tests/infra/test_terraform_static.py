@@ -72,24 +72,44 @@ def test_bootstrap_state_bucket_configuration():
 
 
 # REQ-INFRA-SEARCH-004
-def test_no_global_location_when_search_location_is_us():
-  """Agent Search resources must be in location 'us', never hardcoding 'global'."""
+def test_search_location_defaults_to_global():
+  """Agent Search resources must default to 'global', with parameterized location support."""
   as_main = (SINGLE_PROJECT_DIR / "modules" / "agent-search" / "main.tf").read_text()
   as_vars = (SINGLE_PROJECT_DIR / "modules" / "agent-search" / "variables.tf").read_text()
   sp_vars = (SINGLE_PROJECT_DIR / "variables.tf").read_text()
 
-  # Defaults must be "us"
-  assert 'default     = "us"' in as_vars
-  assert 'default     = "us"' in sp_vars
-
-  # Neither data store nor engine should hardcode "global"
-  assert 'location                    = "global"' not in as_main
-  assert 'location         = "global"' not in as_main
-  assert 'location = "global"' not in as_main
+  # Defaults must be "global"
+  assert 'default     = "global"' in as_vars
+  assert 'default     = "global"' in sp_vars
 
   # Resources must reference var.search_location
   assert "location                    = var.search_location" in as_main
   assert "location          = var.search_location" in as_main
+
+
+# REQ-INFRA-SEARCH-004
+# REQ-INFRA-SEARCH-008
+def test_import_blocks_target_global_resources():
+  """Import blocks must target the three live global Discovery Engine resources."""
+  imports_tf = (SINGLE_PROJECT_DIR / "imports.tf").read_text()
+
+  assert "module.agent_search.google_discovery_engine_data_store.faq_articles" in imports_tf
+  assert (
+      'id = "projects/susmith-fde-ticket-router/locations/global/collections/default_collection/dataStores/faq-articles"'
+      in imports_tf
+  )
+
+  assert "module.agent_search.google_discovery_engine_data_store.resolved_threads" in imports_tf
+  assert (
+      'id = "projects/susmith-fde-ticket-router/locations/global/collections/default_collection/dataStores/resolved-threads"'
+      in imports_tf
+  )
+
+  assert "module.agent_search.google_discovery_engine_search_engine.support_kb_search" in imports_tf
+  assert (
+      'id = "projects/susmith-fde-ticket-router/locations/global/collections/default_collection/engines/support-kb-search"'
+      in imports_tf
+  )
 
 
 # REQ-INFRA-SEARCH-006
