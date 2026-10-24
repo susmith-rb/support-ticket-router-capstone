@@ -64,6 +64,7 @@ Evaluation is stratified across three tiers to balance realism, benchmarking, an
 | `REQ-RAG-RETR-012` | Regression Gate on Corpus Re-Publishing | `done` | `manual: python rag/retrieval_eval.py --threshold LOWEST --clean --gold-map rag/corpus_v2/gold_map_v1_v2.json` |
 | `REQ-RAG-RETR-013` | Evaluation Set Split and Metric Standards | `done` | `tests/rag/test_build_eval_splits.py::test_splits_disjointness` |
 | `REQ-RAG-RETR-014` | Paraphrase Augmentation Retrieval Parity Gate | `done` | `tests/rag/test_augment_paraphrases.py` |
+| `REQ-RAG-RETR-015` | Multi-Relevant Retrieval Measurement & Adjudication Evaluation | `done` | `tests/rag/test_multi_label_eval.py` |
 
 ---
 
@@ -232,3 +233,68 @@ Evaluation is stratified across three tiers to balance realism, benchmarking, an
 - **Acceptance**: `tests/rag/test_augment_paraphrases.py` & manual publish verification
 - **Status**: done
 - **Owner**: rag-retrieval
+
+### REQ-RAG-RETR-015: Multi-Relevant Retrieval Measurement & Adjudication Evaluation
+- **Statement**: Retrieval evaluation MUST support multi-relevant ground truth labeled by two independent blind annotators (A, B) and an adjudicator (C) per `docs/plans/PLAN4.md`. Metrics and statistics computed MUST include:
+  1. **Inter-Annotator Agreement**: Cohen's $\kappa$ on `support_request` (binary) and `primary` (categorical), exact-match rate on `primary`, and mean Jaccard overlap of relevant sets across common queries.
+  2. **Scope Filtering & Exclusion Accounting**: Evaluated on `MAIN` scope (`support_request == True` AND `language == "en"` AND `primary is not None`) and `ALL-support` scope (`support_request == True` AND `primary is not None`), with waterfall accounting of excluded queries by reason (`not_support_request`, `non_english`, `no_primary`).
+  3. **TDD §6.4 Consensus Retrieval Quality Metrics**: Adjudicated consensus labels (C) evaluated for `recall@5` (any consensus doc in top 5), `MRR@10` (rank of first consensus doc), and graded `nDCG@5` (gain: primary=2, other relevant=1; IDCG normalized against query's own label set).
+  4. **Sensitivity Bounds**: `LOWER` bound (consensus primary only) and `UPPER` bound (union of relevant docs from A $\cup$ B $\cup$ C).
+  5. **Per-Intent Breakdown**: Intent-family performance mapped from the consensus primary document ID prefix (`faq-order-status` $\to$ `order_status`, `faq-account-payment` $\to$ `account_payment`, `faq-returns-refunds` $\to$ `returns_refunds`, `faq-shipping-policy` $\to$ `shipping_policy`, `faq-other` $\to$ `other`).
+- **Rationale**: TDD §6.4 specifies `retrieval/v1` evaluated against 1–3 relevant articles per query with graded nDCG, rather than single-silver-gold proxy themes. Pre-registered in `docs/plans/PLAN4.md` prior to unblinding labels.
+- **Acceptance**: `tests/rag/test_multi_label_eval.py`
+- **Status**: done
+- **Owner**: rag-retrieval
+- **Measured Evaluation Evidence (2026-10-24, Release 5 Corpus)**:
+  - **Inter-Annotator Agreement (A vs B)**:
+    | Split / Dataset | n | Cohen's $\kappa$ (support) | Exact-Match (primary) | Cohen's $\kappa$ (primary) | Mean Jaccard Overlap |
+    | :--- | :---: | :---: | :---: | :---: | :---: |
+    | **TEST (Frozen)** | 300 | 0.7477 | 0.8467 | 0.8396 | 0.7026 |
+    | **DEV** | 300 | 0.8310 | 0.8433 | 0.8355 | 0.7453 |
+    | **Full Dataset** | 600 | 0.7917 | 0.8450 | 0.8377 | 0.7239 |
+
+  - **Scope & Waterfall Exclusion Accounting**:
+    | Split | Total Evaluated | In Scope (`MAIN`) | In Scope (`ALL-support`) | `not_support_request` | `non_english` | `no_primary` | Total Excluded (MAIN) |
+    | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+    | **TEST** | 300 | **223** | 266 | 31 | 43 | 3 | 77 |
+    | **DEV** | 300 | **212** | 264 | 34 | 52 | 2 | 88 |
+
+  - **Consensus Retrieval Quality vs. Sensitivity Bounds (Release 5)**:
+    | Split | Configuration | Scope | Bound / Set | n | recall@5 | MRR@10 | Graded nDCG@5 | TDD Status |
+    | :--- | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+    | **TEST** | **intent_soft_noisy_0.2** | `MAIN` | **CONSENSUS** | 223 | **0.9462** | **0.8381** | **0.7002** | r@5/MRR met, nDCG gap |
+    | TEST | intent_soft_noisy_0.2 | `MAIN` | LOWER | 223 | 0.8655 | 0.6786 | 0.7177 | Sensitivity check |
+    | TEST | intent_soft_noisy_0.2 | `MAIN` | UPPER | 223 | 0.9507 | 0.8457 | 0.6989 | Sensitivity check |
+    | **TEST** | intent_soft_noisy_0.2 | `ALL-support` | **CONSENSUS** | 266 | **0.9398** | **0.8299** | **0.6948** | Multilingual included |
+    | TEST | intent_soft_noisy_0.2 | `ALL-support` | LOWER | 266 | 0.8647 | 0.6712 | 0.7124 | Sensitivity check |
+    | TEST | intent_soft_noisy_0.2 | `ALL-support` | UPPER | 266 | 0.9436 | 0.8362 | 0.6923 | Sensitivity check |
+    | **TEST** | **baseline** | `MAIN` | **CONSENSUS** | 223 | **0.9417** | **0.8229** | **0.7106** | r@5/MRR met, nDCG gap |
+    | TEST | baseline | `MAIN` | LOWER | 223 | 0.8924 | 0.6827 | 0.7309 | Sensitivity check |
+    | TEST | baseline | `MAIN` | UPPER | 223 | 0.9462 | 0.8244 | 0.7078 | Sensitivity check |
+    | **TEST** | baseline | `ALL-support` | **CONSENSUS** | 266 | **0.9323** | **0.8179** | **0.7041** | Multilingual included |
+    | **DEV** | **intent_soft_noisy_0.2** | `MAIN` | **CONSENSUS** | 212 | **0.9387** | **0.8464** | **0.7324** | r@5/MRR met, nDCG gap |
+    | DEV | intent_soft_noisy_0.2 | `MAIN` | LOWER | 212 | 0.8774 | 0.7158 | 0.7531 | Sensitivity check |
+    | DEV | intent_soft_noisy_0.2 | `MAIN` | UPPER | 212 | 0.9387 | 0.8464 | 0.7309 | Sensitivity check |
+    | **DEV** | intent_soft_noisy_0.2 | `ALL-support` | **CONSENSUS** | 264 | **0.9280** | **0.8197** | **0.7092** | Multilingual included |
+    | **DEV** | **baseline** | `MAIN` | **CONSENSUS** | 212 | **0.9245** | **0.8315** | **0.7190** | r@5/MRR met, nDCG gap |
+    | DEV | baseline | `ALL-support` | **CONSENSUS** | 264 | **0.9129** | **0.8161** | **0.7014** | Multilingual included |
+
+  - **Per-Intent Breakdown on Frozen TEST (`intent_soft_noisy_0.2`, MAIN Scope n=223)**:
+    - *account_payment (n=29)*: recall@5 = **0.9310**, MRR@10 = **0.8603**, graded nDCG@5 = **0.7098**
+    - *order_status (n=53)*: recall@5 = **0.9434**, MRR@10 = **0.8329**, graded nDCG@5 = **0.7061**
+    - *other (n=52)*: recall@5 = **0.9615**, MRR@10 = **0.8092**, graded nDCG@5 = **0.7175**
+    - *returns_refunds (n=63)*: recall@5 = **0.9365**, MRR@10 = **0.8754**, graded nDCG@5 = **0.7161**
+    - *shipping_policy (n=26)*: recall@5 = **0.9615**, MRR@10 = **0.7917**, graded nDCG@5 = **0.6042**
+
+  - **Per-Intent Breakdown on DEV (`intent_soft_noisy_0.2`, MAIN Scope n=212)**:
+    - *account_payment (n=27)*: recall@5 = **0.9630**, MRR@10 = **0.9012**, graded nDCG@5 = **0.8093**
+    - *order_status (n=54)*: recall@5 = **0.9630**, MRR@10 = **0.8549**, graded nDCG@5 = **0.7597**
+    - *other (n=52)*: recall@5 = **0.9038**, MRR@10 = **0.7899**, graded nDCG@5 = **0.6950**
+    - *returns_refunds (n=58)*: recall@5 = **0.9655**, MRR@10 = **0.8885**, graded nDCG@5 = **0.7369**
+    - *shipping_policy (n=21)*: recall@5 = **0.8571**, MRR@10 = **0.7778**, graded nDCG@5 = **0.6442**
+
+  - **Decision Rule Summary (PLAN4)**:
+    - `recall@5`: Target $\ge 0.90$ $\to$ TEST measured **0.9462** (PASSED, +0.0462).
+    - `MRR@10`: Target $\ge 0.75$ $\to$ TEST measured **0.8381** (PASSED, +0.0881).
+    - `graded nDCG@5`: Target $\ge 0.80$ $\to$ TEST measured **0.7002** (FAILED, gap $-0.0998$).
+    - Verdict: **NOT_MET** under strict conjunction of all 3 targets, despite recall@5 and MRR@10 substantially surpassing TDD benchmarks. The primary gap is graded nDCG ranking precision (primary article placed at rank 2-5 rather than rank 1).

@@ -174,6 +174,17 @@ def test_evaluate_single_config_mock():
     assert b["recall@5"] == 1.0
     assert b["mrr@10"] == pytest.approx(0.75)
 
+    # Check rows are recorded with required fields
+    assert "rows" in res
+    assert len(res["rows"]) == 2
+    row0 = res["rows"][0]
+    assert row0["qid"] == "d001"
+    assert row0["query"] == "track order"
+    assert row0["top10"] == ["doc-1", "doc-2", "doc-3"]
+    assert row0["top10_ids"] == ["doc-1", "doc-2", "doc-3"]
+    assert row0["latency"] == 120.0
+    assert row0["applied_intent"] is None
+
 
 def test_evaluate_managed_rerank_reuses_cache():
     queries = [

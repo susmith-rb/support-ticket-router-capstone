@@ -1,0 +1,752 @@
+[
+ {
+  "doc_id": "faq-account-payment-account-locked-blocked",
+  "title": "What should I do if my account is locked, suspended, or blocked?",
+  "sample_questions": [
+   "Why is my Global Retail Hub account locked or suspended?",
+   "How do I unlock my account after too many login attempts?",
+   "My account was blocked due to suspicious activity.",
+   "How do I regain access to my suspended account?",
+   "I received a notification that my account was temporarily on hold.",
+   "What information is needed to unlock a blocked account?",
+   "How fast will customer support help me unlock my account?",
+   "Can I update my payment method while my account is on hold?"
+  ],
+  "summary": "If your Global Retail Hub account has been locked or placed on hold, it is typically due to security safeguards protecting your payment information and account access. Follow these steps to restore access to your account: 1. **Check your registered email:** Review any notification emails from Global Retail Hub with instructions on how to verify you"
+ },
+ {
+  "doc_id": "faq-account-payment-account-login-issues",
+  "title": "What should I do if I can't log into my Global Retail Hub account?",
+  "sample_questions": [
+   "I can't login to access my account. Please assist",
+   "When I enter my email address and password I am seeing 'we cannot find an account with that email address'.",
+   "I'm having problems signing in, it comes up saying 'session expired'.",
+   "The code generator is not working. Trying to reset my password and hitting a wall.",
+   "Doesn't recognise old or new password and I am not receiving the reset code.",
+   "I can't login to my account. I've reset the password successfully and I can't login",
+   "The app hasn't been letting me log into my account for the past month or more.",
+   "I'm getting an error. The app reads, 'something went wrong, please try again later.'"
+  ],
+  "summary": "If you are having trouble logging into your Global Retail Hub account, there are a few steps you can take to regain access. 1. **Check your credentials:** Ensure you are using the correct email address or mobile number associated with your account. If your browser autofills your login details, try typing them manually. 2. **Reset your password:** I"
+ },
+ {
+  "doc_id": "faq-account-payment-account-management",
+  "title": "How do I update my billing address or payment method?",
+  "sample_questions": [
+   "gostaria de alterar o endere\u00e7o de cobran\u00e7a, como fa\u00e7o?",
+   "how to change my billing address on my account?",
+   "purchased a mobile, entered an address for delivery. Diff. Billing add. picked up automatically.",
+   "i need to update my credit card details",
+   "where can I change my payment method?",
+   "wrong account charged for prime, how do I fix it?",
+   "my payment was declined, how do I retry it?",
+   "Declined payments retry only once within 24 hours."
+  ],
+  "summary": "If you need to update your billing address or payment method for your Global Retail Hub account, you can easily do so in your account settings. To update your payment details or billing address: 1. Log in to your Global Retail Hub account and navigate to **Your Orders** or your account settings. 2. Select the option to manage your payment methods. "
+ },
+ {
+  "doc_id": "faq-account-payment-amazon-pay-balance",
+  "title": "Can I transfer my Global Retail Hub Pay balance to my bank account or a friend?",
+  "sample_questions": [
+   "can I please get my money back from my pay balance to my bank account?",
+   "how do i send my wallet balance to a friend?",
+   "is pay balance transferable to another user?",
+   "can i withdraw money from my retail hub wallet?",
+   "why can't I transfer or send pay balance to friends?",
+   "how to move my pay balance to my checking account?",
+   "Funds in the Pay balance cannot be transferred to a bank account.",
+   "Funds cannot be transferred to another user's Pay balance."
+  ],
+  "summary": "Currently, funds added to your Global Retail Hub Pay balance cannot be transferred to a bank account or to another user's Pay balance. Your Pay balance is designed to be used exclusively for purchases on the Global Retail Hub app or website. If you have funds in your account, they will automatically be applied as a payment option during checkout fo"
+ },
+ {
+  "doc_id": "faq-account-payment-cashback-promos-giftcards",
+  "title": "Why haven't I received my cashback, promo code discount, or gift card refund?",
+  "sample_questions": [
+   "Where is my cashback?",
+   "My promo code isn't working at checkout.",
+   "I didn't get the cashback for my Hub Plus renewal.",
+   "Why isn't my gift card refund showing up?",
+   "How long does it take to get my cashback?",
+   "My discount code says invalid, what do I do?",
+   "I used a promo code but the discount didn't apply.",
+   "When will my gift card balance update after a return?"
+  ],
+  "summary": "If you are missing a cashback reward, having trouble with a promo code, or waiting for a gift card refund, here is what you need to know. **Gift Card Refunds** If you returned an item and chose a gift card refund, the funds will be issued to your Global Retail Hub account within 24 hours after we receive your return. **Promo Codes and Discounts** I"
+ },
+ {
+  "doc_id": "faq-account-payment-checkout-payment-errors",
+  "title": "Why was my payment declined and how do I fix checkout errors?",
+  "sample_questions": [
+   "Why does my order keep getting declined?",
+   "My card was rejected at checkout, what do I do?",
+   "How do I update my payment method for a failed order?",
+   "I was charged twice for the same order.",
+   "Why did my payment fail?",
+   "I got an unauthorized charge on my account, please help.",
+   "My money is stuck and the order won't go through.",
+   "order went through but got auto-cancelled minutes later with money deducted"
+  ],
+  "summary": "If your payment is declined during checkout, Global Retail Hub will automatically retry the charge once within 24 hours. If the payment fails again, your order will not be dispatched until you update your payment information. To fix a declined payment or update your payment method: 1. Navigate to **Your Orders** in your Global Retail Hub account. 2"
+ },
+ {
+  "doc_id": "faq-account-payment-double-multiple-charges",
+  "title": "Why was I charged twice for my order or Hub Plus membership?",
+  "sample_questions": [
+   "I think I was charged twice it only should have been once.",
+   "why is \u00a3449.99 pending on my AmEx three times?!",
+   "I been charge twice for Hub Plus membership",
+   "you charge me twice for the same goods",
+   "me hicieron un cargo doble por un pedido",
+   "por qu\u00e9 est\u00e1s haciendo dos cargos a mi cuenta por un mismo producto",
+   "Everytime my card is charged, it pre-auths 3 times and holds the charge",
+   "I've been charged twice for an item that hasn't even been dispatched yet."
+  ],
+  "summary": "If you see multiple charges for a single order or your Hub Plus membership, you are likely seeing a temporary authorization hold rather than an actual double charge. When you place an order, Global Retail Hub may contact your bank to confirm that your payment method is valid and has sufficient funds. This appears as a pending charge or authorizatio"
+ },
+ {
+  "doc_id": "faq-account-payment-hacked-compromised-account",
+  "title": "What should I do if I suspect my Global Retail Hub account has been hacked or compromised?",
+  "sample_questions": [
+   "someone hacked my account and is buying things",
+   "my email was changed but I didn't do it",
+   "how do I report unauthorized charges on my account?",
+   "I got an email saying my password changed but I can't log in",
+   "someone else is using my account to buy gift cards",
+   "my account details were changed without my permission",
+   "I think my account was taken over",
+   "fraudulent purchases on my account"
+  ],
+  "summary": "If you suspect your Global Retail Hub account has been compromised, or if you notice unauthorized changes to your email, password, or payment methods, act immediately to secure your information. First, if you still have access to your account, change your password right away. If you cannot log in because your email or password was changed by someon"
+ },
+ {
+  "doc_id": "faq-account-payment-invoices-and-receipts",
+  "title": "How do I get an invoice or receipt for my order?",
+  "sample_questions": [
+   "Where is my VAT receipt?",
+   "How can I download my invoice?",
+   "I need a bill for my previous order",
+   "Can you email me the invoice?",
+   "How do I print a receipt from the app?",
+   "Where do I find the PDF bill for my purchase?",
+   "Invoices might not be downloadable directly from the mobile app.",
+   "Support will never ask for passwords or full card numbers."
+  ],
+  "summary": "You can easily view, download, or print invoices and receipts for your Global Retail Hub orders directly from your account. 1. Go to Your Orders on the Global Retail Hub website. 2. Find the specific order you need a receipt for. 3. Select the option to view or download your invoice. Please note that full PDF invoices might only be accessible throu"
+ },
+ {
+  "doc_id": "faq-account-payment-payment-methods-emi",
+  "title": "What payment methods are accepted and how do I resolve payment issues?",
+  "sample_questions": [
+   "How can I pay for my order?",
+   "Why is my EMI showing the full amount instead of installments?",
+   "My credit card payment was declined, what do I do?",
+   "How do I update my payment method?",
+   "I want to buy an item on EMI, how does it work?",
+   "Are there other ways to pay besides credit card?",
+   "Why did my payment fail?",
+   "Can I change my card details after placing an order?"
+  ],
+  "summary": "Global Retail Hub accepts major credit and debit cards for your purchases. If your payment is declined, our system will automatically retry the charge once within 24 hours. If you need to update your payment information, follow these steps: 1. Go to Your Orders. 2. Find the order with the declined payment. 3. Select Update Payment Method and enter "
+ },
+ {
+  "doc_id": "faq-account-payment-prime-membership-cancellation",
+  "title": "How do I cancel my Hub Plus membership or free trial?",
+  "sample_questions": [
+   "I gotta cancel my hub plus because this is ridiculous",
+   "is there a reason I'm still getting charged every other month even though it's been canceled?",
+   "Hi, I accidentally signed up to Hub Plus and would like to cancel",
+   "I made a hub plus account and forgot to cancel it",
+   "how do I cancel my subscription? I can't seem to do it",
+   "It automatically subscribed for hub plus to my account & money debited, i wanna cancel that",
+   "I want to end my free trial before I get charged",
+   "Hub Plus benefits are tied to the specific account where the membership was purchased."
+  ],
+  "summary": "If you need to cancel your Hub Plus membership or free trial, you can do so at any time directly from your account settings. To cancel your membership: 1. Log in to your Global Retail Hub account. 2. Go to **Your Account** and select **Manage Hub Plus Membership**. 3. Click on **End Membership and Benefits**. 4. Follow the on-screen prompts to conf"
+ },
+ {
+  "doc_id": "faq-account-payment-unauthorized-charges",
+  "title": "Why do I have an unexpected or unauthorized charge from Global Retail Hub?",
+  "sample_questions": [
+   "I got charged for Hub Plus but didn't sign up",
+   "Money came out of my account and I don't know why",
+   "Why is there a digital charge on my bank statement?",
+   "I see a duplicate charge on my credit card",
+   "Someone stole my card and used it on your site",
+   "Cancel this unauthorized subscription fee",
+   "Support investigates duplicate or unauthorized charges within 2 business days.",
+   "Global Retail Hub will never ask for your password or full card number."
+  ],
+  "summary": "If you see an unexpected or unauthorized charge from Global Retail Hub, we are here to help. First, check if the charge is for a Hub Plus membership renewal or a digital content purchase tied to your account. Often, unrecognized charges are from family members or friends who have access to your payment method. Please ask them to check their account"
+ },
+ {
+  "doc_id": "faq-order-status-cancellations-and-refunds",
+  "title": "Why was my order cancelled and when will I get my refund?",
+  "sample_questions": [
+   "Why did you cancel my order without my permission?",
+   "My order was cancelled on its own, what happened?",
+   "I didn't cancel my order but it says cancelled, how do I get my money back?",
+   "When will I get a refund for a cancelled order?",
+   "Can I reinstate an order that was cancelled by mistake?",
+   "Why was my one-day delivery order cancelled?",
+   "Order cancelled after one day, where is my refund?",
+   "How long does it take to get a refund after an order is cancelled?"
+  ],
+  "summary": "If your order was cancelled without your permission, it usually means the item became unavailable or there was an issue processing your payment. Unfortunately, once an order is cancelled, it cannot be reinstated. If you still want the item, you will need to place a new order. If you were charged for the cancelled order, Global Retail Hub will autom"
+ },
+ {
+  "doc_id": "faq-order-status-driver-and-courier-issues",
+  "title": "How do I report an issue with a delivery driver or courier?",
+  "sample_questions": [
+   "The delivery driver threw my package and broke it.",
+   "My courier was rude and refused to bring the package to my door.",
+   "The delivery guy marked my item delivered but kept it.",
+   "I was threatened by the person delivering my order.",
+   "Driver left my package in the rain instead of the safe place.",
+   "How do I complain about unprofessional courier behavior?",
+   "The delivery agent damaged my property while dropping off a parcel.",
+   "Missing packages marked delivered require waiting until the end of the next day before taking action."
+  ],
+  "summary": "At Global Retail Hub, we expect our delivery partners to treat you and your property with respect. If you experience unprofessional behavior, property damage, or suspect a driver mishandled your package, please report it to us immediately so we can investigate. Step 1: If your package is marked as delivered but is missing, please wait until the end"
+ },
+ {
+  "doc_id": "faq-order-status-false-delivery-attempts",
+  "title": "Why did I get a delivery attempt notice when no one came to my door?",
+  "sample_questions": [
+   "Carrier claims they tried to deliver but I was home all day.",
+   "Got a message saying delivery attempted but no one rang the bell.",
+   "Why does tracking say customer not reachable when I'm sitting right here?",
+   "Tracking says business was closed but they tried to deliver at 9:45 PM.",
+   "Delivery guy said my home was locked and left a note without knocking.",
+   "Email says delivery attempted today but nobody showed up, what gives?",
+   "Courier making false updates about insufficient address details.",
+   "Tracking shows undeliverable but I live in a 24/7 staffed building."
+  ],
+  "summary": "If you received a \"delivery attempted\" notification but no one actually came to your door, it is usually due to a carrier scanning error or a driver running out of time on their route. Here is what you should do if you receive a false delivery attempt notice: 1. **Check the delivery estimate:** Delivery estimates are shown at checkout and in Your O"
+ },
+ {
+  "doc_id": "faq-order-status-late-or-not-arrived-order",
+  "title": "What should I do if my order is late or has not arrived?",
+  "sample_questions": [
+   "My package was supposed to arrive yesterday and is still not here.",
+   "Why is my order delayed past the estimated delivery date?",
+   "My Hub Plus 2-day delivery missed its delivery date.",
+   "Tracking shows my order has not shipped or dispatched yet.",
+   "When is a package officially considered late?",
+   "How do I get a refund or replacement for an undelivered order?",
+   "My order has been stuck in processing for days.",
+   "Can I cancel an order that hasn't shipped yet?"
+  ],
+  "summary": "If your Global Retail Hub package has not arrived by the expected delivery date or appears delayed in dispatch, please check Your Orders for the latest tracking information. Delivery estimates are displayed at checkout and in Your Orders. Under Global Retail Hub policy, a package is officially considered late 1 business day after the latest deliver"
+ },
+ {
+  "doc_id": "faq-order-status-locker-and-pickup-issues",
+  "title": "What should I do if I have trouble picking up my order from a locker or store?",
+  "sample_questions": [
+   "I can't find the pickup location for my package.",
+   "The store where my package was delivered is closed.",
+   "I never received the access code for the locker.",
+   "My package says ready for pickup but I didn't get an email.",
+   "The locker is outside but the driver said the store was closed.",
+   "Why was my package sent to a pickup point instead of my house?",
+   "How do I get my package if the pickup store is under renovation?",
+   "My tracking says available for pickup but I don't know where."
+  ],
+  "summary": "If you are experiencing issues picking up your Global Retail Hub order from a locker or store location, there are a few steps you can take to resolve the problem. First, check your email and the Message Center in your account for the pickup instructions and access code. Sometimes these messages can be delayed or filtered into your spam folder. If y"
+ },
+ {
+  "doc_id": "faq-order-status-lost-in-transit",
+  "title": "What should I do if my package is lost in transit or stuck at a carrier facility?",
+  "sample_questions": [
+   "My package says it's lost in transit, what do I do?",
+   "Tracking shows my order is stuck at a distribution center.",
+   "The carrier lost my package, can I get a replacement?",
+   "My delivery has been delayed for days and tracking hasn't updated.",
+   "Why is my package bouncing around different cities?",
+   "Tracking says my item might be lost, how do I get a refund?",
+   "My order is late and seems to be stuck in transit.",
+   "The carrier facility has had my package for a week, help!"
+  ],
+  "summary": "If your package appears to be lost in transit or the tracking shows it is stuck at a carrier facility, we are here to help resolve the issue. First, check your delivery estimate in **Your Orders**. A package is officially considered \"late\" 1 business day after the latest delivery estimate provided at checkout. If your package has not arrived by thi"
+ },
+ {
+  "doc_id": "faq-order-status-missing-items-in-package",
+  "title": "What should I do if my package arrived but items are missing or the box is empty?",
+  "sample_questions": [
+   "I just received an empty box!",
+   "My order says delivered but only one item was in the package.",
+   "Where do I file a claim for an item missing from a delivered package?",
+   "Ordered two things, got one. What gives?",
+   "My package was open and a product is missing.",
+   "Many missing items from my order this week.",
+   "The envelope was empty when it arrived yesterday.",
+   "Missing items must be reported within 30 days of delivery."
+  ],
+  "summary": "We are sorry to hear that your Global Retail Hub package arrived with missing items or as an empty box. If your order contained multiple items, they may have been shipped in separate packages. To check if your missing items are arriving separately: 1. Go to **Your Orders**. 2. Check the tracking details for the missing items. They might be in a dif"
+ },
+ {
+  "doc_id": "faq-order-status-missing-or-stolen-delivered-package",
+  "title": "What should I do if my package is marked delivered but is missing or suspected stolen?",
+  "sample_questions": [
+   "My tracking says delivered but there is nothing on my porch.",
+   "I cannot find my package that was marked delivered yesterday.",
+   "Someone may have taken or stolen my delivered parcel.",
+   "Delivery notice was sent but no box was left at my address.",
+   "How long must I wait before reporting a missing delivered package?",
+   "Can I get a replacement for a stolen package?",
+   "The carrier left my parcel in an unsafe location and now it is gone.",
+   "Tracking status says delivered to resident but I was not home."
+  ],
+  "summary": "If tracking in Your Orders indicates your package was delivered but you cannot find it, or you suspect it was stolen from your porch or doorstep, follow these steps: 1. **Wait until end of next day:** Delivery carriers occasionally scan packages as delivered while still en route, or complete delivery by the end of next day. 2. **Inspect delivery su"
+ },
+ {
+  "doc_id": "faq-order-status-preorder-delivery-issues",
+  "title": "Why is my pre-ordered item delayed or not arriving on release day?",
+  "sample_questions": [
+   "Why didn't my pre-order arrive on the release date?",
+   "My pre-ordered game is delayed, what is going on?",
+   "I pre-ordered a book months ago and it's not here yet.",
+   "Can I cancel a delayed pre-order?",
+   "Release day delivery missed for my pre-order.",
+   "Why did my pre-order delivery date change?",
+   "Cancellations are only possible until the order enters the Preparing for shipment phase.",
+   "A package is only considered late 1 business day after the latest estimate."
+  ],
+  "summary": "Not all pre-ordered items are eligible for release-day delivery. Your estimated delivery date is always shown at checkout and in Your Orders. If you are experiencing a delay with a pre-order, please follow these steps: 1. Check your delivery estimate in Your Orders. A package is officially considered late 1 business day after the latest estimate pr"
+ },
+ {
+  "doc_id": "faq-order-status-tracking-and-status",
+  "title": "How do I track my order or find a missing package?",
+  "sample_questions": [
+   "Where is my order?",
+   "Why did my delivery date change?",
+   "My package says delivered but it is missing",
+   "How do I check my tracking number?",
+   "When will my Hub Plus package arrive?",
+   "Tracking says delayed, what do I do?",
+   "Can you update my tracking status?",
+   "tracking pushed my delivery date back by several days with no reason"
+  ],
+  "summary": "You can track your order and view estimated delivery dates directly in the Your Orders section of your Global Retail Hub account. Standard shipping takes 4 to 6 business days, while Hub Plus members receive 2-day shipping on eligible items. Delivery estimates are provided at checkout. If your delivery date changes, check your email for any updates "
+ },
+ {
+  "doc_id": "faq-order-status-wrong-address-or-location",
+  "title": "What should I do if my package was delivered to the wrong address or an unsafe location?",
+  "sample_questions": [
+   "My package says delivered but it's not here.",
+   "The driver left my order in the trash bin.",
+   "My delivery went to my old address.",
+   "Someone stole my package off the front porch.",
+   "Tracking says delivered to mail room but I don't have one.",
+   "Why was my package left at my neighbor's house?",
+   "Carrier left my package in an unsafe place again.",
+   "Customers must wait until the end of the next day after a 'delivered' scan before a replacement or refund can be issued."
+  ],
+  "summary": "If your order tracking shows as \"delivered\" but you cannot find your package, or if it was left in an unsafe location, please follow these steps: 1. **Wait a little longer:** Sometimes carriers accidentally scan packages as delivered while still in transit. Please wait until the end of the next day to see if it arrives. 2. **Check your surroundings"
+ },
+ {
+  "doc_id": "faq-other-alexa-and-echo-devices",
+  "title": "How do I fix issues with my smart speaker or digital content playback?",
+  "sample_questions": [
+   "why does my smart speaker unpair from my bluetooth devices?",
+   "my device won't let me set a timer, it says having trouble",
+   "how do i stop my smart speaker from responding to the tv?",
+   "my digital content won't play on my device",
+   "why is my smart speaker not understanding my music requests?",
+   "how do i fix playback issues with my digital purchases?",
+   "can i stream different music on two different smart speakers?",
+   "Digital content purchases are tied to the account."
+  ],
+  "summary": "If you are experiencing issues with your smart speaker or digital content playback, there are a few steps you can take to resolve the problem. First, remember that all digital content (videos, e-books, apps) purchases are tied to your Global Retail Hub account. If you are having playback or syncing issues, follow these steps: 1. Check your device r"
+ },
+ {
+  "doc_id": "faq-other-amazon-prime-membership",
+  "title": "What is Hub Plus and how do I access my streaming benefits?",
+  "sample_questions": [
+   "What do I get with a Hub Plus membership?",
+   "How fast is Hub Plus shipping?",
+   "Why isn't my Hub Plus music playing?",
+   "Is video streaming included in Hub Plus?",
+   "How do I fix issues with my e-book lending?",
+   "I just signed up for Hub Plus, what are my benefits?",
+   "Hub Plus free 2-day shipping applies only to eligible items.",
+   "Same-day delivery is limited to select cities."
+  ],
+  "summary": "A Hub Plus membership offers a variety of premium benefits for our shoppers. As a paid member, you receive free 2-day shipping on eligible items, with same-day delivery available in select cities. You also get access to our extensive library of video and music streaming, as well as e-book lending. If you experience any playback or sync issues with "
+ },
+ {
+  "doc_id": "faq-other-app-and-website-issues",
+  "title": "How do I fix technical issues with the Global Retail Hub app or website?",
+  "sample_questions": [
+   "Why is the app crashing on my phone?",
+   "The website won't let me place an order.",
+   "How do I report a bug in the mobile app?",
+   "My previous orders aren't showing up on the app.",
+   "The video streaming is out of sync on my tablet.",
+   "Why am I getting an error message when I try to cancel an order?",
+   "How do I turn off annoying app notifications?",
+   "app keeps kicking me to the home screen whenever I try to place order"
+  ],
+  "summary": "If you are experiencing technical issues, bugs, or crashes with the Global Retail Hub app or website, most problems can be resolved with a few quick troubleshooting steps. For app issues, we recommend restarting the app or reinstalling it. For website issues, clearing your browser data usually helps. Follow these steps to resolve common technical p"
+ },
+ {
+  "doc_id": "faq-other-customer-service-complaints",
+  "title": "How do I report a poor customer service experience or unresolved issue?",
+  "sample_questions": [
+   "your customer service is a joke, worst agents out there",
+   "one issue 28 days multiple escalations yet no results",
+   "terrible pathetic service.... Wasting time with your representative",
+   "I just had the worst customer service experience with a representative",
+   "very poor customer service today, certainly gone downhill",
+   "what about resolution till today is 31 AND NOW AGAIN EXCUSES",
+   "Someone on the phone yelled at my husband and hung up on him.",
+   "Your customer service team are the worst I have ever dealt with."
+  ],
+  "summary": "We are truly sorry to hear that you had a poor experience with our customer service. At Global Retail Hub, we strive to resolve your issues quickly and professionally, and we take complaints about our service very seriously. If you have an unresolved issue or experienced poor service from an agent, please follow these steps: 1. **Check for existing"
+ },
+ {
+  "doc_id": "faq-other-delivery-and-logistics-complaints",
+  "title": "How do I report a problem with a delivery driver or logistics?",
+  "sample_questions": [
+   "My delivery driver threw my package.",
+   "The delivery guy was extremely rude to me.",
+   "Your driver parked on my lawn.",
+   "Why is the delivery person taking pictures of my house?",
+   "How do I complain about a terrible delivery experience?",
+   "The courier left my package at the wrong gate.",
+   "My package was damaged because the driver dropped it.",
+   "Damaged items must be reported within 30 days."
+  ],
+  "summary": "If you experience unprofessional behavior from a delivery driver, witness mishandling of your packages, or have other logistics complaints, Global Retail Hub is here to help. We expect our delivery partners to treat your property and packages with care. First, please check your tracking details in Your Orders to identify the carrier. If your packag"
+ },
+ {
+  "doc_id": "faq-other-device-and-hardware-issues",
+  "title": "How do I troubleshoot electronics, smart home devices, and hardware issues?",
+  "sample_questions": [
+   "My smart home device or accessory is not responding.",
+   "How do I resolve hardware installation and setup problems?",
+   "My electronic charger or cable is defective or stopped working.",
+   "How do I report a damaged or malfunctioning electronic product?",
+   "What is the return policy for opened electronics?",
+   "My phone or tablet displays an uncertified device warning.",
+   "Where can I find installation assistance for electronics?",
+   "Can I get a free return label for a defective hardware item?"
+  ],
+  "summary": "If you encounter setup errors, connectivity issues, or defects with electronics or smart devices purchased from Global Retail Hub, follow these steps: 1. **Check connections and power:** Verify that power cables, adapters, and wall outlets are functioning correctly. 2. **Check device registration and app updates:** For digital content or app sync i"
+ },
+ {
+  "doc_id": "faq-other-fire-tv-and-streaming-devices",
+  "title": "How do I troubleshoot Fire TV and streaming device connection and playback issues?",
+  "sample_questions": [
+   "My Fire TV Stick is not working or connecting to Wi-Fi.",
+   "How do I fix video buffering and app crashes on Fire TV?",
+   "My Fire TV remote is unresponsive or unpairing.",
+   "Why does my Fire TV show a server connection error?",
+   "How do I resolve audio and video sync problems on my streaming stick?",
+   "My streaming device is stuck on the loading logo screen.",
+   "Can I stream Hub Plus video on my Fire TV?",
+   "What should I do if my Fire TV device is overheating?"
+  ],
+  "summary": "If your Fire TV Stick or streaming device is failing to power on, losing Wi-Fi connection, or encountering video streaming errors, follow these troubleshooting guidelines: 1. **Power cycle the device:** Unplug the power adapter from the electrical outlet, wait 30 seconds, and reconnect securely. 2. **Check device registration and app updates:** Dig"
+ },
+ {
+  "doc_id": "faq-other-general-complaints-and-feedback",
+  "title": "How do I contact support to resolve an issue or leave feedback?",
+  "sample_questions": [
+   "I'm literally furious at your service, how do I complain?",
+   "Why is it impossible to phone you guys when I have an issue?",
+   "I need to speak to a human to resolve this ASAP.",
+   "Where can I leave feedback about a mistake on your website?",
+   "I am sick of this, how do I get my problem fixed?",
+   "How do I access live chat to complain about my order?",
+   "Are you guys going to fix this issue?",
+   "how can I request a direct phone callback from customer service?"
+  ],
+  "summary": "We are sorry to hear that you had a frustrating experience with Global Retail Hub. If you have a complaint, feedback, or an unspecified issue, our support team is ready to help you resolve it as quickly as possible. Here is how you can reach us to get your issue sorted out: 1. **Chat and Phone:** Our customer service team is available 24/7 via chat"
+ },
+ {
+  "doc_id": "faq-other-kindle-and-e-readers",
+  "title": "How do I troubleshoot Kindle e-reader, e-book, and digital reading issues?",
+  "sample_questions": [
+   "My Kindle e-reader will not sync my purchased books.",
+   "How do I register my Kindle device to my Global Retail Hub account?",
+   "My e-book is not downloading to my Kindle or reading app.",
+   "How do I set up parental controls on a Kindle tablet or e-reader?",
+   "Why are my Audible audiobooks and Kindle books not syncing progress?",
+   "How do I transfer personal mobi or e-book files to my Kindle?",
+   "Where do I find Hub Plus e-book lending benefits?",
+   "My Kindle screen is frozen or not responding to touches."
+  ],
+  "summary": "If you experience issues with your Kindle e-reader, Fire tablet reading apps, or digital e-book downloads, use the following troubleshooting steps: 1. **Verify device registration:** Confirm that your device is registered to the Global Retail Hub account used to purchase the digital content. Sync issues often resolve after checking device registrat"
+ },
+ {
+  "doc_id": "faq-other-packaging-issues",
+  "title": "How do I report excessive or poor packaging?",
+  "sample_questions": [
+   "Why did my tiny item come in a huge box?",
+   "Can I leave feedback about wasteful packaging?",
+   "My order was shipped without a box and my kid saw their present!",
+   "Why is there so much padding for something that won't break?",
+   "How do I complain about the packaging of my delivery?",
+   "The box was way too big for what I ordered.",
+   "Is there a way to request less packaging?",
+   "My item arrived in its original box with no outer packaging."
+  ],
+  "summary": "At Global Retail Hub, we are always looking for ways to improve our packaging to reduce waste and ensure your items arrive safely. If you received an order with excessive packaging, or if an item was shipped without an outer box (which can sometimes reveal a surprise gift), we want to hear about it. To share your packaging feedback: 1. Go to **Your"
+ },
+ {
+  "doc_id": "faq-other-pricing-promotions-and-discounts",
+  "title": "Why did the price of an item change, or why are there different prices for the same item?",
+  "sample_questions": [
+   "Why is the price different now?",
+   "How come the same product has two different prices?",
+   "Why did the price go up in my cart?",
+   "Are there discounts for buying in bulk?",
+   "Why is this third-party seller charging so much?",
+   "Can you match the price I saw yesterday?",
+   "Why is the MSRP inflated on this discount?",
+   "Where did the bundle deal go?"
+  ],
+  "summary": "At Global Retail Hub, prices for items can fluctuate based on promotions, demand, and seller pricing. If you notice a price change or different prices for the same item, it is typically because third-party sellers set their own prices, or a limited-time promotion has ended. Here is what you need to know about pricing and promotions: 1. **Third-Part"
+ },
+ {
+  "doc_id": "faq-other-prime-video-and-streaming",
+  "title": "How do I fix playback or streaming issues with Hub Plus video?",
+  "sample_questions": [
+   "Why isn't my movie loading?",
+   "My video keeps buffering on the app.",
+   "The subtitles are out of sync on my show.",
+   "Where are the new episodes of my favorite series?",
+   "I can't stream the live game tonight.",
+   "Why does the app say my device isn't registered?",
+   "How do I fix erratic subtitles on my iPad?",
+   "how do I stream live sports and broadcast games included with my membership?"
+  ],
+  "summary": "If you are experiencing playback, syncing, or streaming issues with Hub Plus video, the problem can usually be resolved by checking your device registration and ensuring your app is up to date. All digital content, including videos, e-books, and apps, is tied directly to your Global Retail Hub account. To troubleshoot streaming issues, follow these"
+ },
+ {
+  "doc_id": "faq-other-product-availability-and-inquiries",
+  "title": "When will a specific item be back in stock or available for pre-order?",
+  "sample_questions": [
+   "Are tickets available today for the presale?",
+   "When will the new phone be available for pre-orders?",
+   "What happened to the dash button? Will it be available again soon?",
+   "When will you have more fantasy books in stock?",
+   "Is this movie coming to your streaming service soon?",
+   "Can I get another invite for this limited device?",
+   "Do you know when this category of items will be released for sale?",
+   "presale tickets aren't showing up on the event page, are they sold out?"
+  ],
+  "summary": "If you are looking for a specific item, pre-order, or digital content on Global Retail Hub, availability can change frequently based on customer demand and supplier inventory. For most physical items, if an item is currently out of stock, we do not always have an exact date for when it will be replenished. We recommend checking the product page reg"
+ },
+ {
+  "doc_id": "faq-other-scams-phishing-and-fraud",
+  "title": "How do I report a suspicious email, text message, or potential scam?",
+  "sample_questions": [
+   "I got a weird text from Global Retail Hub saying I owe money.",
+   "Is this email about an unpaid invoice really from you guys?",
+   "Someone is sending me spam texts pretending to be Global Retail Hub.",
+   "I got an email asking for my password, is it a scam?",
+   "How do I report a fake seller or counterfeit product?",
+   "I received a package I didn't order, is this a scam?",
+   "Are these messages about a suspended account real?",
+   "Support never asks for passwords or full card numbers."
+  ],
+  "summary": "If you receive a suspicious email, text message, or phone call claiming to be from Global Retail Hub, it may be a phishing attempt or scam. We take your account security very seriously. **How to identify a scam:** Global Retail Hub support will **never** ask for your password or your full credit card number. We will also never threaten legal action"
+ },
+ {
+  "doc_id": "faq-returns-refunds-damaged-or-defective-items",
+  "title": "What should I do if my item arrives damaged, defective, or with poor packaging?",
+  "sample_questions": [
+   "My item arrived broken, what do I do?",
+   "The box was damaged and my product is ruined.",
+   "I received a defective item, how do I get a replacement?",
+   "My package was shipped in a flimsy envelope and got crushed.",
+   "The product I ordered is missing parts or doesn't work.",
+   "Can I return an item that arrived damaged?",
+   "How do I report poor packaging that damaged my order?",
+   "The item I received is defective right out of the box."
+  ],
+  "summary": "We are sorry your item did not arrive in perfect condition. If you receive an item that is damaged, defective, or incorrectly packaged, you can easily request a free replacement or a full refund. Here is how to resolve the issue: 1. **Report the issue within 30 days:** You must report damaged, defective, or wrong items within 30 days of delivery to"
+ },
+ {
+  "doc_id": "faq-returns-refunds-missing-or-used-items",
+  "title": "What should I do if my order arrived missing parts, empty, or used?",
+  "sample_questions": [
+   "I received an empty box!",
+   "My order is missing the accessories.",
+   "The item I bought looks used or secondhand.",
+   "There is a missing part in my package.",
+   "I ordered a new product but it arrived damaged and used.",
+   "Why did I get a box with nothing inside?",
+   "My phone arrived without the charger and headphones.",
+   "Damaged, defective, or wrong items must be reported within 30 days of delivery."
+  ],
+  "summary": "If your Global Retail Hub order arrives missing parts, empty, or appears used, you can request a free replacement or refund within 30 days of delivery. Here is how to resolve the issue: 1. Go to Your Orders and locate the specific order. 2. Choose the option to report a damaged, defective, or wrong item. 3. Select whether you prefer a free replacem"
+ },
+ {
+  "doc_id": "faq-returns-refunds-refund-inquiries",
+  "title": "Where is my refund?",
+  "sample_questions": [
+   "I haven't received my refund yet",
+   "Why is my refund taking so long?",
+   "When will I get my money back?",
+   "You guys received my return but no refund",
+   "Still waiting on my refund for a cancelled order",
+   "Can you check the status of my refund?",
+   "I returned my item weeks ago, where is my refund?",
+   "Refund not showing up on my credit card"
+  ],
+  "summary": "If you are waiting for a refund from Global Retail Hub, the processing time depends on how you paid and the type of refund. For returned items, we issue refunds to your original payment method within 3-5 business days **after** we receive the return at our facility. If you requested a refund to a Global Retail Hub gift card, the funds will be avail"
+ },
+ {
+  "doc_id": "faq-returns-refunds-return-pickup-issues",
+  "title": "What should I do if my return pickup is delayed or the courier never arrived?",
+  "sample_questions": [
+   "My return hasn't been picked up yet.",
+   "The courier never came to collect my return.",
+   "How do I reschedule a missed return pickup?",
+   "It has been days and my return package is still here.",
+   "No one came to pick up my return order.",
+   "Where is the delivery boy to take my return?",
+   "Return pickup date passed and no collection.",
+   "Most items must be returned within 30 days from delivery."
+  ],
+  "summary": "If your scheduled return pickup has not occurred on the promised date, our 24/7 support team can help you reschedule it immediately. We know it is frustrating when a courier misses a pickup window. Please follow these steps to resolve your return pickup issue: 1. Verify your return window to ensure your item is still eligible. Most items can be ret"
+ },
+ {
+  "doc_id": "faq-returns-refunds-return-policy-and-process",
+  "title": "How do I return an item and what is the return window?",
+  "sample_questions": [
+   "what's your policy on returns?",
+   "how many days do I have to return something?",
+   "I need to return an item, how do I do it?",
+   "can I get a free return label?",
+   "I want to initiate a return.",
+   "what is the time limit for returns?",
+   "are final sale items returnable?",
+   "how do I send back a defective item?"
+  ],
+  "summary": "If you are not satisfied with your purchase from Global Retail Hub, you can easily return most items within 30 days of delivery. To initiate a return: 1. Go to **Your Orders** in your Global Retail Hub account. 2. Select the item you wish to return and choose the reason for the return. 3. Print the return label provided. If the item is defective or"
+ },
+ {
+  "doc_id": "faq-returns-refunds-wrong-item-received",
+  "title": "What should I do if I received the wrong item?",
+  "sample_questions": [
+   "I got the wrong thing in my order",
+   "They sent me the wrong size",
+   "This isn't what I ordered",
+   "I received a completely different product",
+   "Wrong color delivered",
+   "How do I exchange an incorrect item?",
+   "Sent me the wrong model",
+   "I ordered one thing and got another"
+  ],
+  "summary": "If you received an incorrect item, size, color, or model from Global Retail Hub, we sincerely apologize for the mix-up. You can easily request a free replacement or a full refund. Here is how to resolve the issue: 1. **Report the Issue:** Go to **Your Orders** within 30 days of delivery. 2. **Select the Item:** Find the order containing the incorre"
+ },
+ {
+  "doc_id": "faq-shipping-policy-carrier-and-courier-issues",
+  "title": "Can I choose which shipping carrier delivers my Global Retail Hub orders?",
+  "sample_questions": [
+   "How do I opt out of your in-house delivery service?",
+   "Can I force my shipping to be UPS or FedEx?",
+   "Please stop shipping my packages through this specific carrier.",
+   "Is there a way to not have a certain courier deliver my packages?",
+   "Can I choose the post office instead of your logistics company?",
+   "I want to select my delivery carrier, how do I do that?",
+   "Customers cannot manually select or opt out of specific shipping carriers.",
+   "A package is only considered late 1 business day after the latest delivery estimate shown at checkout and in Your Orders."
+  ],
+  "summary": "At Global Retail Hub, we automatically determine the shipping carrier for your order based on several factors, including your delivery address, the size and weight of the items, and the shipping speed selected at checkout. Because of this automated routing, it is not possible to opt out of a specific carrier or manually select which courier (such a"
+ },
+ {
+  "doc_id": "faq-shipping-policy-delivery-instructions-and-preferences",
+  "title": "How do I add delivery instructions or request a safe place for my package?",
+  "sample_questions": [
+   "Can I tell the driver to leave my package at the back door?",
+   "How do I add a gate code for my delivery?",
+   "Is there a way to give an alternative delivery option or safe place for an item already ordered?",
+   "Can I ask the delivery driver not to ring the doorbell?",
+   "How do I make sure my package is left with a neighbor if I'm not home?",
+   "Where do I put delivery instructions for my order?",
+   "Can I get my package delivered to my workplace instead?",
+   "The driver didn't follow my delivery instructions, what do I do?"
+  ],
+  "summary": "At Global Retail Hub, we want to make sure your packages are delivered securely and conveniently. You can add delivery instructions or designate a safe place for your orders during checkout or by updating your preferences in Your Orders. To add delivery instructions for an upcoming delivery: 1. Go to **Your Orders**. 2. Find the order you want to u"
+ },
+ {
+  "doc_id": "faq-shipping-policy-international-and-regional-shipping",
+  "title": "Do you ship internationally or to my specific region?",
+  "sample_questions": [
+   "Why can't I get this item shipped to my country?",
+   "Do you deliver to Nigeria?",
+   "Are there shipping restrictions for California?",
+   "Why does it say delivery is not possible to my pin code?",
+   "Can I order from the US site and ship to India?",
+   "How much does international shipping cost?",
+   "Why is my zip code not eligible for delivery?",
+   "Are there items you don't ship abroad?"
+  ],
+  "summary": "Global Retail Hub ships to many international locations and regions, but delivery eligibility depends on the specific item, your location, and local courier availability. To see if an item can be shipped to your address, simply add it to your cart and proceed to checkout. If there are shipping restrictions for your selected country, region, or zip "
+ },
+ {
+  "doc_id": "faq-shipping-policy-order-fulfillment-and-packaging",
+  "title": "Why did my items ship separately and how are delivery dates determined?",
+  "sample_questions": [
+   "Why are my items arriving in different boxes?",
+   "Can I get all my items shipped together?",
+   "When will my pre-order ship?",
+   "Why is my order taking so long to pack?",
+   "Do Hub Plus items ship faster?",
+   "How do I know when my package will be delivered?",
+   "Why did my order split into multiple shipments?",
+   "Hub Plus 2-day shipping applies only to eligible items."
+  ],
+  "summary": "At Global Retail Hub, we aim to get your items to you as quickly as possible. Sometimes, this means your order will be split into multiple shipments if items are located in different fulfillment centers or have different availability. Delivery estimates are always shown at checkout and can be tracked in Your Orders. \\n\\nTo check your shipping speed"
+ },
+ {
+  "doc_id": "faq-shipping-policy-prime-delivery-speed-delays",
+  "title": "Why is my Hub Plus delivery taking longer than expected?",
+  "sample_questions": [
+   "Why is my 2-day shipping taking 3 days?",
+   "Why does my Hub Plus order say it will arrive next week?",
+   "I ordered with 2-day shipping, why is it taking so long?",
+   "What does guaranteed delivery date mean if it's late?",
+   "Why are my Hub Plus deliveries taking longer than 2 days?",
+   "If I order in the morning with 1-day shipping, when will it arrive?",
+   "Why is my package late when I have Hub Plus?",
+   "How is 2-day shipping calculated?"
+  ],
+  "summary": "If you are a Hub Plus member and your delivery is taking longer than the expected 2 business days, it is usually because the shipping speed applies to the time *after* the item has shipped, not from the moment you place the order. Here is how delivery times work for Global Retail Hub: 1. **Processing Time:** Not all items are immediately available "
+ },
+ {
+  "doc_id": "faq-shipping-policy-shipping-costs-and-fees",
+  "title": "Why am I being charged for shipping?",
+  "sample_questions": [
+   "Why do I have to pay for shipping if I have Hub Plus?",
+   "Why is there a delivery fee on my order?",
+   "I thought shipping was free over $35, why am I paying?",
+   "Why is the shipping cost so high?",
+   "Why am I being charged for delivery on a third-party item?",
+   "I'm a Hub Plus member, why isn't shipping free?",
+   "Why did my free shipping disappear when an item was cancelled?",
+   "Why am I paying extra for 2-day shipping?"
+  ],
+  "summary": "At Global Retail Hub, standard shipping (4-6 business days) is free for orders over $35. If you are a Hub Plus member, you receive free 2-day shipping on eligible items. If you are seeing unexpected shipping charges, it is usually due to one of the following reasons: 1. **Order Minimum Not Met:** For non-Hub Plus members, your order total must be o"
+ },
+ {
+  "doc_id": "faq-shipping-policy-weekend-and-same-day-delivery",
+  "title": "Why isn't my order arriving on the weekend or the same day?",
+  "sample_questions": [
+   "Do you guys even do same-day delivery anymore?",
+   "Why does my Friday order say it won't arrive until Monday?",
+   "I have Hub Plus, why am I not getting weekend deliveries?",
+   "Is next-day delivery no longer a thing?",
+   "Why is my delivery taking so long when I ordered on a Thursday?",
+   "Can I get this delivered today?",
+   "Why did my weekend delivery options disappear?",
+   "Does standard shipping include Saturday or Sunday?"
+  ],
+  "summary": "Delivery estimates are based on business days, which typically exclude weekends unless specified at checkout. For standard shipping, orders generally arrive within 4-6 business days. If you are a Hub Plus member, you receive free 2-day shipping on eligible items, and same-day delivery is available in select cities. If you are not seeing weekend or "
+ }
+]

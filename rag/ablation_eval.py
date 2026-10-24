@@ -278,11 +278,15 @@ def evaluate_single_config(
             "slice_a": {},
             "slice_b": {},
             "fallbacks_triggered": 0,
+            "rows": [],
         }
 
     rows = []
     fallbacks_triggered = 0
-    tok = client.get_token() if hasattr(client, "get_token") else None
+    try:
+        tok = client.get_token()
+    except AttributeError:
+        tok = None
 
     for idx, item in enumerate(queries):
         if (idx + 1) % 50 == 0 or idx == len(queries) - 1:
@@ -323,7 +327,13 @@ def evaluate_single_config(
                 content = snippet_text or title
                 records.append({"id": d_id, "title": title, "content": content})
 
-            if records and hasattr(client, "rank"):
+            can_rank = True
+            try:
+                _ = client.rank
+            except AttributeError:
+                can_rank = False
+
+            if records and can_rank:
                 try:
                     reranked, r_lat = client.rank(
                         query=qtext,
@@ -390,6 +400,11 @@ def evaluate_single_config(
         rows.append({
             "qid": qid,
             "query": qtext,
+            "top10": retrieved_ids[:10],
+            "top10_ids": retrieved_ids[:10],
+            "latency": res.latency_ms,
+            "latency_ms": res.latency_ms,
+            "applied_intent": active_intent,
             "gold": target,
             "relevant": doc,
             "original_gold": item.get("original_gold", doc),
@@ -397,7 +412,6 @@ def evaluate_single_config(
             "rank": rank,
             "top3": retrieved_ids[:3],
             "top_k": retrieved_ids,
-            "latency_ms": res.latency_ms,
             "fallback_triggered": res.fallback_triggered,
             "filter_applied": res.filter_applied,
         })
@@ -423,6 +437,7 @@ def evaluate_single_config(
         "latency_summary": lats_summary,
         "slice_a": slice_a_summary,
         "slice_b": slice_b_summary,
+        "rows": rows,
     }
 
 
