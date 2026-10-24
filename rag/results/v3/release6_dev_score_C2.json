@@ -1,0 +1,97 @@
+{
+  "timestamp": "2026-10-24T20:24:36.715844+00:00",
+  "split": "dev",
+  "config": "intent_noisy_0.2",
+  "system_run_file": "/usr/local/google/home/susmith/.gemini/jetski/brain/92e6895e-6aa0-4668-8e1e-5cb583072600/scratch/rag/ablation/dev_rows_r6.json",
+  "labels_a_file": "/usr/local/google/home/susmith/.gemini/jetski/brain/92e6895e-6aa0-4668-8e1e-5cb583072600/scratch/rag/labeling/labels_A.jsonl",
+  "labels_b_file": "/usr/local/google/home/susmith/.gemini/jetski/brain/92e6895e-6aa0-4668-8e1e-5cb583072600/scratch/rag/labeling/labels_B.jsonl",
+  "labels_c_file": "/usr/local/google/home/susmith/.gemini/jetski/brain/92e6895e-6aa0-4668-8e1e-5cb583072600/scratch/rag/labeling/labels_C2.jsonl",
+  "agreement_stats": {
+    "n_common_queries": 300,
+    "cohen_kappa_support_request": 0.831,
+    "exact_match_primary": 0.8433,
+    "cohen_kappa_primary": 0.8355,
+    "mean_jaccard_relevant": 0.7453
+  },
+  "evaluation": {
+    "scope": "MAIN",
+    "split": "dev",
+    "n_evaluated": 218,
+    "exclusions": {
+      "not_support_request": 31,
+      "non_english": 51,
+      "no_primary": 0,
+      "total_excluded": 82,
+      "total_in_scope": 218,
+      "total_evaluated": 300
+    },
+    "consensus": {
+      "recall@5": 0.9083,
+      "mrr@10": 0.8187,
+      "ndcg@5": 0.7366
+    },
+    "lower": {
+      "recall@5": 0.8532,
+      "mrr@10": 0.7029,
+      "ndcg@5": 0.7357
+    },
+    "upper": {
+      "recall@5": 0.9266,
+      "mrr@10": 0.8505,
+      "ndcg@5": 0.7225
+    },
+    "by_intent": {
+      "account_payment": {
+        "n": 26,
+        "recall@5": 0.9615,
+        "mrr@10": 0.8718,
+        "ndcg@5": 0.8294
+      },
+      "order_status": {
+        "n": 51,
+        "recall@5": 0.9608,
+        "mrr@10": 0.8639,
+        "ndcg@5": 0.7989
+      },
+      "other": {
+        "n": 62,
+        "recall@5": 0.8548,
+        "mrr@10": 0.7521,
+        "ndcg@5": 0.6735
+      },
+      "returns_refunds": {
+        "n": 56,
+        "recall@5": 0.9464,
+        "mrr@10": 0.9003,
+        "ndcg@5": 0.7699
+      },
+      "shipping_policy": {
+        "n": 23,
+        "recall@5": 0.7826,
+        "mrr@10": 0.6395,
+        "ndcg@5": 0.5827
+      }
+    },
+    "decision_rule": {
+      "verdict": "NOT_MET",
+      "targets": {
+        "recall@5": {
+          "target": 0.9,
+          "measured": 0.9083,
+          "met": true
+        },
+        "mrr@10": {
+          "target": 0.75,
+          "measured": 0.8187,
+          "met": true
+        },
+        "ndcg@5": {
+          "target": 0.8,
+          "measured": 0.7366,
+          "met": false
+        }
+      }
+    }
+  },
+  "markdown_report": "# PLAN4 Multi-Relevant Retrieval Evaluation Report\n\n- **Timestamp**: 2026-10-24T20:24:36.715461+00:00\n- **Scope Evaluated**: `MAIN` (n=218)\n- **Split**: `dev`\n- **System Run File**: /usr/local/google/home/susmith/.gemini/jetski/brain/92e6895e-6aa0-4668-8e1e-5cb583072600/scratch/rag/ablation/dev_rows_r6.json\n- **Configuration**: intent_noisy_0.2\n- **Split**: dev\n\n## 1. Inter-Annotator Agreement (Annotator A vs Annotator B)\n\nCommon Queries Annotated: **300**\n\n| Agreement Metric | Value | Description |\n| :--- | :---: | :--- |\n| **Cohen's $\\kappa$ (support_request)** | 0.8310 | Binary agreement on whether message is a support request |\n| **Exact-Match Rate (primary)** | 0.8433 | Fraction where both labelers selected identical primary doc |\n| **Cohen's $\\kappa$ (primary)** | 0.8355 | Multi-class categorical agreement across primary doc IDs |\n| **Mean Jaccard Overlap** | 0.7453 | Average set overlap $|A \\cap B| / |A \\cup B|$ of relevant docs |\n\n> [!NOTE]\n> Annotators A and B are blind LLM evaluators per PLAN4 \u00a7Labels. Human validation sample remains pending.\n\n## 2. Scope & Exclusion Accounting\n\nTotal Queries Evaluated: **300** | In Scope (`MAIN`): **218** | Total Excluded: **82**\n\n| Exclusion Reason | Count | Criteria |\n| :--- | :---: | :--- |\n| `not_support_request` | 31 | `support_request == False` (chatter, praise, out-of-domain) |\n| `non_english` | 51 | `language != 'en'` (multilingual queries out of v1 scope) |\n| `no_primary` | 0 | `primary is null` (unanswerable from current FAQ catalog) |\n| **Total Excluded** | **82** | Sum of waterfall exclusions |\n\n## 3. Retrieval Quality & Sensitivity Bounds\n\n| Relevant Set / Bound | recall@5 | MRR@10 | Graded nDCG@5 | TDD \u00a76.4 Gate Status |\n| :--- | :---: | :---: | :---: | :---: |\n| **LOWER Bound** (Consensus primary only) | 0.8532 | 0.7029 | 0.7357 | Sensitivity check |\n| **CONSENSUS** (Adjudicator C) | **0.9083** | **0.8187** | **0.7366** | **NOT_MET** |\n| **UPPER Bound** (Union A $\\cup$ B $\\cup$ C) | 0.9266 | 0.8505 | 0.7225 | Sensitivity check |\n| *TDD \u00a76.4 Target* | *\u2265 0.90* | *\u2265 0.75* | *\u2265 0.80* | \u2014 |\n\n## 4. Consensus Retrieval by Intent Family\n\n| Intent Family | n | recall@5 | MRR@10 | Graded nDCG@5 |\n| :--- | :---: | :---: | :---: | :---: |\n| `account_payment` | 26 | 0.9615 | 0.8718 | 0.8294 |\n| `order_status` | 51 | 0.9608 | 0.8639 | 0.7989 |\n| `other` | 62 | 0.8548 | 0.7521 | 0.6735 |\n| `returns_refunds` | 56 | 0.9464 | 0.9003 | 0.7699 |\n| `shipping_policy` | 23 | 0.7826 | 0.6395 | 0.5827 |\n\n## 5. PLAN4 Decision Rule Summary\n\n- **Final Verdict**: **NOT_MET**\n  - `recall@5`: measured **0.9083** vs target **0.90** [PASSED]\n  - `mrr@10`: measured **0.8187** vs target **0.75** [PASSED]\n  - `ndcg@5`: measured **0.7366** vs target **0.80** [FAILED]"
+}

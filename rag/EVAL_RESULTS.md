@@ -296,3 +296,24 @@ DEV ablations under these labels (`results/v3/phaseD_dev_multilabel_C2.json`):
 nDCG is limited by sibling-article confusion. The primary is at rank 1 for 56% of queries. The top pair
 is prime-delivery-speed-delays vs late-or-not-arrived-order, an overlap created by the v2 merge.
 Next lever: sharpen overlapping articles (PLAN5, experiment 4).
+
+## 11. Data-side disambiguation, release 6 (PLAN6, 2026-10-24): gate FAILED, rolled back
+
+Per the user's decision this was data-side only: no search tuning and no model training. Changes:
+- 447 leakage-safe tweets labeled by a Jetski agent
+- distinguishing questions, scope lines and removals on the 12 most-confused articles
+- all recorded in `rag/corpus_v2/agent_decisions/disambiguation_*`
+
+DEV (MAIN, n=218, C2 labels, production config):
+
+| | Release 5 | Release 6 | Δ |
+|---|---|---|---|
+| nDCG@5 | 0.729 | 0.737 | +0.008 (gate needs +0.03) |
+| recall@5 | 0.913 | 0.908 | −0.005 |
+| MRR@10 | 0.800 | 0.819 | +0.019 |
+
+The gate failed, so the index was rolled back to release 5 and verified live. TEST was not run.
+
+Conclusion: across runtime knobs (boost, rerank, query rewrite) and corpus edits (paraphrases,
+disambiguation), graded nDCG@5 stays at about 0.70–0.74, against the TDD target of 0.80.
+recall@5 and MRR meet their targets.
