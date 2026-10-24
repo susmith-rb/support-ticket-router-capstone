@@ -65,6 +65,7 @@ Evaluation is stratified across three tiers to balance realism, benchmarking, an
 | `REQ-RAG-RETR-013` | Evaluation Set Split and Metric Standards | `done` | `tests/rag/test_build_eval_splits.py::test_splits_disjointness` |
 | `REQ-RAG-RETR-014` | Paraphrase Augmentation Retrieval Parity Gate | `done` | `tests/rag/test_augment_paraphrases.py` |
 | `REQ-RAG-RETR-015` | Multi-Relevant Retrieval Measurement & Adjudication Evaluation | `done` | `tests/rag/test_multi_label_eval.py` |
+| `REQ-RAG-RETR-016` | Query Rewriting and Rich Record Reranking for Graded Retrieval Precision | `done` | `tests/rag/test_search_client.py` |
 
 ---
 
@@ -298,3 +299,10 @@ Evaluation is stratified across three tiers to balance realism, benchmarking, an
     - `MRR@10`: Target $\ge 0.75$ $\to$ TEST measured **0.8381** (PASSED, +0.0881).
     - `graded nDCG@5`: Target $\ge 0.80$ $\to$ TEST measured **0.7002** (FAILED, gap $-0.0998$).
     - Verdict: **NOT_MET** under strict conjunction of all 3 targets, despite recall@5 and MRR@10 substantially surpassing TDD benchmarks. The primary gap is graded nDCG ranking precision (primary article placed at rank 2-5 rather than rank 1).
+
+### REQ-RAG-RETR-016: Query Rewriting and Rich Record Reranking for Graded Retrieval Precision
+- **Statement**: The retrieval pipeline MUST support runtime query rewrite via Vertex AI `gemini-3.8-flash` (removing handles/URLs and producing clean FAQ queries) and post-retrieval reranking on top candidates using Discovery Engine Ranking API (`semantic-ranker-512@latest`) over rich document records (title, "Also asked as" paraphrases, and initial answer body). A score margin blending threshold MUST be supported to preserve original top-1 candidates unless the reranker score improvement strictly exceeds the margin.
+- **Rationale**: TDD §6.4 and PLAN5 Experiments 2 & 3. Real customer tweets contain noise, sarcasm, and handles that degrade embedding similarity; runtime query rewrite maps tweets to canonical customer questions. Discovery Engine Ranking API with rich article content (including paraphrases and policy snippets) provides fine-grained semantic reordering for graded nDCG, while margin-based blending avoids rank-1 churn on high-confidence initial hits.
+- **Acceptance**: `tests/rag/test_search_client.py` and `tests/rag/test_ablation_eval.py`
+- **Status**: done
+- **Owner**: rag-retrieval

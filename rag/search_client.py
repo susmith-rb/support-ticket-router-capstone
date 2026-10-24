@@ -31,6 +31,9 @@ DEFAULT_DATA_STORE = "faq-articles"
 DEFAULT_LOCATION = "global"
 
 DEFAULT_ALLOWED_STATUSES = ["active", "draft"]
+DEFAULT_FAQ_DOCS_DIR = pathlib.Path(
+    "/usr/local/google/home/susmith/.gemini/jetski/brain/92e6895e-6aa0-4668-8e1e-5cb583072600/scratch/rag/faq_v2p/docs"
+)
 VALID_INTENT_FAMILIES = [
     "account_payment",
     "order_status",
@@ -38,6 +41,74 @@ VALID_INTENT_FAMILIES = [
     "shipping_policy",
     "other",
 ]
+
+
+def load_rich_faq_records(
+    docs_dir: Optional[Union[str, pathlib.Path]] = None,
+) -> Dict[str, Dict[str, str]]:
+    """Load rich FAQ article representations for Discovery Engine Ranking API.
+
+    Each document in docs_dir is parsed into:
+    - id: document stem (e.g. faq-order-status-late-or-not-arrived-order)
+    - title: markdown heading (# Title)
+    - content: "Also asked as:\n<bullets>\n\n<body_first_600>"
+    """
+    dir_path = pathlib.Path(docs_dir) if docs_dir else DEFAULT_FAQ_DOCS_DIR
+    if not dir_path.exists():
+        # Fallback to local corpus_v2 if scratch path is not present
+        alt_path = pathlib.Path(__file__).parent / "corpus_v2" / "docs"
+        if alt_path.exists():
+            dir_path = alt_path
+        else:
+            return {}
+
+    records: Dict[str, Dict[str, str]] = {}
+    for f in sorted(dir_path.glob("*.txt")):
+        text = f.read_text(encoding="utf-8")
+        lines = text.splitlines()
+
+        title = ""
+        for line in lines:
+            if line.startswith("# "):
+                title = line[2:].strip()
+                break
+
+        questions: List[str] = []
+        in_also = False
+        body_lines: List[str] = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped == "Also asked as:":
+                in_also = True
+                continue
+            if in_also:
+                if stripped.startswith("- "):
+                    questions.append(stripped[2:].strip())
+                elif stripped == "":
+                    continue
+                else:
+                    in_also = False
+                    body_lines.append(line)
+            else:
+                if not line.startswith("# "):
+                    body_lines.append(line)
+
+        body_text = "\n".join(body_lines).strip()
+        body_snippet = body_text[:600]
+
+        content_parts = []
+        if questions:
+            content_parts.append("Also asked as:\n" + "\n".join(f"- {q}" for q in questions))
+        if body_snippet:
+            content_parts.append(body_snippet)
+
+        full_content = "\n\n".join(content_parts)
+        records[f.stem] = {
+            "id": f.stem,
+            "title": title or f.stem,
+            "content": full_content,
+        }
+    return records
 
 
 def clean_query(text: str) -> str:
@@ -227,6 +298,9 @@ class SearchClient:
         rerank: bool = False,
         rerank_model: str = "semantic-ranker-512@latest",
         rerank_top_n: int = 5,
+        rerank_margin: Optional[float] = None,
+        blend_margin: Optional[float] = None,
+        rich_records: Optional[Dict[str, Dict[str, str]]] = None,
         extra_specs: Optional[Dict[str, Any]] = None,
         sleep_sec: Optional[float] = None,
         token: Optional[str] = None,
@@ -327,17 +401,25 @@ class SearchClient:
                 d_id = doc.get("id")
                 if not d_id:
                     continue
-                derived = doc.get("derivedStructData", {})
-                struct = doc.get("structData", {})
-                title = derived.get("title") or struct.get("title") or d_id
-                snippets = derived.get("snippets", [])
-                snippet_text = snippets[0].get("snippet", "") if snippets else ""
-                content = snippet_text or title
-                records.append({
-                    "id": d_id,
-                    "title": title,
-                    "content": content,
-                })
+                if rich_records and d_id in rich_records:
+                    rec = rich_records[d_id]
+                    records.append({
+                        "id": d_id,
+                        "title": rec.get("title", d_id),
+                        "content": rec.get("content", ""),
+                    })
+                else:
+                    derived = doc.get("derivedStructData", {})
+                    struct = doc.get("structData", {})
+                    title = derived.get("title") or struct.get("title") or d_id
+                    snippets = derived.get("snippets", [])
+                    snippet_text = snippets[0].get("snippet", "") if snippets else ""
+                    content = snippet_text or title
+                    records.append({
+                        "id": d_id,
+                        "title": title,
+                        "content": content,
+                    })
             if records:
                 try:
                     reranked_records, r_lat = self.rank(
@@ -349,7 +431,20 @@ class SearchClient:
                         token=tok,
                     )
                     latency_ms += r_lat
-                    doc_ids = [rec["id"] for rec in reranked_records if "id" in rec]
+                    reranked_ids = [rec["id"] for rec in reranked_records if "id" in rec]
+                    margin = blend_margin if blend_margin is not None else rerank_margin
+                    if margin is not None and doc_ids:
+                        original_top1 = doc_ids[0]
+                        rerank_top1 = reranked_ids[0] if reranked_ids else original_top1
+                        scores = {rec["id"]: rec.get("score", 0.0) for rec in reranked_records if "id" in rec}
+                        best_score = scores.get(rerank_top1, 0.0)
+                        orig_score = scores.get(original_top1, 0.0)
+                        if (best_score - orig_score) > float(margin):
+                            doc_ids = reranked_ids
+                        else:
+                            doc_ids = [original_top1] + [rid for rid in reranked_ids if rid != original_top1]
+                    else:
+                        doc_ids = reranked_ids
                     rerank_applied = True
                 except Exception:
                     # In case reranking fails, keep un-reranked doc_ids

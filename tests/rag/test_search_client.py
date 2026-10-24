@@ -15,6 +15,7 @@ from search_client import (
     SearchClient,
     SearchResult,
     DEFAULT_ALLOWED_STATUSES,
+    load_rich_faq_records,
 )
 
 
@@ -334,4 +335,80 @@ def test_search_client_managed_rerank_integration(monkeypatch):
     assert res.rerank_applied is True
     # Reranker reordered to top 2: doc-3, doc-1
     assert res.document_ids == ["doc-3", "doc-1"]
+
+
+# REQ-RAG-RETR-016
+def test_load_rich_faq_records(tmp_path):
+    doc_file = tmp_path / "faq-order-status-test.txt"
+    doc_file.write_text(
+        "# How to track my order\n\n"
+        "Also asked as:\n"
+        "- Where is my package?\n"
+        "- How do I track delivery status?\n\n"
+        "To track your order, visit Your Orders. Standard delivery takes 3-5 days.",
+        encoding="utf-8",
+    )
+    records = load_rich_faq_records(docs_dir=tmp_path)
+    assert "faq-order-status-test" in records
+    rec = records["faq-order-status-test"]
+    assert rec["id"] == "faq-order-status-test"
+    assert rec["title"] == "How to track my order"
+    assert "Also asked as:" in rec["content"]
+    assert "- Where is my package?" in rec["content"]
+    assert "To track your order, visit Your Orders." in rec["content"]
+
+
+# REQ-RAG-RETR-016
+def test_search_client_rich_rerank_blend_margin(monkeypatch):
+    recorded_urls = []
+
+    def mock_urlopen(req, timeout=60):
+        url = req.full_url
+        recorded_urls.append(url)
+        if ":search" in url:
+            return MockHTTPResponse({
+                "results": [
+                    {"document": {"id": "doc-orig-1", "structData": {"title": "Orig 1"}}},
+                    {"document": {"id": "doc-alt-2", "structData": {"title": "Alt 2"}}},
+                    {"document": {"id": "doc-alt-3", "structData": {"title": "Alt 3"}}},
+                ],
+                "totalSize": 3,
+            })
+        elif ":rank" in url:
+            # Rank reorders doc-alt-2 to #1 with score 0.85, doc-orig-1 with score 0.78
+            # Score delta = 0.85 - 0.78 = 0.07
+            return MockHTTPResponse({
+                "records": [
+                    {"id": "doc-alt-2", "score": 0.85},
+                    {"id": "doc-orig-1", "score": 0.78},
+                    {"id": "doc-alt-3", "score": 0.50},
+                ]
+            })
+
+    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+
+    client = SearchClient(token="mock-token")
+    rich = {
+        "doc-orig-1": {"id": "doc-orig-1", "title": "Orig 1", "content": "Rich content 1"},
+        "doc-alt-2": {"id": "doc-alt-2", "title": "Alt 2", "content": "Rich content 2"},
+    }
+
+    # Case 1: blend_margin = 0.05. Delta is 0.07 > 0.05 -> reranker promotes doc-alt-2 to #1
+    res1 = client.search(
+        "query",
+        rerank=True,
+        blend_margin=0.05,
+        rich_records=rich,
+    )
+    assert res1.document_ids == ["doc-alt-2", "doc-orig-1", "doc-alt-3"]
+
+    # Case 2: blend_margin = 0.10. Delta is 0.07 <= 0.10 -> keep doc-orig-1 at #1!
+    res2 = client.search(
+        "query",
+        rerank=True,
+        blend_margin=0.10,
+        rich_records=rich,
+    )
+    assert res2.document_ids == ["doc-orig-1", "doc-alt-2", "doc-alt-3"]
+
 

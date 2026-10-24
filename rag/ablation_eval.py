@@ -41,26 +41,66 @@ from search_client import (
     SearchResult,
     SearchClient,
     VALID_INTENT_FAMILIES,
+    clean_query,
+    load_rich_faq_records,
+)
+
+DEFAULT_REWRITE_CACHE_PATH = pathlib.Path(
+    "/usr/local/google/home/susmith/.gemini/jetski/brain/92e6895e-6aa0-4668-8e1e-5cb583072600/scratch/rag/rewrite_cache_dev.jsonl"
 )
 
 ALL_CONFIG_NAMES = [
+    # Baseline & Threshold
     "baseline",
     "thresh_low_clean",
     "thresh_lowest_noclean",
     "rank_expr_semantic",
     "managed_rerank",
+    # Hard intent filters
     "intent_hard_oracle",
     "intent_hard_noisy",
+    # Soft intent boosts (oracle)
     "intent_soft_oracle_0.1",
     "intent_soft_oracle_0.2",
     "intent_soft_oracle_0.3",
     "intent_soft_oracle_0.5",
     "intent_soft_oracle_0.8",
+    # Soft intent boosts (noisy)
     "intent_soft_noisy_0.1",
     "intent_soft_noisy_0.2",
     "intent_soft_noisy_0.3",
     "intent_soft_noisy_0.5",
     "intent_soft_noisy_0.8",
+    # Phase D: Intent boost alone
+    "intent_noisy_0.0",
+    "intent_noisy_0.1",
+    "intent_noisy_0.2",
+    # Phase D: Rich record reranking
+    "rerank_all_20",
+    "rerank_blend_0.05",
+    "rerank_blend_0.1",
+    "rerank_blend_0.2",
+    # Phase D: Query rewrite alone
+    "rewrite_only",
+    "rewrite_plus_original",
+    # Phase D: Combinations
+    "rewrite_plus_original_intent_0.2",
+    "rewrite_plus_original_rerank_all_20",
+    "rewrite_plus_original_rerank_blend_0.05",
+    "rewrite_plus_original_rerank_blend_0.1",
+    "rewrite_plus_original_rerank_blend_0.2",
+    "rewrite_plus_original_intent_0.2_rerank_blend_0.05",
+    "rewrite_plus_original_intent_0.2_rerank_blend_0.1",
+    "rewrite_plus_original_intent_0.2_rerank_blend_0.2",
+    "rewrite_plus_original_intent_0.2_rerank_all_20",
+    "rewrite_only_intent_0.2",
+    "rewrite_only_rerank_all_20",
+    "rewrite_only_rerank_blend_0.1",
+    "rewrite_only_intent_0.2_rerank_blend_0.1",
+    "intent_noisy_0.2_rerank_blend_0.05",
+    "intent_noisy_0.2_rerank_blend_0.1",
+    "intent_noisy_0.2_rerank_blend_0.2",
+    "intent_noisy_0.2_rerank_all_20",
 ]
 
 
@@ -76,6 +116,9 @@ class AblationConfig:
     rerank: bool = False
     rerank_model: str = "semantic-ranker-512@latest"
     rerank_top_n: int = 5
+    rerank_margin: Optional[float] = None
+    use_rich_records: bool = True
+    query_rewrite_mode: str = "off"  # "off", "rewrite_only", "rewrite_plus_original"
     ranking_expression: str = ""
     fallback_min_results: int = 2
     supported: bool = True
@@ -236,10 +279,350 @@ def get_ablation_configs(config_names: Optional[Sequence[str]] = None) -> List[A
             intent_mode="noisy",
             intent_boost=0.8,
         ),
+        # Phase D: Intent boost alone
+        AblationConfig(
+            name="intent_noisy_0.0",
+            description="Intent Boost 0.0 with 14% Noisy Router",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            intent_mode="noisy",
+            intent_boost=0.0,
+        ),
+        AblationConfig(
+            name="intent_noisy_0.1",
+            description="Intent Boost 0.1 with 14% Noisy Router",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            intent_mode="noisy",
+            intent_boost=0.1,
+        ),
+        AblationConfig(
+            name="intent_noisy_0.2",
+            description="Intent Boost 0.2 with 14% Noisy Router",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            intent_mode="noisy",
+            intent_boost=0.2,
+        ),
+        # Phase D: Rich record reranking alone
+        AblationConfig(
+            name="rerank_all_20",
+            description="Rerank Top 20 Candidates with Rich Records",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=None,
+            use_rich_records=True,
+        ),
+        AblationConfig(
+            name="rerank_blend_0.05",
+            description="Rerank Top 20 with Rich Records + Blend Margin 0.05",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=0.05,
+            use_rich_records=True,
+        ),
+        AblationConfig(
+            name="rerank_blend_0.1",
+            description="Rerank Top 20 with Rich Records + Blend Margin 0.10",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=0.10,
+            use_rich_records=True,
+        ),
+        AblationConfig(
+            name="rerank_blend_0.2",
+            description="Rerank Top 20 with Rich Records + Blend Margin 0.20",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=0.20,
+            use_rich_records=True,
+        ),
+        # Phase D: Query rewrite alone
+        AblationConfig(
+            name="rewrite_only",
+            description="Query Rewrite Only (gemini-3.8-flash)",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            query_rewrite_mode="rewrite_only",
+        ),
+        AblationConfig(
+            name="rewrite_plus_original",
+            description="Query Rewrite + Original Query Concatenated",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            query_rewrite_mode="rewrite_plus_original",
+        ),
+        # Phase D: Combinations
+        AblationConfig(
+            name="rewrite_plus_original_intent_0.2",
+            description="Rewrite + Original with Soft Intent Boost 0.2 (14% Noisy)",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            intent_mode="noisy",
+            intent_boost=0.2,
+            query_rewrite_mode="rewrite_plus_original",
+        ),
+        AblationConfig(
+            name="rewrite_plus_original_rerank_all_20",
+            description="Rewrite + Original with Rerank All 20",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            query_rewrite_mode="rewrite_plus_original",
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=None,
+            use_rich_records=True,
+        ),
+        AblationConfig(
+            name="rewrite_plus_original_rerank_blend_0.05",
+            description="Rewrite + Original with Rerank Blend 0.05",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            query_rewrite_mode="rewrite_plus_original",
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=0.05,
+            use_rich_records=True,
+        ),
+        AblationConfig(
+            name="rewrite_plus_original_rerank_blend_0.1",
+            description="Rewrite + Original with Rerank Blend 0.10",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            query_rewrite_mode="rewrite_plus_original",
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=0.10,
+            use_rich_records=True,
+        ),
+        AblationConfig(
+            name="rewrite_plus_original_rerank_blend_0.2",
+            description="Rewrite + Original with Rerank Blend 0.20",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            query_rewrite_mode="rewrite_plus_original",
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=0.20,
+            use_rich_records=True,
+        ),
+        AblationConfig(
+            name="rewrite_plus_original_intent_0.2_rerank_blend_0.05",
+            description="Rewrite + Original + Intent 0.2 + Rerank Blend 0.05",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            intent_mode="noisy",
+            intent_boost=0.2,
+            query_rewrite_mode="rewrite_plus_original",
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=0.05,
+            use_rich_records=True,
+        ),
+        AblationConfig(
+            name="rewrite_plus_original_intent_0.2_rerank_blend_0.1",
+            description="Rewrite + Original + Intent 0.2 + Rerank Blend 0.10",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            intent_mode="noisy",
+            intent_boost=0.2,
+            query_rewrite_mode="rewrite_plus_original",
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=0.10,
+            use_rich_records=True,
+        ),
+        AblationConfig(
+            name="rewrite_plus_original_intent_0.2_rerank_blend_0.2",
+            description="Rewrite + Original + Intent 0.2 + Rerank Blend 0.20",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            intent_mode="noisy",
+            intent_boost=0.2,
+            query_rewrite_mode="rewrite_plus_original",
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=0.20,
+            use_rich_records=True,
+        ),
+        AblationConfig(
+            name="rewrite_plus_original_intent_0.2_rerank_all_20",
+            description="Rewrite + Original + Intent 0.2 + Rerank All 20",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            intent_mode="noisy",
+            intent_boost=0.2,
+            query_rewrite_mode="rewrite_plus_original",
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=None,
+            use_rich_records=True,
+        ),
+        AblationConfig(
+            name="rewrite_only_intent_0.2",
+            description="Rewrite Only + Soft Intent Boost 0.2 (14% Noisy)",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            intent_mode="noisy",
+            intent_boost=0.2,
+            query_rewrite_mode="rewrite_only",
+        ),
+        AblationConfig(
+            name="rewrite_only_rerank_all_20",
+            description="Rewrite Only + Rerank All 20",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            query_rewrite_mode="rewrite_only",
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=None,
+            use_rich_records=True,
+        ),
+        AblationConfig(
+            name="rewrite_only_rerank_blend_0.1",
+            description="Rewrite Only + Rerank Blend 0.10",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            query_rewrite_mode="rewrite_only",
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=0.10,
+            use_rich_records=True,
+        ),
+        AblationConfig(
+            name="rewrite_only_intent_0.2_rerank_blend_0.1",
+            description="Rewrite Only + Intent 0.2 + Rerank Blend 0.10",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            intent_mode="noisy",
+            intent_boost=0.2,
+            query_rewrite_mode="rewrite_only",
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=0.10,
+            use_rich_records=True,
+        ),
+        AblationConfig(
+            name="intent_noisy_0.2_rerank_blend_0.05",
+            description="Intent Boost 0.2 + Rerank Blend 0.05",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            intent_mode="noisy",
+            intent_boost=0.2,
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=0.05,
+            use_rich_records=True,
+        ),
+        AblationConfig(
+            name="intent_noisy_0.2_rerank_blend_0.1",
+            description="Intent Boost 0.2 + Rerank Blend 0.10",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            intent_mode="noisy",
+            intent_boost=0.2,
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=0.10,
+            use_rich_records=True,
+        ),
+        AblationConfig(
+            name="intent_noisy_0.2_rerank_blend_0.2",
+            description="Intent Boost 0.2 + Rerank Blend 0.20",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            intent_mode="noisy",
+            intent_boost=0.2,
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=0.20,
+            use_rich_records=True,
+        ),
+        AblationConfig(
+            name="intent_noisy_0.2_rerank_all_20",
+            description="Intent Boost 0.2 + Rerank All 20",
+            threshold="LOWEST",
+            clean=True,
+            page_size=20,
+            intent_mode="noisy",
+            intent_boost=0.2,
+            rerank=True,
+            rerank_top_n=20,
+            rerank_margin=None,
+            use_rich_records=True,
+        ),
     ]
 
     if config_names:
-        selected_set = set(config_names)
+        expanded_names = []
+        phase_d_set = [
+            "baseline",
+            "intent_noisy_0.0",
+            "intent_noisy_0.1",
+            "intent_noisy_0.2",
+            "rerank_all_20",
+            "rerank_blend_0.05",
+            "rerank_blend_0.1",
+            "rerank_blend_0.2",
+            "rewrite_only",
+            "rewrite_plus_original",
+            "rewrite_plus_original_intent_0.2",
+            "rewrite_plus_original_rerank_all_20",
+            "rewrite_plus_original_rerank_blend_0.05",
+            "rewrite_plus_original_rerank_blend_0.1",
+            "rewrite_plus_original_rerank_blend_0.2",
+            "rewrite_plus_original_intent_0.2_rerank_blend_0.05",
+            "rewrite_plus_original_intent_0.2_rerank_blend_0.1",
+            "rewrite_plus_original_intent_0.2_rerank_blend_0.2",
+            "rewrite_plus_original_intent_0.2_rerank_all_20",
+            "rewrite_only_intent_0.2",
+            "rewrite_only_rerank_all_20",
+            "rewrite_only_rerank_blend_0.1",
+            "rewrite_only_intent_0.2_rerank_blend_0.1",
+            "intent_noisy_0.2_rerank_blend_0.05",
+            "intent_noisy_0.2_rerank_blend_0.1",
+            "intent_noisy_0.2_rerank_blend_0.2",
+            "intent_noisy_0.2_rerank_all_20",
+        ]
+        for c in config_names:
+            if c == "phase_d":
+                expanded_names.extend(phase_d_set)
+            else:
+                expanded_names.append(c)
+        selected_set = set(expanded_names)
         return [c for c in configs if c.name in selected_set]
     return configs
 
@@ -267,6 +650,10 @@ def evaluate_single_config(
     gold_map: Dict[str, Any],
     client: Any,
     baseline_cache: Optional[Dict[str, SearchResult]] = None,
+    rich_records: Optional[Dict[str, Dict[str, str]]] = None,
+    rewrite_cache: Optional[Dict[str, Dict[str, Any]]] = None,
+    search_cache: Optional[Dict[Tuple[Any, ...], SearchResult]] = None,
+    rank_cache: Optional[Dict[Tuple[Any, ...], Tuple[List[Dict[str, Any]], float]]] = None,
 ) -> Dict[str, Any]:
     """Evaluate a single ablation configuration against the queries."""
     if not cfg.supported:
@@ -288,6 +675,11 @@ def evaluate_single_config(
     except AttributeError:
         tok = None
 
+    if search_cache is None:
+        search_cache = {}
+    if rank_cache is None:
+        rank_cache = {}
+
     for idx, item in enumerate(queries):
         if (idx + 1) % 50 == 0 or idx == len(queries) - 1:
             print(f"  [{idx + 1:03d}/{len(queries)}] processing queries...", flush=True)
@@ -308,73 +700,33 @@ def evaluate_single_config(
         else:
             active_intent = None
 
-        # Check if we can reuse baseline search results for managed_rerank
-        res: SearchResult
-        if cfg.name == "managed_rerank" and baseline_cache and qid in baseline_cache:
-            base_res = baseline_cache[qid]
-            # Perform rerank call on base_res raw results
-            records = []
-            for r in base_res.raw_results[:20]:
-                d = r.get("document", {})
-                d_id = d.get("id")
-                if not d_id:
-                    continue
-                derived = d.get("derivedStructData", {})
-                struct = d.get("structData", {})
-                title = derived.get("title") or struct.get("title") or d_id
-                snippets = derived.get("snippets", [])
-                snippet_text = snippets[0].get("snippet", "") if snippets else ""
-                content = snippet_text or title
-                records.append({"id": d_id, "title": title, "content": content})
-
-            can_rank = True
-            try:
-                _ = client.rank
-            except AttributeError:
-                can_rank = False
-
-            if records and can_rank:
-                try:
-                    reranked, r_lat = client.rank(
-                        query=qtext,
-                        records=records,
-                        top_n=cfg.rerank_top_n,
-                        model=cfg.rerank_model,
-                        token=tok,
-                    )
-                    top_ids = [rec["id"] for rec in reranked if "id" in rec]
-                    tot_lat = base_res.latency_ms + r_lat
-                    res = SearchResult(
-                        document_ids=top_ids,
-                        latency_ms=round(tot_lat, 2),
-                        total_size=base_res.total_size,
-                        filter_applied=base_res.filter_applied,
-                        fallback_triggered=base_res.fallback_triggered,
-                        rerank_applied=True,
-                        raw_results=base_res.raw_results,
-                    )
-                except Exception:
-                    res = SearchResult(
-                        document_ids=base_res.document_ids[:cfg.rerank_top_n],
-                        latency_ms=base_res.latency_ms,
-                        total_size=base_res.total_size,
-                        filter_applied=base_res.filter_applied,
-                        fallback_triggered=base_res.fallback_triggered,
-                        rerank_applied=False,
-                    )
-            else:
-                res = SearchResult(
-                    document_ids=base_res.document_ids[:cfg.rerank_top_n],
-                    latency_ms=base_res.latency_ms,
-                    total_size=base_res.total_size,
-                    filter_applied=base_res.filter_applied,
-                    fallback_triggered=base_res.fallback_triggered,
-                    rerank_applied=False,
-                )
+        # Determine effective query based on query_rewrite_mode
+        if cfg.query_rewrite_mode == "rewrite_only" and rewrite_cache and qid in rewrite_cache:
+            effective_q = rewrite_cache[qid].get("rewritten", qtext)
+        elif cfg.query_rewrite_mode == "rewrite_plus_original" and rewrite_cache and qid in rewrite_cache:
+            rw = rewrite_cache[qid].get("rewritten", qtext)
+            cl_orig = clean_query(qtext)
+            effective_q = f"{rw} {cl_orig}".strip()
         else:
-            # Execute search
-            res = client.search(
-                query=qtext,
+            effective_q = qtext
+
+        # 1. Base search execution (with search_cache reuse across configs)
+        search_key = (
+            effective_q,
+            active_intent,
+            cfg.intent_boost,
+            cfg.threshold,
+            cfg.clean,
+            cfg.page_size,
+            cfg.fallback_min_results,
+            cfg.ranking_expression,
+        )
+
+        if search_key in search_cache:
+            base_res = search_cache[search_key]
+        else:
+            base_res = client.search(
+                query=effective_q,
                 page_size=cfg.page_size,
                 threshold=cfg.threshold,
                 clean=cfg.clean,
@@ -382,38 +734,106 @@ def evaluate_single_config(
                 intent_boost=cfg.intent_boost,
                 fallback_min_results=cfg.fallback_min_results,
                 ranking_expression=cfg.ranking_expression,
-                rerank=cfg.rerank,
-                rerank_model=cfg.rerank_model,
-                rerank_top_n=cfg.rerank_top_n,
+                rerank=False,
                 token=tok,
             )
+            search_cache[search_key] = base_res
 
         if cfg.name == "baseline" and baseline_cache is not None:
-            baseline_cache[qid] = res
+            baseline_cache[qid] = base_res
 
-        retrieved_ids = res.document_ids
-        rank = eval_metrics.compute_rank(target, retrieved_ids)
+        # 2. Reranking (if enabled)
+        if cfg.rerank and base_res.raw_results:
+            top_candidates = base_res.raw_results[:cfg.rerank_top_n]
+            cand_ids = tuple(r["document"]["id"] for r in top_candidates if "document" in r and "id" in r["document"])
+            rank_key = (effective_q, cand_ids, cfg.rerank_model, cfg.use_rich_records, cfg.rerank_top_n)
 
-        if res.fallback_triggered:
+            if rank_key in rank_cache:
+                reranked_records, r_lat = rank_cache[rank_key]
+            else:
+                records = []
+                for r in top_candidates:
+                    d = r.get("document", {})
+                    d_id = d.get("id")
+                    if not d_id:
+                        continue
+                    if cfg.use_rich_records and rich_records and d_id in rich_records:
+                        rec = rich_records[d_id]
+                        records.append({
+                            "id": d_id,
+                            "title": rec.get("title", d_id),
+                            "content": rec.get("content", ""),
+                        })
+                    else:
+                        derived = d.get("derivedStructData", {})
+                        struct = d.get("structData", {})
+                        title = derived.get("title") or struct.get("title") or d_id
+                        snippets = derived.get("snippets", [])
+                        snippet_text = snippets[0].get("snippet", "") if snippets else ""
+                        content = snippet_text or title
+                        records.append({"id": d_id, "title": title, "content": content})
+
+                can_rank = hasattr(client, "rank")
+                if records and can_rank:
+                    try:
+                        reranked_records, r_lat = client.rank(
+                            query=clean_query(effective_q) if cfg.clean else effective_q,
+                            records=records,
+                            top_n=cfg.rerank_top_n,
+                            model=cfg.rerank_model,
+                            token=tok,
+                        )
+                    except Exception:
+                        reranked_records = [{"id": cid, "score": 0.0} for cid in cand_ids]
+                        r_lat = 0.0
+                else:
+                    reranked_records = [{"id": cid, "score": 0.0} for cid in cand_ids]
+                    r_lat = 0.0
+                rank_cache[rank_key] = (reranked_records, r_lat)
+
+            reranked_ids = [rec["id"] for rec in reranked_records if "id" in rec]
+            scores = {rec["id"]: rec.get("score", 0.0) for rec in reranked_records if "id" in rec}
+
+            if cfg.rerank_margin is not None and base_res.document_ids:
+                original_top1 = base_res.document_ids[0]
+                rerank_top1 = reranked_ids[0] if reranked_ids else original_top1
+                best_score = scores.get(rerank_top1, 0.0)
+                orig_score = scores.get(original_top1, 0.0)
+                if (best_score - orig_score) > cfg.rerank_margin:
+                    doc_ids = reranked_ids
+                else:
+                    doc_ids = [original_top1] + [rid for rid in reranked_ids if rid != original_top1]
+            else:
+                doc_ids = reranked_ids
+
+            total_lat = round(base_res.latency_ms + r_lat, 2)
+            rerank_applied = True
+        else:
+            doc_ids = base_res.document_ids
+            total_lat = base_res.latency_ms
+            rerank_applied = False
+
+        rank = eval_metrics.compute_rank(target, doc_ids)
+        if base_res.fallback_triggered:
             fallbacks_triggered += 1
 
         rows.append({
             "qid": qid,
             "query": qtext,
-            "top10": retrieved_ids[:10],
-            "top10_ids": retrieved_ids[:10],
-            "latency": res.latency_ms,
-            "latency_ms": res.latency_ms,
+            "top10": doc_ids[:10],
+            "top10_ids": doc_ids[:10],
+            "latency": total_lat,
+            "latency_ms": total_lat,
             "applied_intent": active_intent,
             "gold": target,
             "relevant": doc,
             "original_gold": item.get("original_gold", doc),
             "intent": oracle_intent,
             "rank": rank,
-            "top3": retrieved_ids[:3],
-            "top_k": retrieved_ids,
-            "fallback_triggered": res.fallback_triggered,
-            "filter_applied": res.filter_applied,
+            "top3": doc_ids[:3],
+            "top_k": doc_ids,
+            "fallback_triggered": base_res.fallback_triggered,
+            "filter_applied": base_res.filter_applied,
         })
 
     # Slice (a): all queries
@@ -526,6 +946,12 @@ def main():
         help="Path to gold_map.json",
     )
     parser.add_argument(
+        "--rewrite-cache",
+        type=str,
+        default=str(DEFAULT_REWRITE_CACHE_PATH),
+        help="Path to rewrite_cache_dev.jsonl",
+    )
+    parser.add_argument(
         "--out",
         type=str,
         default="/usr/local/google/home/susmith/.gemini/jetski/brain/92e6895e-6aa0-4668-8e1e-5cb583072600/scratch/rag/ablation/dev_results.json",
@@ -594,6 +1020,20 @@ def main():
     # Generate deterministic noisy intents (seed 42)
     noisy_intents = generate_noisy_intents(dev_queries, seed=42, error_rate=0.14)
 
+    # Load rich FAQ records for reranking
+    rich_records = load_rich_faq_records()
+    print(f"Loaded {len(rich_records)} rich FAQ records for reranking.")
+
+    # Load query rewrite cache if present
+    rewrite_cache: Dict[str, Dict[str, Any]] = {}
+    if args.rewrite_cache and pathlib.Path(args.rewrite_cache).exists():
+        with open(args.rewrite_cache, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    item = json.loads(line)
+                    rewrite_cache[item["qid"]] = item
+        print(f"Loaded {len(rewrite_cache)} query rewrites from: {args.rewrite_cache}")
+
     # Initialize SearchClient
     client = SearchClient(
         project=args.project,
@@ -608,6 +1048,8 @@ def main():
 
     results = []
     baseline_cache: Dict[str, SearchResult] = {}
+    search_cache: Dict[Tuple[Any, ...], SearchResult] = {}
+    rank_cache: Dict[Tuple[Any, ...], Tuple[List[Dict[str, Any]], float]] = {}
 
     for c_idx, cfg in enumerate(configs, 1):
         print(f"\n[{c_idx}/{len(configs)}] Evaluating config: {cfg.name} ({cfg.description})")
@@ -619,6 +1061,10 @@ def main():
             gold_map=gold_map,
             client=client,
             baseline_cache=baseline_cache,
+            rich_records=rich_records,
+            rewrite_cache=rewrite_cache,
+            search_cache=search_cache,
+            rank_cache=rank_cache,
         )
         elapsed = time.perf_counter() - t0
         print(f"Completed {cfg.name} in {elapsed:.1f}s. Status: {res.get('status')}")
