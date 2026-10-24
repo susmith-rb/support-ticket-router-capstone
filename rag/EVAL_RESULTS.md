@@ -200,6 +200,65 @@ through `gold_map_v1_v2.json`.
 Remaining gap: real-tweet recall@5 is 0.78, against the G5 target of 0.90. The weakest family is
 `other` (0.66).
 
+## 9. TDD §6.3 filters, §6.4 ablations, recall push (2026-10-24; PLAN3)
+
+Method:
+- Discipline: the 300 real-tweet queries are now the **frozen TEST** set. A new disjoint **DEV** set of
+  300 is used for all tuning. TEST was run only for pre-approved finalists, and every run is audited in
+  `results/v3/test_runs.log`.
+- Metrics are on slice b (dropped golds excluded). Latency is client-side from the cloudtop.
+
+What changed, all committed:
+- `rag/search_client.py`:
+  - status filter (`FAQ_ALLOWED_STATUSES` defaults to active+draft until review) and effective_from filter
+  - intent filter with an unfiltered fallback
+  - soft intent `boostSpec`
+  - the Ranking API rerank, for experiments only
+- A `publish_faq` metadata bug was fixed. New articles had lost `intent_family` in the index; release 4
+  fixed that.
+- 109 agent-authored paraphrases were added to the 14 most-missed articles (release 5). Their source
+  threads are outside both DEV and TEST, which a test enforces.
+
+| Experiment (DEV, n=288) | r@5 | Note |
+|---|---|---|
+| Baseline (LOWEST + clean) | 0.781 | |
+| Threshold LOW | 0.479 | drops too much |
+| Managed rerank (semantic-ranker-512, top 20 → 5) | 0.594 | +93 ms; not used |
+| rankingExpression blends | unsupported | needs `embedding_spec` |
+| Hard intent filter, oracle / 14%-noisy intent | 0.896 / 0.750 | brittle under router error |
+| **Soft intent boost 0.2**, oracle / noisy | 0.875 / **0.840** | chosen |
+| + paraphrases (release 5), noisy | **0.882** | |
+
+**Frozen TEST (n=287), production config = LOWEST + clean + soft intent boost 0.2 with 14%-noisy intent:**
+
+| | Baseline, release 4 | Production, release 4 | **Production, release 5** | TDD target |
+|---|---|---|---|---|
+| recall@1 | 0.415 | 0.488 | **0.519** | — |
+| recall@5 | 0.780 | 0.822 | **0.836** | ≥ 0.90 |
+| recall@10 | 0.875 | 0.913 | **0.927** | — |
+| MRR@10 | 0.570 | 0.626 | **0.652** | ≥ 0.75 |
+| nDCG@5 | 0.613 | 0.666 | **0.689** | ≥ 0.80 |
+| p95 latency | 282 ms | 263 ms | **251 ms** | ≤ 400 ms |
+
+Release 5 production recall@5 by intent:
+- account_payment 0.848
+- order_status 0.873
+- other 0.753
+- returns_refunds 0.864
+- shipping_policy 0.889 (n=9)
+
+Reading it:
+- From the original baseline to production on release 5, recall@5 rose +0.056 and MRR +0.082.
+- The paraphrase gain shrank from DEV (+0.042) to TEST (+0.014). That's expected, because the articles
+  were chosen from DEV misses; the TEST figure is the honest one.
+- **The 0.90 / 0.75 / 0.80 targets are still not met.** `other` remains the weakest family. Remaining
+  levers:
+  - split `other` further
+  - paraphrases chosen by family instead of from DEV misses
+  - real router intent instead of simulated noise
+  - query rewrite (a runtime Gemini call)
+  - custom embeddings, which would unlock rankingExpression
+
 ## Reproduce
 
 ```bash

@@ -163,6 +163,7 @@ Evaluation is stratified across three tiers to balance realism, benchmarking, an
 - **Rationale**: Establishes target retrieval quality for automated deflection without human intervention (TDD §6.4, Gate G5).
 - **Acceptance**: `python rag/ablation_eval.py --dev-queries $S/eval/dev.jsonl`
 - **Status**: done
+- **Final TEST evidence (2026-10-24, release 5, single audited run; rag/EVAL_RESULTS.md §9, rag/results/v3/)**: production config (LOWEST + clean + soft intent boost 0.2, 14%-noisy intent) recall@1 0.519, recall@5 0.836, recall@10 0.927, MRR@10 0.652, nDCG@5 0.689, p95 251 ms (baseline 0.443/0.791/0.885/0.594/0.633). Targets recall@5 ≥ 0.90, MRR ≥ 0.75, nDCG@5 ≥ 0.80 NOT met; p95 ≤ 400 ms met. Status stays partial.
 - **Owner**: rag-retrieval
 - **Recommended Production Configuration**:
   - **Config**: `intent_soft_0.2` — Soft Intent Boost with `boost=0.2` supplied via runtime configuration (`intent_boost=0.2` in `SearchClient.search(...)`), `relevanceThreshold=LOWEST`, and `clean=True`.
