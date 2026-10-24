@@ -124,6 +124,7 @@ deploy/terraform/
 - **Acceptance**: `manual: ./scripts/tf_vm.sh logged-run single-project single_project_plan plan`
 - **Status**: partial
 - **Owner**: infra-agent-search
+- **Evidence**: `faq-articles` provisioned and loaded with 50 documents in `us` multi-region (recall@5 parity measured at 0.753 `us` vs 0.780 `global` in commit `a6f621c`). Search engine `support-kb-search` active in `us` linked to `faq-articles`. Data store `resolved-threads` definition updated to `content_config = "NO_CONTENT"` (matching structData schema); recreation in `us` and 81,103 thread document import pending clearance of Discovery Engine soft-delete tombstone.
 
 ### REQ-INFRA-SEARCH-009: Discovery Engine Soft-Delete Lifecycle Awareness
 - **Statement**: Operations and disaster-recovery runbooks MUST account for Discovery Engine's asynchronous purge pipeline (`discovery-ds-deletion-pipeline`), which holds deleted data store IDs in soft-deleted state for hours to days and rejects immediate re-creation with HTTP 400 `FAILED_PRECONDITION`.
@@ -131,6 +132,7 @@ deploy/terraform/
 - **Acceptance**: `manual: gcloud compute ssh laya-tune --command "terraform state list"`
 - **Status**: done
 - **Owner**: infra-agent-search
+- **Evidence**: Empirically verified during `resolved-threads` data store recreation attempts (2026-10-23 and 2026-10-24). Discovery Engine rejected recreation with `Error 400: DataStore ... is being deleted, please wait for deletion to complete before recreating with the same ID. The deletion could take a couple of hours.` Root cause corroborated by internal Google issues b/570172520 and b/436210912: asynchronous Flume/Borg pipeline (`prod-us.discovery-ds-deletion-pipeline`) retains tombstones in Spanner. Confirmed operational rule: do not rename data store IDs on recreation; await soft-delete purge completion. Also verified that `support-kb-search` engine can be unlinked/recreated without affecting underlying data store `faq-articles` (50 docs intact).
 
 ---
 
