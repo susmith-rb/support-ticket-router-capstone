@@ -1,0 +1,300 @@
+{
+  "faq-shipping-policy-prime-delivery-speed-delays": {
+    "scope_line": "Scope: This article covers Hub Plus delivery speed policies, transit timelines, and dispatch cutoff rules. For tracking specific overdue packages or orders past their delivery window, see \"Where is my order or why is it late?\".",
+    "questions": [
+      "why does expedited member shipping take extra days before dispatching?",
+      "does fast member shipping start from checkout time or warehouse fulfillment?",
+      "why did checkout promise fast delivery but estimated date changed before dispatch?",
+      "understanding why member two day delivery takes longer for heavy items",
+      "what are the daily cutoff hours to qualify for express member delivery?",
+      "why is shipping speed calculated from dispatch date instead of order placement?",
+      "why does delivery speed estimate slip after selecting delivery address?",
+      "membership shipping speed policies for items requiring extra handling",
+      "why is standard transit time applied to my expedited member order?",
+      "policy guidelines on guaranteed transit speeds versus seller processing delays"
+    ],
+    "removed_questions": [
+      "Why is my package late when I have Hub Plus?"
+    ],
+    "source_thread_ids": [
+      "1310123",
+      "2837060",
+      "2721743",
+      "2950707",
+      "284864",
+      "1205450",
+      "770077",
+      "2828821",
+      "1166700",
+      "770061"
+    ]
+  },
+  "faq-order-status-late-or-not-arrived-order": {
+    "scope_line": "Scope: This article covers tracking and locating orders that have not arrived by the estimated delivery date. For membership shipping speeds, cutoff times, or dispatch delays, see \"Why is my Hub Plus delivery taking longer than expected?\".",
+    "questions": [
+      "my package never arrived and the delivery date already passed",
+      "where is my parcel it was supposed to be delivered yesterday",
+      "order is several days late and tracking has not moved",
+      "who do I contact when my shipment is past the promised arrival date?",
+      "my order status still says out for delivery from two days ago",
+      "package is overdue and carrier says delayed in transit",
+      "how to report an order that has not arrived past the delivery window",
+      "scheduled delivery time has passed and my package is nowhere to be found",
+      "tracking shows delayed at sorting facility what should I do?",
+      "driver never arrived on delivery date how do I find my missing order?"
+    ],
+    "removed_questions": [],
+    "source_thread_ids": [
+      "1551624",
+      "1363178",
+      "86126",
+      "1805082",
+      "1439764",
+      "513549",
+      "2755697",
+      "2295523",
+      "16827",
+      "1288438"
+    ]
+  },
+  "faq-shipping-policy-weekend-and-same-day-delivery": {
+    "scope_line": "Scope: This article covers weekend Saturday and Sunday deliveries, same-day delivery eligibility, and cutoff hours. For standard transit speeds and delay rules, see \"Why is my Hub Plus delivery taking longer than expected?\".",
+    "questions": [
+      "is Saturday or Sunday delivery available for my postal code?",
+      "what is the cutoff time to order for same day evening delivery?",
+      "can I get an order delivered today on the weekend?",
+      "how to select weekend delivery slot during checkout",
+      "why is same day delivery not showing as an option for this item?",
+      "does weekend courier service deliver to commercial business addresses?",
+      "do weekend deliveries incur an extra charge for member accounts?",
+      "how do I know if an item qualifies for same day arrival?"
+    ],
+    "removed_questions": [],
+    "source_thread_ids": [
+      "1777582",
+      "523449",
+      "1959487",
+      "2452522",
+      "843547",
+      "2601415",
+      "145797",
+      "857045"
+    ]
+  },
+  "faq-other-customer-service-complaints": {
+    "scope_line": "Scope: This article covers filing formal complaints about interactions with customer service representatives, phone calls, or chat sessions. For general company feedback or product suggestions, see \"How do I provide general feedback or report service issues?\".",
+    "questions": [
+      "support representative was rude and disconnected my chat session",
+      "how to escalate a complaint regarding an unhelpful customer support agent",
+      "representative promised to call back within an hour and never did",
+      "chat agent gave conflicting answers and closed ticket without helping",
+      "how do I file a supervisor escalation against a support team member?",
+      "phone support hung up on me while transferring to another department",
+      "customer support rep promised refund confirmation email that never arrived",
+      "file a formal complaint about poor customer care assistance"
+    ],
+    "removed_questions": [],
+    "source_thread_ids": [
+      "2643640",
+      "380747",
+      "787575",
+      "281206",
+      "2558576",
+      "984676",
+      "1526932",
+      "2938247"
+    ]
+  },
+  "faq-other-general-complaints-and-feedback": {
+    "scope_line": "Scope: This article covers submitting general company feedback, catalog suggestions, policy comments, and service improvement ideas. For complaints about specific customer service agent interactions, see \"How do I file a complaint about customer support?\".",
+    "questions": [
+      "where can I submit suggestions to improve the shopping experience?",
+      "providing customer feedback on packaging waste and box sizes",
+      "general complaint regarding recent store policies and pricing changes",
+      "how to leave feedback about product recommendations and search results",
+      "submitting comments about overall service quality and satisfaction",
+      "where to send suggestions for website layout and accessibility improvements",
+      "customer feedback regarding promotional email frequency",
+      "how to voice general dissatisfaction with store policies"
+    ],
+    "removed_questions": [],
+    "source_thread_ids": [
+      "725945",
+      "2490640",
+      "1028171",
+      "2906591",
+      "1556281",
+      "420975",
+      "2166465",
+      "1694495"
+    ]
+  },
+  "faq-returns-refunds-damaged-or-defective-items": {
+    "scope_line": "Scope: This article covers items that arrived damaged, broken, shattered, or defective upon delivery. If you received a completely different item or wrong size, see \"What should I do if I received the wrong item?\". If an item or accessory was missing from the box, see \"What should I do if an item is missing from my delivery?\".",
+    "questions": [
+      "package arrived crushed and the glass item inside is shattered",
+      "electronic device does not turn on and appears defective out of the box",
+      "how to request replacement for an item that arrived cracked or broken",
+      "product arrived with physical damage from shipping transit",
+      "item has cosmetic scratches and dented casing right out of package",
+      "defective merchandise does not work as advertised how to exchange",
+      "box was soaked and the contents inside are ruined",
+      "brand new item arrived defective how do I return for a working unit?"
+    ],
+    "removed_questions": [],
+    "source_thread_ids": [
+      "2652355",
+      "2615181",
+      "1288197",
+      "1059600",
+      "2734316",
+      "1600414",
+      "575428",
+      "2343961"
+    ]
+  },
+  "faq-returns-refunds-wrong-item-received": {
+    "scope_line": "Scope: This article covers deliveries where you received an incorrect product, wrong size, wrong color, or someone else's order. If your item is broken or defective, see \"What should I do if my item arrives damaged or defective?\". If an item was missing from your parcel, see \"What should I do if an item is missing from my delivery?\".",
+    "questions": [
+      "opened my delivery and found a completely different product inside",
+      "received another customer's order with someone else's packing slip",
+      "ordered medium size clothing but received extra large instead",
+      "wrong color and model sent compared to what shows in my order history",
+      "seller sent incorrect variant how do I get the right item delivered?",
+      "received shoes in the wrong style how to return for correct pair",
+      "shipping label has my name but contents belong to another person",
+      "delivered item does not match the product description ordered"
+    ],
+    "removed_questions": [],
+    "source_thread_ids": [
+      "777831",
+      "1745603",
+      "485182",
+      "1159306",
+      "903653",
+      "576515",
+      "444269",
+      "847727"
+    ]
+  },
+  "faq-returns-refunds-missing-or-used-items": {
+    "scope_line": "Scope: This article covers missing items from a multi-item package, empty boxes, or items that appear previously opened or used. If your item is broken, see \"What should I do if my item arrives damaged or defective?\". If you received the wrong product, see \"What should I do if I received the wrong item?\".",
+    "questions": [
+      "package was sealed but one of the items I ordered was missing inside",
+      "opened parcel and the manufacturer box was completely empty",
+      "multi item order arrived with only half the products included",
+      "received an item that has unsealed tape and looks previously used",
+      "accessory cable and power adapter missing from the product packaging",
+      "packing slip lists two items but package contained only one",
+      "product seal was broken and item shows signs of prior use",
+      "how to report missing pieces from a delivered set"
+    ],
+    "removed_questions": [],
+    "source_thread_ids": [
+      "249141",
+      "2102659",
+      "2928984",
+      "355531",
+      "333118",
+      "2176588",
+      "833956",
+      "1499924"
+    ]
+  },
+  "faq-order-status-tracking-and-status": {
+    "scope_line": "Scope: This article covers finding tracking numbers, carrier tracking links, and interpreting in-transit courier milestones. If your package is past its estimated delivery date, see \"Where is my order or why is it late?\". If tracking shows delivered but you cannot find it, see \"What should I do if tracking says delivered but I have not received my package?\".",
+    "questions": [
+      "where can I find the carrier tracking number for my shipped order?",
+      "carrier tracking link has not updated any new scans today",
+      "how to check whether my order has left the fulfillment warehouse",
+      "what does shipment received by carrier status mean?",
+      "how do I trace my package using the third party courier website?",
+      "where to view current transit updates for dispatched packages",
+      "checking estimated transit milestones while order is moving",
+      "how to get shipping status notifications sent to my phone"
+    ],
+    "removed_questions": [],
+    "source_thread_ids": [
+      "2276513",
+      "1699925",
+      "1288169",
+      "985102",
+      "282242",
+      "2297145",
+      "2159681",
+      "682459"
+    ]
+  },
+  "faq-order-status-missing-or-stolen-delivered-package": {
+    "scope_line": "Scope: This article covers situations where tracking status indicates \"Delivered\" but the parcel cannot be located at your address. For packages currently in transit or delayed before delivery, see \"Where is my order or why is it late?\".",
+    "questions": [
+      "tracking status says handed to resident but nobody knocked on my door",
+      "marked as delivered to front porch but nothing is outside my house",
+      "courier photo shows delivered to wrong building and package is missing",
+      "delivery confirmation received by text but mailbox is completely empty",
+      "tracking shows delivered two hours ago but parcel is nowhere to be found",
+      "suspect package was stolen from doorstep after marked delivered",
+      "delivered notification sent while I was home but no delivery was made",
+      "checked with neighbors and building management cannot locate delivered order"
+    ],
+    "removed_questions": [],
+    "source_thread_ids": [
+      "224345",
+      "1795636",
+      "1193925",
+      "2369594",
+      "2490691",
+      "944850",
+      "804056",
+      "2364641"
+    ]
+  },
+  "faq-other-app-and-website-issues": {
+    "scope_line": "Scope: This article covers technical troubleshooting for website errors, mobile application crashes, search malfunctions, and cart glitches. For filing complaints regarding customer care agents, see \"How do I file a complaint about customer support?\".",
+    "questions": [
+      "mobile app freezes and crashes immediately upon opening",
+      "add to cart button is greyed out and not responding to clicks",
+      "website search bar displays unexpected technical error page",
+      "unable to proceed to checkout due to infinite loading wheel on website",
+      "shopping cart items disappear when switching browser tabs",
+      "how to clear application cache to resolve mobile navigation glitches",
+      "product images and customer reviews fail to load on product pages",
+      "getting something went wrong error message when attempting to search items"
+    ],
+    "removed_questions": [],
+    "source_thread_ids": [
+      "550582",
+      "2841891",
+      "2151019",
+      "2803276",
+      "130248",
+      "279189",
+      "2644996",
+      "1497917"
+    ]
+  },
+  "faq-order-status-false-delivery-attempts": {
+    "scope_line": "Scope: This article covers situations where the courier reported a failed delivery attempt or customer unavailable notice while you were present. For orders that are late without an attempt notice, see \"Where is my order or why is it late?\".",
+    "questions": [
+      "courier left a delivery attempted note but I was waiting by the door",
+      "tracking states business closed delivery attempt failed on residential address",
+      "falsely reported customer not home when no driver ever came to the street",
+      "how to request courier re attempt delivery following a missed attempt notice",
+      "driver never buzzed apartment intercom but marked attempt unsuccessful",
+      "delivery attempt failed notification received without any courier arrival",
+      "how to ensure courier calls gate code on next delivery attempt",
+      "tracking says delivery rescheduled after phantom attempt notice"
+    ],
+    "removed_questions": [],
+    "source_thread_ids": [
+      "603942",
+      "2590133",
+      "867399",
+      "2419261",
+      "529210",
+      "2761298",
+      "436875",
+      "2641352"
+    ]
+  }
+}

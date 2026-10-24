@@ -54,6 +54,7 @@ labels.jsonl (teacher topics) ─────────┴──▶ rag/regrou
 | `REQ-RAG-CORPUS-015` | Publish, Verification, and Rollback Operations | `done` | `manual: python rag/publish_faq.py --work rag/corpus_v2/ --dry-run` |
 | `REQ-RAG-CORPUS-016` | Human Review for Knowledge Activation | `open` | `manual: python rag/publish_faq.py --work rag/corpus_v2/ --activate faq-order-status-late-or-not-arrived-order --reviewed-by susmith` |
 | `REQ-RAG-CORPUS-017` | Index-Side Paraphrase Augmentation and Leakage Guard | `done` | `tests/rag/test_augment_paraphrases.py::test_paraphrases_v1_leakage_and_lint` |
+| `REQ-RAG-CORPUS-018` | Index-Side Disambiguation Questions, Scope Statements, and Leakage Guards | `done` | `tests/rag/test_augment_disambiguation.py::test_disambiguation_v1_leakage_and_lint` |
 
 ---
 
@@ -175,6 +176,13 @@ labels.jsonl (teacher topics) ─────────┴──▶ rag/regrou
 - **Statement**: FAQ articles MAY be augmented with targeted "Also asked as" customer-phrasing paraphrases derived from historical threads matching the article's theme (`themes_v2.json`). All source threads MUST be provably disjoint from both the DEV and TEST evaluation query sets (`source_thread_id ∉ dev ∪ test` by `thread_id`). Paraphrase text MUST be synthesized in natural customer phrasing (slang, emotional tone, typos, colloquialisms) rather than copied verbatim, MUST redact handles and PII tokens, and MUST NOT match or near-duplicate any query in `dev.jsonl` or `test.jsonl` under case-insensitive whitespace/punctuation-normalized matching. Augmentations MUST be tracked in `rag/corpus_v2/agent_decisions/paraphrases_v1.json` recording `{doc_id: {paraphrases: [...], source_thread_ids: [...]}}`, with author provenance (`authored_by: jetski-agent:gemini-3.8-flash-high`) recorded in article metadata. Merging paraphrases MUST be idempotent.
 - **Rationale**: Real customer inquiries on social channels exhibit vocabulary diversity, misspellings, and emotional phrasing distinct from formal help titles. Augmenting the "Also asked as" section enriches the document's lexical and semantic embedding representation without altering core policy content (TDD §6.1, §6.4). Strict leakage prevention guarantees that retrieval gains reflect genuine generalization rather than memorized evaluation queries (PLAN3 D6c).
 - **Acceptance**: `tests/rag/test_augment_paraphrases.py::test_paraphrases_v1_leakage_and_lint`
+- **Status**: done
+- **Owner**: rag-corpus
+
+### REQ-RAG-CORPUS-018: Index-Side Disambiguation Questions, Scope Statements, and Leakage Guards
+- **Statement**: FAQ articles in `corpus_v2` MAY be augmented with distinguishing "Also asked as" customer questions, explicit scope demarcation statements ("This article covers... For... see..."), and targeted removals of ambiguous generic questions to resolve sibling article confusion identified during retrieval ablation error analysis. Disambiguation samples MUST be derived from real customer interaction threads belonging to the article's theme (`themes_v2.json`) that are provably disjoint from DEV and TEST evaluation query sets (`source_thread_id ∉ dev ∪ test` by `thread_id`). Disambiguation questions MUST NOT match or near-duplicate any query in `dev.jsonl` or `test.jsonl` under case-insensitive whitespace/punctuation-normalized matching. Disambiguation decisions MUST be recorded in `rag/corpus_v2/agent_decisions/disambiguation_v1.json` capturing `{doc_id: {questions: [...], scope_line: "...", removed_questions: [...], source_thread_ids: [...]}}`. All changes must be idempotent, pass `publish_faq.lint` with zero violations, and preserve existing factual policy statements.
+- **Rationale**: Multi-label evaluation reveals that ~44% of rank-1 errors stem from fine-grained sibling article confusion within the same intent family or topic cluster (e.g., Prime delivery speed vs late order status, damaged vs wrong item received, CS complaints vs general complaints). Adding differentiating questions that explicitly emphasize boundaries and adding scope cross-references improves nDCG@5 without requiring model fine-tuning or harming recall (PLAN6).
+- **Acceptance**: `tests/rag/test_augment_disambiguation.py::test_disambiguation_v1_leakage_and_lint`
 - **Status**: done
 - **Owner**: rag-corpus
 

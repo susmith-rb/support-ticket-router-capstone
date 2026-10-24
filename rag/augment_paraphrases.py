@@ -11,7 +11,7 @@ import pathlib
 import re
 import shutil
 import sys
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 def normalize_text(text: str) -> str:
@@ -70,7 +70,8 @@ def verify_no_leakage(
     # 2. Text normalized match check
     leaked_queries = []
     for doc_id, data in paraphrases_data.items():
-        for p in data.get("paraphrases", []):
+        qs = data.get("paraphrases", []) + data.get("questions", [])
+        for p in qs:
             norm_p = normalize_text(p)
             if norm_p in eval_queries_norm:
                 leaked_queries.append((doc_id, p))
@@ -79,6 +80,80 @@ def verify_no_leakage(
         raise ValueError(
             f"LEAKAGE VIOLATION: Paraphrase text matches query in dev/test sets: {leaked_queries}"
         )
+
+
+def apply_disambiguation_to_body(
+    body: str,
+    scope_line: Optional[str] = None,
+    new_questions: Optional[List[str]] = None,
+    removed_questions: Optional[List[str]] = None,
+) -> str:
+    """Apply scope line, question removals, and new distinguishing questions to an article body idempotently."""
+    lines = body.splitlines()
+
+    # 1. Scope line handling
+    if scope_line:
+        scope_idx = -1
+        for idx, l in enumerate(lines):
+            if l.strip().startswith("Scope:"):
+                scope_idx = idx
+                break
+
+        if scope_idx != -1:
+            lines[scope_idx] = scope_line
+        else:
+            title_idx = -1
+            for idx, l in enumerate(lines):
+                if l.startswith("# "):
+                    title_idx = idx
+                    break
+
+            if title_idx != -1:
+                lines = lines[: title_idx + 1] + ["", scope_line] + lines[title_idx + 1 :]
+            else:
+                lines = [scope_line, ""] + lines
+
+    # 2. Also asked as block
+    also_idx = -1
+    for idx, l in enumerate(lines):
+        if l.strip().lower() == "also asked as:":
+            also_idx = idx
+            break
+
+    if also_idx != -1:
+        bullets_start = also_idx + 1
+        bullets_end = bullets_start
+        existing_bullets = []
+        rem_set = {r.strip().lower() for r in (removed_questions or [])}
+
+        while bullets_end < len(lines) and (
+            lines[bullets_end].strip().startswith("- ") or not lines[bullets_end].strip()
+        ):
+            if lines[bullets_end].strip().startswith("- "):
+                b_text = lines[bullets_end].strip()[2:].strip()
+                if b_text.lower() not in rem_set:
+                    existing_bullets.append(b_text)
+            bullets_end += 1
+
+        existing_set = {b.lower() for b in existing_bullets}
+        for q in new_questions or []:
+            if q.strip().lower() not in existing_set:
+                existing_bullets.append(q.strip())
+                existing_set.add(q.strip().lower())
+
+        rest = lines[bullets_end:]
+        while rest and not rest[0].strip():
+            rest.pop(0)
+
+        new_lines = (
+            lines[: also_idx + 1]
+            + [f"- {b}" for b in existing_bullets]
+            + [""]
+            + rest
+        )
+        return "\n".join(new_lines).strip() + "\n"
+    else:
+        return "\n".join(lines).strip() + "\n"
 
 
 def merge_paraphrases_into_body(body: str, new_paraphrases: List[str]) -> str:
@@ -183,8 +258,17 @@ def augment_corpus(
         body = doc_file.read_text(encoding="utf-8")
 
         if doc_id in paraphrases_data:
-            paras = paraphrases_data[doc_id].get("paraphrases", [])
-            new_body = merge_paraphrases_into_body(body, paras)
+            item = paraphrases_data[doc_id]
+            if "scope_line" in item or "questions" in item or "removed_questions" in item:
+                new_body = apply_disambiguation_to_body(
+                    body=body,
+                    scope_line=item.get("scope_line"),
+                    new_questions=item.get("questions", []),
+                    removed_questions=item.get("removed_questions", []),
+                )
+            else:
+                paras = item.get("paraphrases", [])
+                new_body = merge_paraphrases_into_body(body, paras)
             (out_docs / doc_file.name).write_text(new_body, encoding="utf-8")
             augmented_count += 1
             augmented_docs.append(doc_id)
@@ -200,14 +284,20 @@ def augment_corpus(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Augment FAQ corpus with customer paraphrases.")
+    parser = argparse.ArgumentParser(description="Augment FAQ corpus with customer paraphrases or disambiguation.")
     parser.add_argument("--in-dir", required=True, type=pathlib.Path, help="Input corpus directory containing docs/")
     parser.add_argument("--out-dir", required=True, type=pathlib.Path, help="Output corpus directory")
     parser.add_argument(
         "--paraphrases",
         default=pathlib.Path("rag/corpus_v2/agent_decisions/paraphrases_v1.json"),
         type=pathlib.Path,
-        help="Path to paraphrases_v1.json",
+        help="Path to paraphrases_v1.json or disambiguation_v1.json",
+    )
+    parser.add_argument(
+        "--disambiguation",
+        default=None,
+        type=pathlib.Path,
+        help="Optional path to disambiguation_v1.json (overrides --paraphrases)",
     )
     parser.add_argument(
         "--dev-queries",
@@ -223,9 +313,10 @@ def main():
     )
     args = parser.parse_args()
 
+    decision_path = args.disambiguation if args.disambiguation else args.paraphrases
     result = augment_corpus(
         in_dir=args.in_dir,
-        paraphrases_path=args.paraphrases,
+        paraphrases_path=decision_path,
         out_dir=args.out_dir,
         dev_path=args.dev_queries,
         test_path=args.test_queries,
