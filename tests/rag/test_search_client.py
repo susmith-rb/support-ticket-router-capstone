@@ -168,3 +168,170 @@ def test_search_client_intent_fallback_triggers_when_insufficient(monkeypatch):
     assert res.fallback_triggered is True
     assert res.document_ids == ["faq-fallback-1", "faq-fallback-2", "faq-fallback-3"]
     assert res.filter_applied == 'status: ANY("active", "draft")'
+
+
+# REQ-RAG-RETR-011
+def test_search_client_soft_boost_condition(monkeypatch):
+    recorded_requests = []
+
+    def mock_urlopen(req, timeout=60):
+        body = json.loads(req.data.decode("utf-8"))
+        recorded_requests.append(body)
+        return MockHTTPResponse({
+            "results": [{"document": {"id": "faq-order-1"}}],
+            "totalSize": 1,
+        })
+
+    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+
+    client = SearchClient(token="mock-token")
+    res = client.search(
+        "where is my late package",
+        intent_family="order_status",
+        intent_boost=0.5,
+        allowed_statuses=["active", "draft"],
+    )
+
+    assert len(recorded_requests) == 1
+    req = recorded_requests[0]
+    # Soft boost: intent_family should NOT be in the filter
+    assert "intent_family" not in req.get("filter", "")
+    assert req.get("filter") == 'status: ANY("active", "draft")'
+    # boostSpec should be populated
+    assert "boostSpec" in req
+    boost_specs = req["boostSpec"].get("conditionBoostSpecs", [])
+    assert len(boost_specs) == 1
+    assert boost_specs[0]["condition"] == 'intent_family: ANY("order_status")'
+    assert boost_specs[0]["boost"] == 0.5
+    assert res.document_ids == ["faq-order-1"]
+    assert res.fallback_triggered is False
+
+
+# REQ-RAG-RETR-011
+def test_search_client_boost_spec_explicit(monkeypatch):
+    recorded_requests = []
+
+    def mock_urlopen(req, timeout=60):
+        body = json.loads(req.data.decode("utf-8"))
+        recorded_requests.append(body)
+        return MockHTTPResponse({"results": [], "totalSize": 0})
+
+    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+
+    client = SearchClient(token="mock-token")
+    custom_boost = {
+        "conditionBoostSpecs": [{"condition": 'intent_family: ANY("other")', "boost": 0.8}]
+    }
+    client.search("custom boost query", boost_spec=custom_boost)
+
+    assert len(recorded_requests) == 1
+    assert recorded_requests[0].get("boostSpec") == custom_boost
+
+
+# REQ-RAG-RETR-011
+def test_search_client_ranking_expression(monkeypatch):
+    recorded_requests = []
+
+    def mock_urlopen(req, timeout=60):
+        body = json.loads(req.data.decode("utf-8"))
+        recorded_requests.append(body)
+        return MockHTTPResponse({"results": [], "totalSize": 0})
+
+    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+
+    client = SearchClient(token="mock-token")
+    client.search("test query", ranking_expression="semantic_similarity_score")
+
+    assert len(recorded_requests) == 1
+    assert recorded_requests[0].get("rankingExpression") == "semantic_similarity_score"
+
+
+# REQ-RAG-RETR-011
+def test_search_client_rank_method_offline(monkeypatch):
+    recorded_requests = []
+    recorded_urls = []
+
+    def mock_urlopen(req, timeout=60):
+        recorded_urls.append(req.full_url)
+        body = json.loads(req.data.decode("utf-8"))
+        recorded_requests.append(body)
+        return MockHTTPResponse({
+            "records": [
+                {"id": "doc-2", "score": 0.85},
+                {"id": "doc-1", "score": 0.42},
+            ]
+        })
+
+    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+
+    client = SearchClient(token="mock-token")
+    records_in = [
+        {"id": "doc-1", "title": "Doc 1", "content": "Content 1"},
+        {"id": "doc-2", "title": "Doc 2", "content": "Content 2"},
+    ]
+    reranked, lat_ms = client.rank("find doc", records=records_in, top_n=2)
+
+    assert len(recorded_requests) == 1
+    assert ":rank" in recorded_urls[0]
+    assert recorded_requests[0]["model"] == "semantic-ranker-512@latest"
+    assert recorded_requests[0]["topN"] == 2
+    assert recorded_requests[0]["records"] == records_in
+    assert [r["id"] for r in reranked] == ["doc-2", "doc-1"]
+    assert lat_ms >= 0
+
+
+# REQ-RAG-RETR-011
+def test_search_client_managed_rerank_integration(monkeypatch):
+    recorded_urls = []
+
+    def mock_urlopen(req, timeout=60):
+        recorded_urls.append(req.full_url)
+        if ":rank" in req.full_url:
+            return MockHTTPResponse({
+                "records": [
+                    {"id": "doc-3", "score": 0.9},
+                    {"id": "doc-1", "score": 0.5},
+                ]
+            })
+        # :search response
+        return MockHTTPResponse({
+            "results": [
+                {
+                    "document": {
+                        "id": "doc-1",
+                        "derivedStructData": {"title": "Title 1", "snippets": [{"snippet": "Snip 1"}]},
+                    }
+                },
+                {
+                    "document": {
+                        "id": "doc-2",
+                        "derivedStructData": {"title": "Title 2", "snippets": [{"snippet": "Snip 2"}]},
+                    }
+                },
+                {
+                    "document": {
+                        "id": "doc-3",
+                        "derivedStructData": {"title": "Title 3", "snippets": [{"snippet": "Snip 3"}]},
+                    }
+                },
+            ],
+            "totalSize": 3,
+        })
+
+    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+
+    client = SearchClient(token="mock-token")
+    res = client.search(
+        "where is order",
+        page_size=20,
+        rerank=True,
+        rerank_top_n=2,
+    )
+
+    assert len(recorded_urls) == 2
+    assert ":search" in recorded_urls[0]
+    assert ":rank" in recorded_urls[1]
+    assert res.rerank_applied is True
+    # Reranker reordered to top 2: doc-3, doc-1
+    assert res.document_ids == ["doc-3", "doc-1"]
+
