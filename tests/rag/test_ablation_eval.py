@@ -17,6 +17,7 @@ from ablation_eval import (
     generate_markdown_table,
     generate_noisy_intents,
     get_ablation_configs,
+    validate_split_and_config_guard,
 )
 from search_client import SearchResult
 
@@ -25,7 +26,7 @@ def test_get_ablation_configs_all():
     configs = get_ablation_configs()
     names = [c.name for c in configs]
     assert names == ALL_CONFIG_NAMES
-    assert len(configs) == 13
+    assert len(configs) == 17
 
     # Check specific config attributes
     baseline = next(c for c in configs if c.name == "baseline")
@@ -40,9 +41,60 @@ def test_get_ablation_configs_all():
     rank_expr = next(c for c in configs if c.name == "rank_expr_semantic")
     assert rank_expr.supported is False
 
+    soft_01 = next(c for c in configs if c.name == "intent_soft_oracle_0.1")
+    assert soft_01.intent_mode == "oracle"
+    assert soft_01.intent_boost == 0.1
+
+    soft_03 = next(c for c in configs if c.name == "intent_soft_oracle_0.3")
+    assert soft_03.intent_mode == "oracle"
+    assert soft_03.intent_boost == 0.3
+
     soft_05 = next(c for c in configs if c.name == "intent_soft_oracle_0.5")
     assert soft_05.intent_mode == "oracle"
     assert soft_05.intent_boost == 0.5
+
+
+def test_validate_split_and_config_guard(tmp_path):
+    audit_file = tmp_path / "test_runs.log"
+
+    # 1. Dev set passes without final_test
+    dev_queries = [{"qid": "d001", "query": "dev query"}]
+    validate_split_and_config_guard(
+        queries_path="scratch/rag/eval/dev.jsonl",
+        queries=dev_queries,
+        final_test=False,
+    )
+
+    # 2. Test set fails without final_test
+    test_queries = [{"qid": "t001", "query": "test query"}]
+    with pytest.raises(ValueError, match="SPLIT DISCIPLINE VIOLATION"):
+        validate_split_and_config_guard(
+            queries_path="scratch/rag/eval/test.jsonl",
+            queries=test_queries,
+            final_test=False,
+        )
+
+    # 3. Test set fails with final_test=True but without configs allow-list
+    with pytest.raises(ValueError, match="requires an explicit config allow-list"):
+        validate_split_and_config_guard(
+            queries_path="scratch/rag/eval/test.jsonl",
+            queries=test_queries,
+            final_test=True,
+            selected_configs=None,
+        )
+
+    # 4. Test set passes with final_test=True and configs allow-list, writes audit log
+    validate_split_and_config_guard(
+        queries_path="scratch/rag/eval/test.jsonl",
+        queries=test_queries,
+        final_test=True,
+        selected_configs=["baseline", "intent_soft_noisy_0.2"],
+        audit_log_path=str(audit_file),
+    )
+    assert audit_file.exists()
+    log_content = audit_file.read_text(encoding="utf-8")
+    assert "FINAL_TEST_RUN" in log_content
+    assert "configs=baseline,intent_soft_noisy_0.2" in log_content
 
 
 def test_get_ablation_configs_filter():

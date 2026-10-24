@@ -51,10 +51,14 @@ ALL_CONFIG_NAMES = [
     "managed_rerank",
     "intent_hard_oracle",
     "intent_hard_noisy",
+    "intent_soft_oracle_0.1",
     "intent_soft_oracle_0.2",
+    "intent_soft_oracle_0.3",
     "intent_soft_oracle_0.5",
     "intent_soft_oracle_0.8",
+    "intent_soft_noisy_0.1",
     "intent_soft_noisy_0.2",
+    "intent_soft_noisy_0.3",
     "intent_soft_noisy_0.5",
     "intent_soft_noisy_0.8",
 ]
@@ -143,6 +147,15 @@ def get_ablation_configs(config_names: Optional[Sequence[str]] = None) -> List[A
             intent_boost=None,
         ),
         AblationConfig(
+            name="intent_soft_oracle_0.1",
+            description="Soft Intent Boost (Oracle, boost=0.1)",
+            threshold="LOWEST",
+            clean=True,
+            page_size=10,
+            intent_mode="oracle",
+            intent_boost=0.1,
+        ),
+        AblationConfig(
             name="intent_soft_oracle_0.2",
             description="Soft Intent Boost (Oracle, boost=0.2)",
             threshold="LOWEST",
@@ -150,6 +163,15 @@ def get_ablation_configs(config_names: Optional[Sequence[str]] = None) -> List[A
             page_size=10,
             intent_mode="oracle",
             intent_boost=0.2,
+        ),
+        AblationConfig(
+            name="intent_soft_oracle_0.3",
+            description="Soft Intent Boost (Oracle, boost=0.3)",
+            threshold="LOWEST",
+            clean=True,
+            page_size=10,
+            intent_mode="oracle",
+            intent_boost=0.3,
         ),
         AblationConfig(
             name="intent_soft_oracle_0.5",
@@ -170,6 +192,15 @@ def get_ablation_configs(config_names: Optional[Sequence[str]] = None) -> List[A
             intent_boost=0.8,
         ),
         AblationConfig(
+            name="intent_soft_noisy_0.1",
+            description="Soft Intent Boost (14% Noisy Router, boost=0.1)",
+            threshold="LOWEST",
+            clean=True,
+            page_size=10,
+            intent_mode="noisy",
+            intent_boost=0.1,
+        ),
+        AblationConfig(
             name="intent_soft_noisy_0.2",
             description="Soft Intent Boost (14% Noisy Router, boost=0.2)",
             threshold="LOWEST",
@@ -177,6 +208,15 @@ def get_ablation_configs(config_names: Optional[Sequence[str]] = None) -> List[A
             page_size=10,
             intent_mode="noisy",
             intent_boost=0.2,
+        ),
+        AblationConfig(
+            name="intent_soft_noisy_0.3",
+            description="Soft Intent Boost (14% Noisy Router, boost=0.3)",
+            threshold="LOWEST",
+            clean=True,
+            page_size=10,
+            intent_mode="noisy",
+            intent_boost=0.3,
         ),
         AblationConfig(
             name="intent_soft_noisy_0.5",
@@ -418,13 +458,51 @@ def generate_markdown_table(results: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def validate_split_and_config_guard(
+    queries_path: str,
+    queries: List[Dict[str, Any]],
+    final_test: bool = False,
+    selected_configs: Optional[List[str]] = None,
+    audit_log_path: Optional[str] = None,
+) -> None:
+    """Enforce split discipline between DEV and TEST sets.
+
+    - If queries are from TEST (path contains 'test.jsonl' or any QID starts with 't'):
+      - final_test MUST be True. If False, raises ValueError.
+      - An explicit configuration allow-list via --configs MUST be specified.
+      - Logs a timestamped audit record to audit_log_path ($S/ablation/test_runs.log).
+    """
+    path_str = str(queries_path)
+    is_test = "test.jsonl" in path_str or any(
+        str(q.get("qid", "")).startswith("t") for q in queries
+    )
+    if is_test:
+        if not final_test:
+            raise ValueError(
+                "ERROR: SPLIT DISCIPLINE VIOLATION! Evaluation on TEST set ($S/eval/test.jsonl) requires --final-test flag."
+            )
+        if not selected_configs:
+            raise ValueError(
+                "ERROR: --final-test requires an explicit config allow-list via --configs. Running full ablation grid on TEST is prohibited."
+            )
+        audit_file = pathlib.Path(
+            audit_log_path
+            or "/usr/local/google/home/susmith/.gemini/jetski/brain/92e6895e-6aa0-4668-8e1e-5cb583072600/scratch/rag/ablation/test_runs.log"
+        )
+        audit_file.parent.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).isoformat()
+        audit_entry = f"{timestamp} | FINAL_TEST_RUN | configs={','.join(selected_configs)} | queries={queries_path} | n={len(queries)}\n"
+        with open(audit_file, "a", encoding="utf-8") as f:
+            f.write(audit_entry)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run retrieval ablation eval on DEV set.")
     parser.add_argument(
         "--dev-queries",
         type=str,
         default="/usr/local/google/home/susmith/.gemini/jetski/brain/92e6895e-6aa0-4668-8e1e-5cb583072600/scratch/rag/eval/dev.jsonl",
-        help="Path to dev.jsonl",
+        help="Path to dev.jsonl or test.jsonl",
     )
     parser.add_argument(
         "--gold-map",
@@ -444,33 +522,53 @@ def main():
         default="",
         help="Comma-separated list of configuration names to run (default: all)",
     )
+    parser.add_argument(
+        "--final-test",
+        action="store_true",
+        help="Explicit permission flag required to evaluate against the frozen TEST set",
+    )
+    parser.add_argument(
+        "--audit-log",
+        type=str,
+        default="/usr/local/google/home/susmith/.gemini/jetski/brain/92e6895e-6aa0-4668-8e1e-5cb583072600/scratch/rag/ablation/test_runs.log",
+        help="Path to audit log file for final test runs",
+    )
+    parser.add_argument(
+        "--output-key",
+        type=str,
+        default=None,
+        help="Optional top-level JSON key to store results under in output file",
+    )
     parser.add_argument("--project", default=DEFAULT_PROJECT, help="GCP project")
     parser.add_argument("--engine", default=DEFAULT_ENGINE, help="Discovery Engine search app")
     parser.add_argument("--location", default=DEFAULT_LOCATION, help="Location (global)")
     parser.add_argument("--sleep", type=float, default=0.15, help="Throttle sleep per request (sec)")
     args = parser.parse_args()
 
-    # Enforce split discipline: NEVER evaluate TEST set in ablation_eval!
-    dev_path_str = str(args.dev_queries)
-    if "test.jsonl" in dev_path_str:
-        sys.stderr.write(
-            "ERROR: SPLIT DISCIPLINE VIOLATION! ablation_eval.py must only run on DEV set ($S/eval/dev.jsonl). Aborting.\n"
-        )
-        sys.exit(1)
-
-    print(f"Loading DEV queries from: {args.dev_queries}")
+    print(f"Loading queries from: {args.dev_queries}")
     with open(args.dev_queries, "r", encoding="utf-8") as f:
         dev_queries = [json.loads(line) for line in f if line.strip()]
 
-    # Verify no test query IDs in dev_queries
-    for q in dev_queries:
-        if q.get("qid", "").startswith("t"):
-            sys.stderr.write(
-                f"ERROR: Split discipline violation: Query {q.get('qid')} from TEST set detected in dev set! Aborting.\n"
-            )
-            sys.exit(1)
+    selected_configs = (
+        [c.strip() for c in args.configs.split(",") if c.strip()]
+        if args.configs
+        else None
+    )
 
-    print(f"Loaded {len(dev_queries)} DEV queries.")
+    # Enforce split discipline guard
+    try:
+        validate_split_and_config_guard(
+            queries_path=args.dev_queries,
+            queries=dev_queries,
+            final_test=args.final_test,
+            selected_configs=selected_configs,
+            audit_log_path=args.audit_log,
+        )
+    except ValueError as e:
+        sys.stderr.write(f"{e}\n")
+        sys.exit(1)
+
+    print(f"Loaded {len(dev_queries)} queries.")
 
     gold_map = {}
     if args.gold_map and pathlib.Path(args.gold_map).exists():
@@ -490,11 +588,6 @@ def main():
         sleep_sec=args.sleep,
     )
 
-    selected_configs = (
-        [c.strip() for c in args.configs.split(",") if c.strip()]
-        if args.configs
-        else None
-    )
     configs = get_ablation_configs(selected_configs)
     print(f"Running {len(configs)} configurations: {[c.name for c in configs]}")
 
@@ -524,20 +617,37 @@ def main():
     # Save results
     out_path = pathlib.Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    existing_data: Dict[str, Any] = {}
+    if out_path.exists():
+        try:
+            with open(out_path, "r", encoding="utf-8") as f:
+                existing_data = json.load(f)
+        except Exception:
+            existing_data = {}
+
     report_data = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "dev_queries_path": args.dev_queries,
+        "queries_path": args.dev_queries,
         "n_queries": len(dev_queries),
         "results": results,
     }
+
+    if args.output_key:
+        existing_data[args.output_key] = report_data
+        to_save = existing_data
+    else:
+        existing_data.update(report_data)
+        to_save = existing_data
+
     with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(report_data, f, indent=2)
-    print(f"\nSaved DEV ablation results to: {out_path}")
+        json.dump(to_save, f, indent=2)
+    print(f"\nSaved ablation results to: {out_path} (output_key={args.output_key})")
 
     # Print markdown table
     md_table = generate_markdown_table(results)
     print("\n" + "=" * 80)
-    print("DEV ABLATION RESULTS TABLE")
+    print("ABLATION RESULTS TABLE")
     print("=" * 80)
     print(md_table)
     print("=" * 80 + "\n")
