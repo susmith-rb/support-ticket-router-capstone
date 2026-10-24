@@ -245,6 +245,7 @@ Evaluation is stratified across three tiers to balance realism, benchmarking, an
 - **Rationale**: TDD §6.4 specifies `retrieval/v1` evaluated against 1–3 relevant articles per query with graded nDCG, rather than single-silver-gold proxy themes. Pre-registered in `docs/plans/PLAN4.md` prior to unblinding labels.
 - **Acceptance**: `tests/rag/test_multi_label_eval.py`
 - **Status**: done
+- **Label validation + current verdict (2026-10-24)**: consensus labels re-adjudicated by 4 Gemini Pro shards (C2; per-candidate verdicts). TEST MAIN n=225, production config: recall@5 0.907 (met), MRR@10 0.784 (met), graded nDCG@5 0.695 (NOT met; primary at rank 1 only 56%). Expert spot check (Opus, blind, 50 stratified TEST queries incl. 15 annotator disagreements; rag/labels/retrieval_v1/labels_EXPERT_spot50.jsonl): support agreement 45/50, primary exact 30/38, expert primary inside C2 relevant set 38/38; system scored with expert labels r@5 0.906 / MRR 0.779 / nDCG 0.708 (same verdict as C2). Labels are model-generated (LLM annotators + model expert), not human.
 - **Owner**: rag-retrieval
 - **Measured Evaluation Evidence (2026-10-24, Release 5 Corpus)**:
   - **Inter-Annotator Agreement (A vs B)**:

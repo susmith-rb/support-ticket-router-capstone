@@ -269,3 +269,30 @@ python rag/clean_eval.py <dir> <faq_docs_dir>
 python rag/clean_eval_breakdown.py <dir>                       # abstention + unsupported claims
 python rag/evalsvc_groundedness.py <dir> <faq_docs_dir>        # Eval Service, explicit autorater
 ```
+
+## 10. TDD-conformant measurement (PLAN4/PLAN5, 2026-10-24)
+
+The TDD §6.4 `retrieval/v1` set is now built and checked in at `rag/labels/retrieval_v1/`:
+- 600 queries (TEST + DEV), labeled blind by 2 Jetski annotators (κ primary 0.84).
+- Adjudicated by 4 Gemini Pro shards (C2), with a keep/drop verdict for every candidate article.
+- Validated by a blind Opus expert on 50 stratified queries: its primary is inside the consensus
+  relevant set 38/38 times, and its scores match.
+
+TEST, MAIN scope (English support questions that an article can answer, n=225), production config:
+
+| TDD §6.4 target | Measured | |
+|---|---|---|
+| recall@5 ≥ 0.90 | 0.907 (primary-only 0.831; expert sample 0.906) | met, narrowly |
+| MRR@10 ≥ 0.75 | 0.784 (primary-only 0.645; expert sample 0.779) | met |
+| graded nDCG@5 ≥ 0.80 | 0.695 (expert sample 0.708) | **not met** |
+| filtered vs unfiltered Δrecall@5 ≥ −0.02 | +0.005 (soft boost vs none) | met |
+| p95 search latency ≤ 400 ms | ~250 ms (client-side) | met |
+
+DEV ablations under these labels (`results/v3/phaseD_dev_multilabel_C2.json`):
+- Ranking API rerank hurts in every form.
+- Gemini Flash query rewrite brings no significant gain, at p95 23 s.
+- The intent boost is within noise of no boost.
+
+nDCG is limited by sibling-article confusion. The primary is at rank 1 for 56% of queries. The top pair
+is prime-delivery-speed-delays vs late-or-not-arrived-order, an overlap created by the v2 merge.
+Next lever: sharpen overlapping articles (PLAN5, experiment 4).
