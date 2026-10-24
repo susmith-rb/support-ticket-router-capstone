@@ -91,6 +91,33 @@ def lint(docs):
 
 
 # ---------- 2. stamp ----------
+VALID_INTENT_FAMILIES = {
+    "account_payment",
+    "order_status",
+    "other",
+    "returns_refunds",
+    "shipping_policy",
+}
+
+
+def infer_intent_from_doc_id(doc_id: str):
+    """Fallback helper to infer canonical intent family from standard doc_id prefixes."""
+    for f in VALID_INTENT_FAMILIES:
+        if doc_id.startswith(f"faq-{f.replace('_', '-')}-") or doc_id == f"faq-{f.replace('_', '-')}":
+            return f
+    if doc_id.startswith("faq-shipping"):
+        return "shipping_policy"
+    if doc_id.startswith("faq-returns"):
+        return "returns_refunds"
+    if doc_id.startswith("faq-order"):
+        return "order_status"
+    if doc_id.startswith("faq-account"):
+        return "account_payment"
+    if doc_id.startswith("faq-other"):
+        return "other"
+    return None
+
+
 def load_manifest(path):
     return {json.loads(l)["id"]: json.loads(l) for l in open(path)} if path.exists() else {}
 
@@ -100,23 +127,74 @@ def build_import_payload(manifest):
     return [m for m in manifest if m.get("structData", {}).get("status") != "retired"]
 
 
-def stamp(docs, prev, gcs_prefix, today):
+def check_manifest_invariants(manifest):
+    """Post-stamp invariant: every non-retired doc has a non-empty title and intent_family in VALID_INTENT_FAMILIES."""
+    for m in manifest:
+        sd = m.get("structData", {})
+        if sd.get("status") == "retired":
+            continue
+        doc_id = m.get("id") or sd.get("article_id") or "unknown"
+        title = (sd.get("title") or "").strip()
+        if not title:
+            raise ValueError(f"Document '{doc_id}' has empty title")
+        intent = sd.get("intent_family")
+        if not intent or intent not in VALID_INTENT_FAMILIES:
+            raise ValueError(
+                f"Document '{doc_id}' has invalid or missing intent_family: '{intent}'. "
+                f"Must be one of {sorted(VALID_INTENT_FAMILIES)}"
+            )
+
+
+def stamp(docs, prev, gcs_prefix, today, build_meta=None, check_invariants=False):
+    if build_meta is None:
+        build_meta = {}
     out, changes = [], {"added": [], "changed": [], "unchanged": [], "retired": []}
     for doc_id, body in sorted(docs.items()):
-        h = sha(body); p = prev.get(doc_id)
+        h = sha(body)
+        p = prev.get(doc_id)
+        b_sd = build_meta.get(doc_id, {})
+        inferred_intent = infer_intent_from_doc_id(doc_id)
         if p is None:
-            sd = {"article_id": doc_id, "title": body.splitlines()[0].lstrip("# ").strip(), "version": 1, "status": "draft",
-                  "effective_from": today, "effective_to": "", "supersedes": "", "policy_version": POLICY_VERSION,
-                  "reviewed_by": "", "reviewed_at": "", "simulated_policy": True}
+            sd = dict(b_sd)
+            sd["article_id"] = doc_id
+            if not sd.get("title"):
+                sd["title"] = body.splitlines()[0].lstrip("# ").strip()
+            if not sd.get("intent_family") and inferred_intent:
+                sd["intent_family"] = inferred_intent
+            sd["version"] = 1
+            sd["status"] = "draft"
+            sd["effective_from"] = today
+            sd["effective_to"] = ""
+            sd["supersedes"] = ""
+            sd["policy_version"] = POLICY_VERSION
+            sd["reviewed_by"] = ""
+            sd["reviewed_at"] = ""
+            sd["simulated_policy"] = True
             changes["added"].append(doc_id)
         else:
-            sd = dict(p["structData"]); sd.setdefault("article_id", doc_id); sd.setdefault("status", "draft")
+            sd = dict(p["structData"])
+            sd.setdefault("article_id", doc_id)
+            sd.setdefault("status", "draft")
+            # Refresh intent_family/theme/authored_by from build when missing
+            for field in ("intent_family", "theme", "authored_by"):
+                if not sd.get(field) and b_sd.get(field):
+                    sd[field] = b_sd[field]
+            if not sd.get("intent_family") and inferred_intent:
+                sd["intent_family"] = inferred_intent
+            for field in ("n_source_messages", "n_example_threads"):
+                if sd.get(field) is None and b_sd.get(field) is not None:
+                    sd[field] = b_sd[field]
+            if not sd.get("title"):
+                sd["title"] = b_sd.get("title") or body.splitlines()[0].lstrip("# ").strip()
+
             if sd.get("content_sha256") is None:
                 changes["unchanged"].append(doc_id)          # first adoption of a pre-lifecycle manifest: baseline, no bump
             elif sd.get("content_sha256") != h:
-                sd["version"] = int(sd.get("version", 1)) + 1; sd["policy_version"] = POLICY_VERSION
+                sd["version"] = int(sd.get("version", 1)) + 1
+                sd["policy_version"] = POLICY_VERSION
                 sd["reviewed_by"], sd["reviewed_at"] = "", ""      # an edit needs a fresh review
-                if sd["status"] == "active": sd["status"] = "draft"
+                if sd["status"] == "active":
+                    sd["status"] = "draft"
                 changes["changed"].append(f"{doc_id}@{sd['version']}")
             else:
                 changes["unchanged"].append(doc_id)
@@ -124,8 +202,15 @@ def stamp(docs, prev, gcs_prefix, today):
         out.append({"id": doc_id, "structData": sd, "content": {"mimeType": "text/plain", "uri": f"{gcs_prefix}/docs/{doc_id}.txt"}})
     for doc_id, p in prev.items():                       # kept in the manifest as retired tombstones
         if doc_id not in docs:
-            sd = dict(p["structData"]); sd["status"] = "retired"; sd["effective_to"] = sd.get("effective_to") or today
-            out.append({"id": doc_id, "structData": sd, "content": p["content"]}); changes["retired"].append(doc_id)
+            sd = dict(p["structData"])
+            sd["status"] = "retired"
+            sd["effective_to"] = sd.get("effective_to") or today
+            out.append({"id": doc_id, "structData": sd, "content": p["content"]})
+            changes["retired"].append(doc_id)
+
+    if check_invariants:
+        check_manifest_invariants(out)
+
     return out, changes
 
 
@@ -145,6 +230,13 @@ def main():
     if not manifest_path.exists() and (w / "faq_articles_import.jsonl").exists():
         manifest_path = w / "faq_articles_import.jsonl"     # first run: adopt the v1 import file
     prev = load_manifest(manifest_path)
+    build_meta = {}
+    import_jsonl = w / "faq_articles_import.jsonl"
+    if import_jsonl.exists():
+        for l in import_jsonl.read_text(encoding="utf-8").splitlines():
+            if l.strip():
+                item = json.loads(l)
+                build_meta[item["id"]] = item.get("structData", {})
     rel = a.release or (int(json.load(open(w / "release.json"))["release"]) + 1 if (w / "release.json").exists() else 2)
     gcs_prefix = f"{BUCKET}/corpus/faq-articles/v{rel}"
 
@@ -163,13 +255,14 @@ def main():
     if a.lint_only or (bad and not a.allow_lint and not a.dry_run):
         sys.exit(1 if bad else 0)
 
-    manifest, changes = stamp(docs, prev, gcs_prefix, today)
+    manifest, changes = stamp(docs, prev, gcs_prefix, today, build_meta=build_meta)
     for m in manifest:
         sd = m["structData"]
         if sd["article_id"] in a.activate:
             sd["status"], sd["reviewed_by"], sd["reviewed_at"] = "active", a.reviewed_by or "unknown", today
         if a.supersedes and sd["article_id"] in a.retire: pass
         if a.supersedes and sd["article_id"] == a.supersedes: sd["supersedes"] = ",".join(a.retire)
+    check_manifest_invariants(manifest)
     n_active = sum(1 for m in manifest if m["structData"]["status"] == "active")
     print(json.dumps({"release": rel, **{k: len(v) for k, v in changes.items()}, "active": n_active, "total": len(manifest)}))
     for k in ("added", "changed", "retired"):

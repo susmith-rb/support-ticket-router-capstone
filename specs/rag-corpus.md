@@ -101,15 +101,15 @@ labels.jsonl (teacher topics) ─────────┴──▶ rag/regrou
 - **Owner**: rag-corpus
 
 ### REQ-RAG-CORPUS-007: Knowledge Lifecycle Manifest Management
-- **Statement**: The publication tool MUST manage an auditable `manifest.jsonl` recording `article_id`, `version`, `content_sha256`, `status`, `supersedes`, `policy_version`, and effective timestamps for every document.
-- **Rationale**: Provides the foundational ledger for document lifecycle tracking and rollbacks (TDD §6.6).
+- **Statement**: The publication tool MUST manage an auditable `manifest.jsonl` recording `article_id`, `version`, `content_sha256`, `status`, `supersedes`, `policy_version`, `intent_family`, `theme`, and effective timestamps for every document. When stamping new or existing articles, build metadata (`intent_family`, `theme`, `authored_by`, `n_source_messages`, `n_example_threads`) MUST be merged with lifecycle fields so article categorization is never lost.
+- **Rationale**: Provides the foundational ledger for document lifecycle tracking, rollbacks, and search-time intent filtering (TDD §6.6).
 - **Acceptance**: `tests/rag/test_publish_faq.py::test_load_manifest_existing`
 - **Status**: done
 - **Owner**: rag-corpus
 
-### REQ-RAG-CORPUS-008: Article Versioning, Draft Status, and Retirement
-- **Statement**: When stamping an existing article with modified content, the system MUST increment its version number by 1, reset its status to `draft`, and clear previous approval metadata; when an article is superseded, it MUST mark status as `retired`.
-- **Rationale**: Guarantees that modified content cannot be served as active without renewed verification (TDD §6.6).
+### REQ-RAG-CORPUS-008: Article Versioning, Draft Status, and Invariant Verification
+- **Statement**: When stamping an existing article with modified content, the system MUST increment its version number by 1, reset its status to `draft`, and clear previous approval metadata; when an article is superseded, it MUST mark status as `retired`. Metadata-only updates MUST preserve `content_sha256` and keep `version` unbumped. Post-stamp publication validation MUST enforce that every non-retired article contains a non-empty `intent_family` in the canonical set (`account_payment`, `order_status`, `other`, `returns_refunds`, `shipping_policy`) and a valid `title`. Publications violating this invariant MUST fail before upload or import.
+- **Rationale**: Guarantees that modified content cannot be served as active without renewed verification while ensuring no article enters the index with missing categorization (TDD §6.6).
 - **Acceptance**: `tests/rag/test_publish_faq.py::test_stamp_content_changed`
 - **Status**: done
 - **Owner**: rag-corpus
@@ -157,7 +157,7 @@ labels.jsonl (teacher topics) ─────────┴──▶ rag/regrou
 - **Owner**: rag-corpus
 
 ### REQ-RAG-CORPUS-015: Publish, Verification, and Rollback Operations
-- **Statement**: The publication CLI MUST support stamping releases into GCS (`gs://susmith-fde-ticket-router-laya/corpus/faq-articles/v<N>/`), triggering FULL reconciliation import, waiting on LRO completion, probing that the served version matches the stamped version, and executing rollback to a prior release manifest upon failure.
+- **Statement**: The publication CLI MUST support stamping releases into GCS (`gs://susmith-fde-ticket-router-laya/corpus/faq-articles/v<N>/`), triggering FULL reconciliation import, waiting on LRO completion, probing that the served version matches the stamped version, verifying retired documents are purged, and executing rollback to a prior release manifest upon failure. Metadata-only releases MUST preserve document content SHAs and avoid incrementing version numbers.
 - **Rationale**: Provides an automated, safe release runbook with instantaneous rollback capability (TDD §6.6, §16.2).
 - **Acceptance**: `manual: python rag/publish_faq.py --work rag/corpus_v2/ --dry-run`
 - **Status**: done

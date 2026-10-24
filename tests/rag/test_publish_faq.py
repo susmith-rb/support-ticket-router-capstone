@@ -1,7 +1,16 @@
 import hashlib
 import json
 import pytest
-from publish_faq import sha, answer_only, lint, load_manifest, stamp, build_import_payload
+from publish_faq import (
+    sha,
+    answer_only,
+    lint,
+    load_manifest,
+    stamp,
+    build_import_payload,
+    check_manifest_invariants,
+    VALID_INTENT_FAMILIES,
+)
 
 
 # REQ-RAG-CORPUS-005
@@ -251,6 +260,143 @@ def test_build_import_payload_unchanged_corpus_identical():
     ]
     payload = build_import_payload(manifest)
     assert payload == manifest
+
+
+# REQ-RAG-CORPUS-007
+def test_stamp_new_article_keeps_intent_family_from_build():
+    docs = {"faq-order-status-late": "# Late Order\nYour order is delayed."}
+    build_meta = {
+        "faq-order-status-late": {
+            "intent_family": "order_status",
+            "theme": "Late Orders",
+            "authored_by": "jetski-agent:gemini-3.8-flash-high",
+            "n_source_messages": 42,
+            "n_example_threads": 5,
+        }
+    }
+    out, changes = stamp(docs, {}, "gs://bucket/corpus/v2", "2026-10-24", build_meta=build_meta, check_invariants=True)
+    assert len(out) == 1
+    sd = out[0]["structData"]
+    assert sd["article_id"] == "faq-order-status-late"
+    assert sd["intent_family"] == "order_status"
+    assert sd["theme"] == "Late Orders"
+    assert sd["authored_by"] == "jetski-agent:gemini-3.8-flash-high"
+    assert sd["version"] == 1
+    assert sd["status"] == "draft"
+
+
+# REQ-RAG-CORPUS-007
+def test_stamp_existing_article_refreshes_missing_intent_family():
+    content = "# Late Order\nYour order is delayed."
+    h = sha(content)
+    docs = {"faq-order-status-late": content}
+    prev = {
+        "faq-order-status-late": {
+            "id": "faq-order-status-late",
+            "structData": {
+                "article_id": "faq-order-status-late",
+                "version": 1,
+                "status": "draft",
+                "content_sha256": h,
+            },
+            "content": {"uri": "gs://bucket/corpus/v1/docs/faq-order-status-late.txt"},
+        }
+    }
+    build_meta = {
+        "faq-order-status-late": {
+            "intent_family": "order_status",
+            "theme": "Late Orders",
+            "authored_by": "jetski-agent:gemini-3.8-flash-high",
+        }
+    }
+    out, changes = stamp(docs, prev, "gs://bucket/corpus/v2", "2026-10-24", build_meta=build_meta, check_invariants=True)
+    assert changes["unchanged"] == ["faq-order-status-late"]
+    assert changes["changed"] == []
+    sd = out[0]["structData"]
+    assert sd["version"] == 1
+    assert sd["intent_family"] == "order_status"
+    assert sd["theme"] == "Late Orders"
+    assert sd["authored_by"] == "jetski-agent:gemini-3.8-flash-high"
+
+
+# REQ-RAG-CORPUS-008
+def test_check_manifest_invariants_valid():
+    manifest = [
+        {
+            "id": "faq-account-payment-login",
+            "structData": {
+                "article_id": "faq-account-payment-login",
+                "title": "Login Issues",
+                "intent_family": "account_payment",
+                "status": "draft",
+            },
+        }
+    ]
+    check_manifest_invariants(manifest)
+
+
+# REQ-RAG-CORPUS-008
+def test_check_manifest_invariants_fails_missing_intent():
+    manifest = [
+        {
+            "id": "faq-test",
+            "structData": {
+                "article_id": "faq-test",
+                "title": "Some Title",
+                "status": "draft",
+            },
+        }
+    ]
+    with pytest.raises(ValueError, match="invalid or missing intent_family"):
+        check_manifest_invariants(manifest)
+
+
+# REQ-RAG-CORPUS-008
+def test_check_manifest_invariants_fails_invalid_intent():
+    manifest = [
+        {
+            "id": "faq-test",
+            "structData": {
+                "article_id": "faq-test",
+                "title": "Some Title",
+                "intent_family": "not_a_valid_family",
+                "status": "draft",
+            },
+        }
+    ]
+    with pytest.raises(ValueError, match="invalid or missing intent_family"):
+        check_manifest_invariants(manifest)
+
+
+# REQ-RAG-CORPUS-008
+def test_check_manifest_invariants_fails_empty_title():
+    manifest = [
+        {
+            "id": "faq-test",
+            "structData": {
+                "article_id": "faq-test",
+                "title": "",
+                "intent_family": "order_status",
+                "status": "draft",
+            },
+        }
+    ]
+    with pytest.raises(ValueError, match="empty title"):
+        check_manifest_invariants(manifest)
+
+
+# REQ-RAG-CORPUS-008
+def test_check_manifest_invariants_skips_retired():
+    manifest = [
+        {
+            "id": "faq-retired-doc",
+            "structData": {
+                "article_id": "faq-retired-doc",
+                "status": "retired",
+            },
+        }
+    ]
+    check_manifest_invariants(manifest)
 
 
 # REQ-RAG-CORPUS-010
