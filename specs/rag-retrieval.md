@@ -174,3 +174,14 @@ Evaluation is stratified across three tiers to balance realism, benchmarking, an
 3. **Ranker Noise Floor vs. Gate Sensitivity**: The ranker noise floor was measured at `~4.6%` on unchanged intent families (`returns_refunds` fell 0.046 between v1 and v2 despite zero article edits, rag/EVAL_RESULTS.md line 193). With `n=287` queries, the `−0.02` regression gate is close to the stochastic noise floor of the underlying Discovery Engine ranker. Future gates should average over 2–3 query samplings.
 4. **Location Parity Gate Result (Global vs. US Multi-Region)**:
    On 2026-10-24, after >3h index settlement, retrieval parity was evaluated across Global and US multi-region on slice (b) (n=287). The Global repeat run showed 0.000 stochastic ranker noise (exact identical ranks and metrics). US recall@5 was 0.753 vs Global 0.780 (Δ = −0.027), failing the Δ ≥ −0.020 migration gate. Notable regressions occurred in `order_status` (−0.113) and `account_payment` (−0.087). Consequently, default location remains `global` in all utilities; explicit `--location us` remains supported.
+
+---
+
+## 5. Evaluation Split Discipline & Metrics
+
+### REQ-RAG-RETR-013: Evaluation Set Split and Metric Standards
+- **Statement**: Evaluation of retrieval quality MUST maintain strict split discipline between a frozen TEST set (300 queries from release 2b) and a disjoint DEV set (300 queries from non-example held-out threads). Both sets MUST be completely disjoint from each other and from each theme's first 15 agent example threads. All offline tuning and ablation sweeps MUST be executed exclusively on DEV; TEST is evaluated once per finalist configuration. Offline metrics MUST compute recall@k (k in {1, 3, 5, 10}), MRR@10, single-gold binary nDCG@k, and client-observed latency percentiles (p50/p95).
+- **Rationale**: Prevents overfitting to the test distribution during search parameter tuning and ablation studies (TDD §6.4; PLAN3.md D3, D4).
+- **Acceptance**: `tests/rag/test_build_eval_splits.py::test_splits_disjointness`
+- **Status**: done
+- **Owner**: rag-retrieval
