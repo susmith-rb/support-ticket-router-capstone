@@ -1,11 +1,6 @@
 # Conservative ruff configuration for support-ticket-router-capstone
 line-length = 120
 target-version = "py311"
-extend-exclude = [
-    # Excluded temporarily while worker R2 edits them concurrently
-    "rag/rerank_data.py",
-    "tests/rag/test_rerank_data.py",
-]
 
 [lint]
 select = ["E", "F"]

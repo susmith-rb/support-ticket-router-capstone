@@ -1,0 +1,4427 @@
+{
+  "meta": "PLAN7 Arm A Cross-Encoder Reranker TEST evaluation (alpha=0.7)",
+  "timestamp": "2026-10-25T17:35:25.768804+00:00",
+  "model_name": "/home/ext_susmith_gcp_altostrat_com/rerank-ce/model_minilm",
+  "n_queries": 300,
+  "results": [
+    {
+      "config": "ce_minilm_a0.7",
+      "alpha": 0.7,
+      "prior_mode": "reciprocal",
+      "status": "completed",
+      "latency_summary": {
+        "count": 300,
+        "mean_ms": 417.19,
+        "min_ms": 241.81,
+        "max_ms": 40659.31,
+        "p50_ms": 270.73,
+        "p90_ms": 298.83,
+        "p95_ms": 333.32,
+        "p99_ms": 411.11
+      },
+      "rows": [
+        {
+          "qid": "t000",
+          "top10_ids": [
+            "faq-other-general-complaints-and-feedback",
+            "faq-account-payment-account-locked-blocked",
+            "faq-other-customer-service-complaints",
+            "faq-account-payment-account-login-issues",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-double-multiple-charges",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-cashback-promos-giftcards"
+          ]
+        },
+        {
+          "qid": "t001",
+          "top10_ids": [
+            "faq-other-kindle-and-e-readers",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-other-device-and-hardware-issues",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-fire-tv-and-streaming-devices"
+          ]
+        },
+        {
+          "qid": "t002",
+          "top10_ids": [
+            "faq-other-prime-video-and-streaming",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-customer-service-complaints",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-amazon-prime-membership",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-app-and-website-issues",
+            "faq-other-device-and-hardware-issues"
+          ]
+        },
+        {
+          "qid": "t003",
+          "top10_ids": [
+            "faq-account-payment-account-locked-blocked",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-false-delivery-attempts",
+            "faq-account-payment-payment-methods-emi",
+            "faq-other-customer-service-complaints",
+            "faq-account-payment-account-login-issues",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-double-multiple-charges"
+          ]
+        },
+        {
+          "qid": "t004",
+          "top10_ids": [
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-other-packaging-issues",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-wrong-address-or-location",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-refund-inquiries"
+          ]
+        },
+        {
+          "qid": "t005",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-other-amazon-prime-membership",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-account-payment-amazon-pay-balance"
+          ]
+        },
+        {
+          "qid": "t006",
+          "top10_ids": [
+            "faq-other-general-complaints-and-feedback",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-customer-service-complaints",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-account-payment-account-locked-blocked",
+            "faq-other-app-and-website-issues",
+            "faq-shipping-policy-weekend-and-same-day-delivery"
+          ]
+        },
+        {
+          "qid": "t007",
+          "top10_ids": [
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-other-app-and-website-issues",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-other-kindle-and-e-readers",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-lost-in-transit",
+            "faq-other-amazon-prime-membership",
+            "faq-order-status-cancellations-and-refunds"
+          ]
+        },
+        {
+          "qid": "t008",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-other-packaging-issues",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-missing-items-in-package",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-wrong-address-or-location",
+            "faq-returns-refunds-return-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t009",
+          "top10_ids": [
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-other-device-and-hardware-issues",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-returns-refunds-missing-or-used-items"
+          ]
+        },
+        {
+          "qid": "t010",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-false-delivery-attempts",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-tracking-and-status",
+            "faq-shipping-policy-order-fulfillment-and-packaging"
+          ]
+        },
+        {
+          "qid": "t011",
+          "top10_ids": [
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t012",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-app-and-website-issues",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-amazon-prime-membership",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-prime-video-and-streaming"
+          ]
+        },
+        {
+          "qid": "t013",
+          "top10_ids": [
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-locker-and-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t014",
+          "top10_ids": [
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-other-customer-service-complaints",
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-account-management",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-account-payment-double-multiple-charges"
+          ]
+        },
+        {
+          "qid": "t015",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-order-status-wrong-address-or-location",
+            "faq-other-packaging-issues",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-missing-items-in-package",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-driver-and-courier-issues"
+          ]
+        },
+        {
+          "qid": "t016",
+          "top10_ids": [
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t017",
+          "top10_ids": [
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-false-delivery-attempts",
+            "faq-returns-refunds-missing-or-used-items"
+          ]
+        },
+        {
+          "qid": "t018",
+          "top10_ids": [
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-shipping-policy-shipping-costs-and-fees",
+            "faq-account-payment-unauthorized-charges",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-account-payment-account-management",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-prime-membership-cancellation"
+          ]
+        },
+        {
+          "qid": "t019",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t020",
+          "top10_ids": [
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-general-complaints-and-feedback",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-app-and-website-issues",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-amazon-prime-membership",
+            "faq-account-payment-double-multiple-charges"
+          ]
+        },
+        {
+          "qid": "t021",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-other-customer-service-complaints",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-lost-in-transit",
+            "faq-returns-refunds-missing-or-used-items"
+          ]
+        },
+        {
+          "qid": "t022",
+          "top10_ids": [
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-other-general-complaints-and-feedback",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-other-customer-service-complaints",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-false-delivery-attempts",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-lost-in-transit"
+          ]
+        },
+        {
+          "qid": "t023",
+          "top10_ids": [
+            "faq-other-amazon-prime-membership",
+            "faq-other-general-complaints-and-feedback",
+            "faq-account-payment-unauthorized-charges",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-fire-tv-and-streaming-devices"
+          ]
+        },
+        {
+          "qid": "t024",
+          "top10_ids": [
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-other-packaging-issues",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-other-customer-service-complaints"
+          ]
+        },
+        {
+          "qid": "t025",
+          "top10_ids": []
+        },
+        {
+          "qid": "t026",
+          "top10_ids": [
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-other-amazon-prime-membership",
+            "faq-other-prime-video-and-streaming",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-device-and-hardware-issues"
+          ]
+        },
+        {
+          "qid": "t027",
+          "top10_ids": [
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-cancellations-and-refunds"
+          ]
+        },
+        {
+          "qid": "t028",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-other-packaging-issues",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-missing-items-in-package",
+            "faq-other-customer-service-complaints",
+            "faq-returns-refunds-return-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t029",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-packaging-issues",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-app-and-website-issues",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-other-prime-video-and-streaming"
+          ]
+        },
+        {
+          "qid": "t030",
+          "top10_ids": [
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-wrong-address-or-location",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-preorder-delivery-issues"
+          ]
+        },
+        {
+          "qid": "t031",
+          "top10_ids": [
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-driver-and-courier-issues"
+          ]
+        },
+        {
+          "qid": "t032",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-other-packaging-issues",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-driver-and-courier-issues"
+          ]
+        },
+        {
+          "qid": "t033",
+          "top10_ids": [
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-other-packaging-issues",
+            "faq-other-device-and-hardware-issues",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t034",
+          "top10_ids": [
+            "faq-account-payment-account-login-issues",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-account-payment-account-management",
+            "faq-other-app-and-website-issues",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-payment-methods-emi",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-account-payment-unauthorized-charges",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t035",
+          "top10_ids": [
+            "faq-other-scams-phishing-and-fraud",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-false-delivery-attempts",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t036",
+          "top10_ids": [
+            "faq-order-status-cancellations-and-refunds",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-shipping-policy-shipping-costs-and-fees",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-preorder-delivery-issues"
+          ]
+        },
+        {
+          "qid": "t037",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-tracking-and-status",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-missing-or-stolen-delivered-package"
+          ]
+        },
+        {
+          "qid": "t038",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-wrong-address-or-location",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-cancellations-and-refunds"
+          ]
+        },
+        {
+          "qid": "t039",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-device-and-hardware-issues",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t040",
+          "top10_ids": [
+            "faq-other-device-and-hardware-issues",
+            "faq-other-amazon-prime-membership",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-packaging-issues",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-app-and-website-issues",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-kindle-and-e-readers"
+          ]
+        },
+        {
+          "qid": "t041",
+          "top10_ids": [
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-shipping-policy-shipping-costs-and-fees",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-shipping-policy-international-and-regional-shipping",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t042",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-missing-items-in-package",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t043",
+          "top10_ids": [
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-lost-in-transit",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-missing-items-in-package",
+            "faq-other-packaging-issues",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-other-fire-tv-and-streaming-devices"
+          ]
+        },
+        {
+          "qid": "t044",
+          "top10_ids": [
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-other-packaging-issues",
+            "faq-shipping-policy-weekend-and-same-day-delivery"
+          ]
+        },
+        {
+          "qid": "t045",
+          "top10_ids": [
+            "faq-order-status-missing-items-in-package",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t046",
+          "top10_ids": [
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t047",
+          "top10_ids": [
+            "faq-other-prime-video-and-streaming",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-app-and-website-issues",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-packaging-issues",
+            "faq-other-amazon-prime-membership",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-customer-service-complaints",
+            "faq-other-scams-phishing-and-fraud"
+          ]
+        },
+        {
+          "qid": "t048",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-wrong-address-or-location",
+            "faq-other-packaging-issues",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-lost-in-transit"
+          ]
+        },
+        {
+          "qid": "t049",
+          "top10_ids": [
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-packaging-issues"
+          ]
+        },
+        {
+          "qid": "t050",
+          "top10_ids": [
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-wrong-address-or-location",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-refund-inquiries"
+          ]
+        },
+        {
+          "qid": "t051",
+          "top10_ids": [
+            "faq-other-amazon-prime-membership",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-packaging-issues",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-lost-in-transit",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t052",
+          "top10_ids": []
+        },
+        {
+          "qid": "t053",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-packaging-issues",
+            "faq-other-app-and-website-issues",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-fire-tv-and-streaming-devices"
+          ]
+        },
+        {
+          "qid": "t054",
+          "top10_ids": [
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-customer-service-complaints",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-app-and-website-issues",
+            "faq-other-packaging-issues",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-delivery-and-logistics-complaints"
+          ]
+        },
+        {
+          "qid": "t055",
+          "top10_ids": [
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t056",
+          "top10_ids": [
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-false-delivery-attempts",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-locker-and-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t057",
+          "top10_ids": [
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-false-delivery-attempts",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-preorder-delivery-issues"
+          ]
+        },
+        {
+          "qid": "t058",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-packaging-issues",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-driver-and-courier-issues"
+          ]
+        },
+        {
+          "qid": "t059",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-missing-items-in-package",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-other-packaging-issues",
+            "faq-order-status-lost-in-transit"
+          ]
+        },
+        {
+          "qid": "t060",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-other-customer-service-complaints",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-other-packaging-issues"
+          ]
+        },
+        {
+          "qid": "t061",
+          "top10_ids": [
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-customer-service-complaints",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-account-payment-account-login-issues",
+            "faq-account-payment-account-locked-blocked",
+            "faq-other-app-and-website-issues",
+            "faq-other-packaging-issues",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-locker-and-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t062",
+          "top10_ids": [
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-wrong-address-or-location",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-missing-or-stolen-delivered-package"
+          ]
+        },
+        {
+          "qid": "t063",
+          "top10_ids": [
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-preorder-delivery-issues"
+          ]
+        },
+        {
+          "qid": "t064",
+          "top10_ids": []
+        },
+        {
+          "qid": "t065",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-device-and-hardware-issues",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-other-customer-service-complaints",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-packaging-issues"
+          ]
+        },
+        {
+          "qid": "t066",
+          "top10_ids": [
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-shipping-costs-and-fees",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t067",
+          "top10_ids": [
+            "faq-other-scams-phishing-and-fraud",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-other-general-complaints-and-feedback",
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-account-login-issues",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-invoices-and-receipts"
+          ]
+        },
+        {
+          "qid": "t068",
+          "top10_ids": [
+            "faq-other-kindle-and-e-readers",
+            "faq-other-customer-service-complaints",
+            "faq-other-amazon-prime-membership",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-product-availability-and-inquiries",
+            "faq-order-status-lost-in-transit",
+            "faq-other-prime-video-and-streaming"
+          ]
+        },
+        {
+          "qid": "t069",
+          "top10_ids": [
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-wrong-address-or-location",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-false-delivery-attempts",
+            "faq-shipping-policy-weekend-and-same-day-delivery"
+          ]
+        },
+        {
+          "qid": "t070",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-other-general-complaints-and-feedback",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-missing-items-in-package",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-returns-refunds-return-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t071",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-tracking-and-status",
+            "faq-account-payment-unauthorized-charges",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-account-payment-double-multiple-charges",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-account-payment-account-management",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-cancellations-and-refunds"
+          ]
+        },
+        {
+          "qid": "t072",
+          "top10_ids": [
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-shipping-policy-shipping-costs-and-fees",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-preorder-delivery-issues"
+          ]
+        },
+        {
+          "qid": "t073",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-wrong-address-or-location",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t074",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-missing-or-used-items"
+          ]
+        },
+        {
+          "qid": "t075",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-false-delivery-attempts",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-lost-in-transit"
+          ]
+        },
+        {
+          "qid": "t076",
+          "top10_ids": [
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-shipping-costs-and-fees",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-shipping-policy-international-and-regional-shipping",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t077",
+          "top10_ids": [
+            "faq-other-kindle-and-e-readers",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-tracking-and-status",
+            "faq-other-amazon-prime-membership",
+            "faq-order-status-lost-in-transit",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t078",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-wrong-address-or-location",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t079",
+          "top10_ids": [
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-shipping-costs-and-fees",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-tracking-and-status",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-shipping-policy-international-and-regional-shipping",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t080",
+          "top10_ids": [
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-other-device-and-hardware-issues",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-refund-inquiries"
+          ]
+        },
+        {
+          "qid": "t081",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-shipping-policy-prime-delivery-speed-delays"
+          ]
+        },
+        {
+          "qid": "t082",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-missing-items-in-package",
+            "faq-returns-refunds-return-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t083",
+          "top10_ids": [
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-other-customer-service-complaints",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-lost-in-transit",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-account-payment-cashback-promos-giftcards"
+          ]
+        },
+        {
+          "qid": "t084",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-other-packaging-issues",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-lost-in-transit"
+          ]
+        },
+        {
+          "qid": "t085",
+          "top10_ids": [
+            "faq-account-payment-account-management",
+            "faq-other-amazon-prime-membership",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-invoices-and-receipts",
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-account-login-issues"
+          ]
+        },
+        {
+          "qid": "t086",
+          "top10_ids": [
+            "faq-order-status-missing-items-in-package",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-other-packaging-issues",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-wrong-address-or-location",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-or-stolen-delivered-package"
+          ]
+        },
+        {
+          "qid": "t087",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-order-status-missing-items-in-package",
+            "faq-other-device-and-hardware-issues"
+          ]
+        },
+        {
+          "qid": "t088",
+          "top10_ids": [
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-payment-methods-emi",
+            "faq-other-kindle-and-e-readers",
+            "faq-account-payment-account-management",
+            "faq-account-payment-account-locked-blocked"
+          ]
+        },
+        {
+          "qid": "t089",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-prime-video-and-streaming",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-other-amazon-prime-membership",
+            "faq-account-payment-prime-membership-cancellation"
+          ]
+        },
+        {
+          "qid": "t090",
+          "top10_ids": [
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-customer-service-complaints",
+            "faq-other-product-availability-and-inquiries",
+            "faq-account-payment-account-locked-blocked",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-account-payment-account-login-issues",
+            "faq-other-app-and-website-issues",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-prime-video-and-streaming"
+          ]
+        },
+        {
+          "qid": "t091",
+          "top10_ids": [
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-wrong-address-or-location",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t092",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-app-and-website-issues",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-account-payment-account-login-issues",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-product-availability-and-inquiries"
+          ]
+        },
+        {
+          "qid": "t093",
+          "top10_ids": [
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-other-product-availability-and-inquiries",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t094",
+          "top10_ids": [
+            "faq-shipping-policy-shipping-costs-and-fees",
+            "faq-other-amazon-prime-membership",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-shipping-policy-international-and-regional-shipping",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-account-payment-prime-membership-cancellation"
+          ]
+        },
+        {
+          "qid": "t095",
+          "top10_ids": [
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-other-packaging-issues",
+            "faq-order-status-missing-items-in-package",
+            "faq-returns-refunds-refund-inquiries"
+          ]
+        },
+        {
+          "qid": "t096",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-tracking-and-status",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t097",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-missing-items-in-package",
+            "faq-other-packaging-issues",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-tracking-and-status",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-driver-and-courier-issues"
+          ]
+        },
+        {
+          "qid": "t098",
+          "top10_ids": [
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-shipping-policy-shipping-costs-and-fees",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-lost-in-transit",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t099",
+          "top10_ids": []
+        },
+        {
+          "qid": "t100",
+          "top10_ids": [
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-order-status-tracking-and-status",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-driver-and-courier-issues"
+          ]
+        },
+        {
+          "qid": "t101",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t102",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-app-and-website-issues",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-other-fire-tv-and-streaming-devices"
+          ]
+        },
+        {
+          "qid": "t103",
+          "top10_ids": [
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-invoices-and-receipts",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-account-management",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-account-payment-account-login-issues"
+          ]
+        },
+        {
+          "qid": "t104",
+          "top10_ids": [
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-missing-or-stolen-delivered-package"
+          ]
+        },
+        {
+          "qid": "t105",
+          "top10_ids": [
+            "faq-other-app-and-website-issues",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-amazon-prime-membership",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-customer-service-complaints"
+          ]
+        },
+        {
+          "qid": "t106",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-lost-in-transit",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t107",
+          "top10_ids": [
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-account-management",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-other-amazon-prime-membership",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-account-login-issues"
+          ]
+        },
+        {
+          "qid": "t108",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-other-alexa-and-echo-devices",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-device-and-hardware-issues",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-kindle-and-e-readers",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-return-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t109",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-other-customer-service-complaints",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-false-delivery-attempts",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-locker-and-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t110",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-packaging-issues",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-app-and-website-issues",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-kindle-and-e-readers"
+          ]
+        },
+        {
+          "qid": "t111",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-other-customer-service-complaints",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-lost-in-transit",
+            "faq-returns-refunds-missing-or-used-items"
+          ]
+        },
+        {
+          "qid": "t112",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-other-packaging-issues",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-cancellations-and-refunds"
+          ]
+        },
+        {
+          "qid": "t113",
+          "top10_ids": [
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-app-and-website-issues",
+            "faq-other-amazon-prime-membership",
+            "faq-account-payment-account-management",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-amazon-pay-balance"
+          ]
+        },
+        {
+          "qid": "t114",
+          "top10_ids": [
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-customer-service-complaints",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-scams-phishing-and-fraud"
+          ]
+        },
+        {
+          "qid": "t115",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-preorder-delivery-issues"
+          ]
+        },
+        {
+          "qid": "t116",
+          "top10_ids": [
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-wrong-address-or-location",
+            "faq-other-customer-service-complaints",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-cancellations-and-refunds"
+          ]
+        },
+        {
+          "qid": "t117",
+          "top10_ids": [
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-order-status-missing-items-in-package",
+            "faq-other-device-and-hardware-issues",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-account-payment-account-locked-blocked",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-refund-inquiries"
+          ]
+        },
+        {
+          "qid": "t118",
+          "top10_ids": [
+            "faq-account-payment-hacked-compromised-account",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-general-complaints-and-feedback",
+            "faq-account-payment-account-locked-blocked",
+            "faq-other-app-and-website-issues",
+            "faq-account-payment-account-login-issues",
+            "faq-other-customer-service-complaints",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-prime-video-and-streaming"
+          ]
+        },
+        {
+          "qid": "t119",
+          "top10_ids": [
+            "faq-account-payment-unauthorized-charges",
+            "faq-other-general-complaints-and-feedback",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-account-payment-account-management",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-amazon-pay-balance"
+          ]
+        },
+        {
+          "qid": "t120",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-false-delivery-attempts",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-lost-in-transit",
+            "faq-shipping-policy-shipping-costs-and-fees",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t121",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-shipping-policy-shipping-costs-and-fees",
+            "faq-order-status-tracking-and-status",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-lost-in-transit",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-missing-or-stolen-delivered-package"
+          ]
+        },
+        {
+          "qid": "t122",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-international-and-regional-shipping",
+            "faq-order-status-tracking-and-status",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-wrong-address-or-location"
+          ]
+        },
+        {
+          "qid": "t123",
+          "top10_ids": [
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-account-login-issues",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-account-payment-payment-methods-emi",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-account-management",
+            "faq-account-payment-prime-membership-cancellation"
+          ]
+        },
+        {
+          "qid": "t124",
+          "top10_ids": [
+            "faq-other-scams-phishing-and-fraud",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-account-management",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-prime-membership-cancellation"
+          ]
+        },
+        {
+          "qid": "t125",
+          "top10_ids": [
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-app-and-website-issues",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-customer-service-complaints",
+            "faq-other-delivery-and-logistics-complaints"
+          ]
+        },
+        {
+          "qid": "t126",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-amazon-prime-membership",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-app-and-website-issues",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-packaging-issues",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-delivery-and-logistics-complaints"
+          ]
+        },
+        {
+          "qid": "t127",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-packaging-issues",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-driver-and-courier-issues"
+          ]
+        },
+        {
+          "qid": "t128",
+          "top10_ids": [
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-locker-and-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t129",
+          "top10_ids": [
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-account-login-issues",
+            "faq-account-payment-unauthorized-charges",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-hacked-compromised-account"
+          ]
+        },
+        {
+          "qid": "t130",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-other-customer-service-complaints",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-order-status-missing-items-in-package",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-return-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t131",
+          "top10_ids": [
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-locker-and-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t132",
+          "top10_ids": [
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-amazon-prime-membership",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-other-packaging-issues",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-account-payment-unauthorized-charges",
+            "faq-order-status-wrong-address-or-location",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-returns-refunds-wrong-item-received"
+          ]
+        },
+        {
+          "qid": "t133",
+          "top10_ids": [
+            "faq-other-amazon-prime-membership",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-packaging-issues",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-kindle-and-e-readers"
+          ]
+        },
+        {
+          "qid": "t134",
+          "top10_ids": [
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-wrong-address-or-location",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-preorder-delivery-issues"
+          ]
+        },
+        {
+          "qid": "t135",
+          "top10_ids": [
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-tracking-and-status",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t136",
+          "top10_ids": [
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-customer-service-complaints",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-amazon-prime-membership",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-app-and-website-issues",
+            "faq-other-delivery-and-logistics-complaints"
+          ]
+        },
+        {
+          "qid": "t137",
+          "top10_ids": [
+            "faq-account-payment-account-login-issues",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-amazon-prime-membership",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-app-and-website-issues",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-customer-service-complaints",
+            "faq-other-delivery-and-logistics-complaints"
+          ]
+        },
+        {
+          "qid": "t138",
+          "top10_ids": [
+            "faq-account-payment-account-management",
+            "faq-account-payment-account-login-issues",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-invoices-and-receipts",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-account-payment-unauthorized-charges"
+          ]
+        },
+        {
+          "qid": "t139",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-device-and-hardware-issues",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-missing-items-in-package",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-fire-tv-and-streaming-devices"
+          ]
+        },
+        {
+          "qid": "t140",
+          "top10_ids": [
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-preorder-delivery-issues"
+          ]
+        },
+        {
+          "qid": "t141",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-shipping-policy-international-and-regional-shipping",
+            "faq-order-status-missing-items-in-package",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-shipping-policy-shipping-costs-and-fees",
+            "faq-shipping-policy-weekend-and-same-day-delivery"
+          ]
+        },
+        {
+          "qid": "t142",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-lost-in-transit",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-preorder-delivery-issues"
+          ]
+        },
+        {
+          "qid": "t143",
+          "top10_ids": [
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-preorder-delivery-issues"
+          ]
+        },
+        {
+          "qid": "t144",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-other-packaging-issues",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-amazon-prime-membership",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-fire-tv-and-streaming-devices"
+          ]
+        },
+        {
+          "qid": "t145",
+          "top10_ids": [
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-cancellations-and-refunds"
+          ]
+        },
+        {
+          "qid": "t146",
+          "top10_ids": [
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-packaging-issues",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-customer-service-complaints",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-fire-tv-and-streaming-devices"
+          ]
+        },
+        {
+          "qid": "t147",
+          "top10_ids": [
+            "faq-other-kindle-and-e-readers",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-amazon-prime-membership",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-app-and-website-issues"
+          ]
+        },
+        {
+          "qid": "t148",
+          "top10_ids": []
+        },
+        {
+          "qid": "t149",
+          "top10_ids": [
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-account-payment-account-management",
+            "faq-other-amazon-prime-membership",
+            "faq-other-prime-video-and-streaming",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-invoices-and-receipts",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-double-multiple-charges"
+          ]
+        },
+        {
+          "qid": "t150",
+          "top10_ids": [
+            "faq-order-status-driver-and-courier-issues",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-tracking-and-status",
+            "faq-shipping-policy-weekend-and-same-day-delivery"
+          ]
+        },
+        {
+          "qid": "t151",
+          "top10_ids": [
+            "faq-account-payment-amazon-pay-balance",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-payment-methods-emi",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-account-payment-account-management",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-account-payment-double-multiple-charges"
+          ]
+        },
+        {
+          "qid": "t152",
+          "top10_ids": [
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-tracking-and-status",
+            "faq-other-product-availability-and-inquiries",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-driver-and-courier-issues"
+          ]
+        },
+        {
+          "qid": "t153",
+          "top10_ids": [
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-other-device-and-hardware-issues",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-other-kindle-and-e-readers"
+          ]
+        },
+        {
+          "qid": "t154",
+          "top10_ids": [
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-false-delivery-attempts",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-weekend-and-same-day-delivery"
+          ]
+        },
+        {
+          "qid": "t155",
+          "top10_ids": [
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-unauthorized-charges",
+            "faq-shipping-policy-shipping-costs-and-fees",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-account-locked-blocked",
+            "faq-other-packaging-issues"
+          ]
+        },
+        {
+          "qid": "t156",
+          "top10_ids": [
+            "faq-other-kindle-and-e-readers",
+            "faq-order-status-lost-in-transit",
+            "faq-account-payment-account-login-issues",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-cancellations-and-refunds"
+          ]
+        },
+        {
+          "qid": "t157",
+          "top10_ids": [
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-tracking-and-status",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t158",
+          "top10_ids": [
+            "faq-other-amazon-prime-membership",
+            "faq-account-payment-account-management",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-invoices-and-receipts",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-double-multiple-charges"
+          ]
+        },
+        {
+          "qid": "t159",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-cancellations-and-refunds"
+          ]
+        },
+        {
+          "qid": "t160",
+          "top10_ids": [
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-product-availability-and-inquiries",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-app-and-website-issues"
+          ]
+        },
+        {
+          "qid": "t161",
+          "top10_ids": [
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-shipping-policy-shipping-costs-and-fees",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-shipping-policy-international-and-regional-shipping"
+          ]
+        },
+        {
+          "qid": "t162",
+          "top10_ids": [
+            "faq-other-prime-video-and-streaming",
+            "faq-other-amazon-prime-membership",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-app-and-website-issues",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-packaging-issues"
+          ]
+        },
+        {
+          "qid": "t163",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-double-multiple-charges",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-preorder-delivery-issues"
+          ]
+        },
+        {
+          "qid": "t164",
+          "top10_ids": [
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-account-payment-account-management",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-account-payment-invoices-and-receipts",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-cashback-promos-giftcards"
+          ]
+        },
+        {
+          "qid": "t165",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-packaging-issues",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-kindle-and-e-readers",
+            "faq-order-status-lost-in-transit"
+          ]
+        },
+        {
+          "qid": "t166",
+          "top10_ids": [
+            "faq-other-packaging-issues",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-product-availability-and-inquiries",
+            "faq-order-status-missing-items-in-package",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-other-customer-service-complaints",
+            "faq-returns-refunds-missing-or-used-items"
+          ]
+        },
+        {
+          "qid": "t167",
+          "top10_ids": [
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t168",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-packaging-issues",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-fire-tv-and-streaming-devices"
+          ]
+        },
+        {
+          "qid": "t169",
+          "top10_ids": [
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-locker-and-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t170",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-lost-in-transit",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t171",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-other-device-and-hardware-issues",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-alexa-and-echo-devices",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-customer-service-complaints"
+          ]
+        },
+        {
+          "qid": "t172",
+          "top10_ids": [
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-account-management",
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-hacked-compromised-account"
+          ]
+        },
+        {
+          "qid": "t173",
+          "top10_ids": [
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-payment-methods-emi",
+            "faq-other-general-complaints-and-feedback",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-account-login-issues",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-account-management",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-account-payment-double-multiple-charges"
+          ]
+        },
+        {
+          "qid": "t174",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-tracking-and-status",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-wrong-address-or-location",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t175",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-prime-video-and-streaming",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-packaging-issues",
+            "faq-other-app-and-website-issues"
+          ]
+        },
+        {
+          "qid": "t176",
+          "top10_ids": [
+            "faq-order-status-driver-and-courier-issues",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-locker-and-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t177",
+          "top10_ids": [
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-other-packaging-issues",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-shipping-policy-international-and-regional-shipping",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-missing-items-in-package",
+            "faq-shipping-policy-shipping-costs-and-fees"
+          ]
+        },
+        {
+          "qid": "t178",
+          "top10_ids": [
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-lost-in-transit",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-other-delivery-and-logistics-complaints"
+          ]
+        },
+        {
+          "qid": "t179",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-order-status-wrong-address-or-location",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-other-packaging-issues",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-driver-and-courier-issues"
+          ]
+        },
+        {
+          "qid": "t180",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-other-device-and-hardware-issues"
+          ]
+        },
+        {
+          "qid": "t181",
+          "top10_ids": [
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-other-amazon-prime-membership",
+            "faq-other-prime-video-and-streaming",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-account-management",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-hacked-compromised-account"
+          ]
+        },
+        {
+          "qid": "t182",
+          "top10_ids": [
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-wrong-address-or-location",
+            "faq-other-customer-service-complaints",
+            "faq-order-status-lost-in-transit",
+            "faq-account-payment-double-multiple-charges",
+            "faq-order-status-missing-or-stolen-delivered-package"
+          ]
+        },
+        {
+          "qid": "t183",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-wrong-address-or-location",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-lost-in-transit",
+            "faq-shipping-policy-weekend-and-same-day-delivery"
+          ]
+        },
+        {
+          "qid": "t184",
+          "top10_ids": [
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t185",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-lost-in-transit",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-returns-refunds-return-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t186",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-other-packaging-issues",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-lost-in-transit"
+          ]
+        },
+        {
+          "qid": "t187",
+          "top10_ids": [
+            "faq-other-packaging-issues",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-missing-items-in-package",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-return-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t188",
+          "top10_ids": [
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-tracking-and-status",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-false-delivery-attempts",
+            "faq-shipping-policy-weekend-and-same-day-delivery"
+          ]
+        },
+        {
+          "qid": "t189",
+          "top10_ids": [
+            "faq-other-app-and-website-issues",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-customer-service-complaints",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-prime-video-and-streaming",
+            "faq-account-payment-account-login-issues",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-pricing-promotions-and-discounts"
+          ]
+        },
+        {
+          "qid": "t190",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-missing-or-used-items"
+          ]
+        },
+        {
+          "qid": "t191",
+          "top10_ids": [
+            "faq-other-app-and-website-issues",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-prime-video-and-streaming",
+            "faq-order-status-lost-in-transit",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-customer-service-complaints",
+            "faq-other-amazon-prime-membership"
+          ]
+        },
+        {
+          "qid": "t192",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-tracking-and-status",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t193",
+          "top10_ids": [
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-other-app-and-website-issues",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-product-availability-and-inquiries",
+            "faq-shipping-policy-international-and-regional-shipping",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t194",
+          "top10_ids": [
+            "faq-other-prime-video-and-streaming",
+            "faq-other-customer-service-complaints",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-app-and-website-issues",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-packaging-issues",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-amazon-prime-membership",
+            "faq-other-kindle-and-e-readers"
+          ]
+        },
+        {
+          "qid": "t195",
+          "top10_ids": [
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-other-packaging-issues",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-order-status-false-delivery-attempts",
+            "faq-other-customer-service-complaints",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-device-and-hardware-issues"
+          ]
+        },
+        {
+          "qid": "t196",
+          "top10_ids": [
+            "faq-account-payment-checkout-payment-errors",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-account-payment-unauthorized-charges",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-account-login-issues"
+          ]
+        },
+        {
+          "qid": "t197",
+          "top10_ids": [
+            "faq-other-prime-video-and-streaming",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-customer-service-complaints",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-app-and-website-issues",
+            "faq-other-amazon-prime-membership",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-delivery-and-logistics-complaints"
+          ]
+        },
+        {
+          "qid": "t198",
+          "top10_ids": [
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-account-payment-account-management"
+          ]
+        },
+        {
+          "qid": "t199",
+          "top10_ids": [
+            "faq-other-alexa-and-echo-devices",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-account-payment-account-login-issues",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-invoices-and-receipts",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-hacked-compromised-account"
+          ]
+        },
+        {
+          "qid": "t200",
+          "top10_ids": [
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-wrong-address-or-location",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-account-payment-account-management",
+            "faq-other-app-and-website-issues",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-false-delivery-attempts",
+            "faq-returns-refunds-return-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t201",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-false-delivery-attempts",
+            "faq-shipping-policy-prime-delivery-speed-delays"
+          ]
+        },
+        {
+          "qid": "t202",
+          "top10_ids": [
+            "faq-other-prime-video-and-streaming",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-tracking-and-status",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-driver-and-courier-issues"
+          ]
+        },
+        {
+          "qid": "t203",
+          "top10_ids": [
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-returns-refunds-missing-or-used-items"
+          ]
+        },
+        {
+          "qid": "t204",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-other-device-and-hardware-issues",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-order-status-cancellations-and-refunds"
+          ]
+        },
+        {
+          "qid": "t205",
+          "top10_ids": []
+        },
+        {
+          "qid": "t206",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-app-and-website-issues",
+            "faq-other-alexa-and-echo-devices",
+            "faq-order-status-driver-and-courier-issues"
+          ]
+        },
+        {
+          "qid": "t207",
+          "top10_ids": [
+            "faq-other-prime-video-and-streaming",
+            "faq-other-amazon-prime-membership",
+            "faq-other-general-complaints-and-feedback",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-other-product-availability-and-inquiries",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-other-app-and-website-issues",
+            "faq-other-customer-service-complaints",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-delivery-and-logistics-complaints"
+          ]
+        },
+        {
+          "qid": "t208",
+          "top10_ids": [
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-order-status-wrong-address-or-location",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-account-payment-checkout-payment-errors"
+          ]
+        },
+        {
+          "qid": "t209",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-tracking-and-status",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t210",
+          "top10_ids": [
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-account-management",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-account-login-issues"
+          ]
+        },
+        {
+          "qid": "t211",
+          "top10_ids": [
+            "faq-order-status-cancellations-and-refunds",
+            "faq-other-kindle-and-e-readers",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-missing-or-stolen-delivered-package"
+          ]
+        },
+        {
+          "qid": "t212",
+          "top10_ids": [
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-cancellations-and-refunds"
+          ]
+        },
+        {
+          "qid": "t213",
+          "top10_ids": [
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-cancellations-and-refunds"
+          ]
+        },
+        {
+          "qid": "t214",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-amazon-prime-membership",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-packaging-issues",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-order-status-missing-or-stolen-delivered-package"
+          ]
+        },
+        {
+          "qid": "t215",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-returns-refunds-missing-or-used-items"
+          ]
+        },
+        {
+          "qid": "t216",
+          "top10_ids": [
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-other-packaging-issues",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-missing-items-in-package",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-account-payment-cashback-promos-giftcards"
+          ]
+        },
+        {
+          "qid": "t217",
+          "top10_ids": [
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-shipping-policy-international-and-regional-shipping",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-shipping-policy-shipping-costs-and-fees",
+            "faq-other-product-availability-and-inquiries",
+            "faq-shipping-policy-carrier-and-courier-issues"
+          ]
+        },
+        {
+          "qid": "t218",
+          "top10_ids": [
+            "faq-other-packaging-issues",
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-app-and-website-issues",
+            "faq-other-fire-tv-and-streaming-devices"
+          ]
+        },
+        {
+          "qid": "t219",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-tracking-and-status",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-cancellations-and-refunds"
+          ]
+        },
+        {
+          "qid": "t220",
+          "top10_ids": [
+            "faq-order-status-driver-and-courier-issues",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-locker-and-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t221",
+          "top10_ids": [
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-false-delivery-attempts",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-shipping-policy-carrier-and-courier-issues"
+          ]
+        },
+        {
+          "qid": "t222",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-lost-in-transit"
+          ]
+        },
+        {
+          "qid": "t223",
+          "top10_ids": [
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-false-delivery-attempts",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-shipping-policy-weekend-and-same-day-delivery"
+          ]
+        },
+        {
+          "qid": "t224",
+          "top10_ids": []
+        },
+        {
+          "qid": "t225",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-other-general-complaints-and-feedback",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t226",
+          "top10_ids": [
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-cancellations-and-refunds"
+          ]
+        },
+        {
+          "qid": "t227",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-order-status-wrong-address-or-location",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-false-delivery-attempts",
+            "faq-other-app-and-website-issues"
+          ]
+        },
+        {
+          "qid": "t228",
+          "top10_ids": [
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-account-login-issues",
+            "faq-other-product-availability-and-inquiries",
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-order-status-lost-in-transit",
+            "faq-account-payment-double-multiple-charges"
+          ]
+        },
+        {
+          "qid": "t229",
+          "top10_ids": [
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-account-payment-payment-methods-emi",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-lost-in-transit",
+            "faq-other-product-availability-and-inquiries",
+            "faq-account-payment-double-multiple-charges"
+          ]
+        },
+        {
+          "qid": "t230",
+          "top10_ids": [
+            "faq-account-payment-hacked-compromised-account",
+            "faq-account-payment-account-login-issues",
+            "faq-account-payment-account-locked-blocked",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-general-complaints-and-feedback",
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-account-management",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-account-payment-invoices-and-receipts"
+          ]
+        },
+        {
+          "qid": "t231",
+          "top10_ids": [
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-missing-items-in-package",
+            "faq-other-product-availability-and-inquiries",
+            "faq-order-status-wrong-address-or-location",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-locker-and-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t232",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-missing-items-in-package"
+          ]
+        },
+        {
+          "qid": "t233",
+          "top10_ids": [
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-app-and-website-issues",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-customer-service-complaints",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-delivery-and-logistics-complaints"
+          ]
+        },
+        {
+          "qid": "t234",
+          "top10_ids": [
+            "faq-other-amazon-prime-membership",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-missing-items-in-package",
+            "faq-account-payment-amazon-pay-balance"
+          ]
+        },
+        {
+          "qid": "t235",
+          "top10_ids": [
+            "faq-account-payment-amazon-pay-balance",
+            "faq-other-amazon-prime-membership",
+            "faq-other-general-complaints-and-feedback",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-account-management",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-other-product-availability-and-inquiries",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-other-delivery-and-logistics-complaints"
+          ]
+        },
+        {
+          "qid": "t236",
+          "top10_ids": [
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-prime-video-and-streaming",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-amazon-prime-membership",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-customer-service-complaints",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-fire-tv-and-streaming-devices"
+          ]
+        },
+        {
+          "qid": "t237",
+          "top10_ids": [
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-other-general-complaints-and-feedback",
+            "faq-order-status-wrong-address-or-location",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-missing-items-in-package",
+            "faq-returns-refunds-return-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t238",
+          "top10_ids": [
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-account-payment-unauthorized-charges",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-account-management",
+            "faq-other-amazon-prime-membership",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-payment-methods-emi"
+          ]
+        },
+        {
+          "qid": "t239",
+          "top10_ids": [
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-other-amazon-prime-membership",
+            "faq-account-payment-account-management",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-account-locked-blocked",
+            "faq-other-prime-video-and-streaming",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-amazon-pay-balance"
+          ]
+        },
+        {
+          "qid": "t240",
+          "top10_ids": [
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-other-general-complaints-and-feedback",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-double-multiple-charges",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-account-payment-account-locked-blocked",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-account-payment-account-login-issues",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-other-customer-service-complaints"
+          ]
+        },
+        {
+          "qid": "t241",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-items-in-package",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-shipping-policy-carrier-and-courier-issues"
+          ]
+        },
+        {
+          "qid": "t242",
+          "top10_ids": []
+        },
+        {
+          "qid": "t243",
+          "top10_ids": [
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-general-complaints-and-feedback",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-wrong-address-or-location",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-other-product-availability-and-inquiries",
+            "faq-order-status-missing-items-in-package",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-packaging-issues"
+          ]
+        },
+        {
+          "qid": "t244",
+          "top10_ids": [
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-other-general-complaints-and-feedback",
+            "faq-order-status-false-delivery-attempts",
+            "faq-other-packaging-issues",
+            "faq-other-customer-service-complaints",
+            "faq-shipping-policy-weekend-and-same-day-delivery"
+          ]
+        },
+        {
+          "qid": "t245",
+          "top10_ids": [
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-app-and-website-issues",
+            "faq-other-kindle-and-e-readers",
+            "faq-account-payment-account-login-issues",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-packaging-issues",
+            "faq-other-amazon-prime-membership"
+          ]
+        },
+        {
+          "qid": "t246",
+          "top10_ids": [
+            "faq-other-amazon-prime-membership",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-customer-service-complaints",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-delivery-and-logistics-complaints"
+          ]
+        },
+        {
+          "qid": "t247",
+          "top10_ids": [
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-other-packaging-issues",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-lost-in-transit"
+          ]
+        },
+        {
+          "qid": "t248",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-wrong-address-or-location",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-missing-or-used-items"
+          ]
+        },
+        {
+          "qid": "t249",
+          "top10_ids": [
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-false-delivery-attempts",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-wrong-address-or-location",
+            "faq-shipping-policy-international-and-regional-shipping",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-tracking-and-status",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-missing-items-in-package",
+            "faq-shipping-policy-weekend-and-same-day-delivery"
+          ]
+        },
+        {
+          "qid": "t250",
+          "top10_ids": [
+            "faq-other-device-and-hardware-issues",
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-packaging-issues",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-amazon-prime-membership",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-delivery-and-logistics-complaints"
+          ]
+        },
+        {
+          "qid": "t251",
+          "top10_ids": [
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-account-login-issues",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-account-management",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-prime-membership-cancellation"
+          ]
+        },
+        {
+          "qid": "t252",
+          "top10_ids": [
+            "faq-other-amazon-prime-membership",
+            "faq-other-product-availability-and-inquiries",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-app-and-website-issues"
+          ]
+        },
+        {
+          "qid": "t253",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-packaging-issues",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-app-and-website-issues",
+            "faq-other-product-availability-and-inquiries"
+          ]
+        },
+        {
+          "qid": "t254",
+          "top10_ids": [
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-app-and-website-issues",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-general-complaints-and-feedback",
+            "faq-shipping-policy-international-and-regional-shipping",
+            "faq-account-payment-payment-methods-emi",
+            "faq-other-prime-video-and-streaming",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-device-and-hardware-issues"
+          ]
+        },
+        {
+          "qid": "t255",
+          "top10_ids": [
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-prime-video-and-streaming",
+            "faq-order-status-lost-in-transit",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-amazon-prime-membership",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-app-and-website-issues",
+            "faq-other-device-and-hardware-issues"
+          ]
+        },
+        {
+          "qid": "t256",
+          "top10_ids": [
+            "faq-other-kindle-and-e-readers",
+            "faq-other-amazon-prime-membership",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-account-management",
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-account-payment-double-multiple-charges"
+          ]
+        },
+        {
+          "qid": "t257",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t258",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-order-status-false-delivery-attempts",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-lost-in-transit",
+            "faq-shipping-policy-weekend-and-same-day-delivery"
+          ]
+        },
+        {
+          "qid": "t259",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-lost-in-transit",
+            "faq-returns-refunds-missing-or-used-items"
+          ]
+        },
+        {
+          "qid": "t260",
+          "top10_ids": [
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-account-login-issues",
+            "faq-other-app-and-website-issues",
+            "faq-other-amazon-prime-membership",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-hacked-compromised-account"
+          ]
+        },
+        {
+          "qid": "t261",
+          "top10_ids": [
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-lost-in-transit",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-missing-or-stolen-delivered-package"
+          ]
+        },
+        {
+          "qid": "t262",
+          "top10_ids": [
+            "faq-returns-refunds-refund-inquiries",
+            "faq-other-customer-service-complaints",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-missing-or-used-items"
+          ]
+        },
+        {
+          "qid": "t263",
+          "top10_ids": [
+            "faq-other-device-and-hardware-issues",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-alexa-and-echo-devices",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-shipping-policy-international-and-regional-shipping",
+            "faq-other-app-and-website-issues",
+            "faq-other-customer-service-complaints"
+          ]
+        },
+        {
+          "qid": "t264",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-tracking-and-status",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t265",
+          "top10_ids": [
+            "faq-other-prime-video-and-streaming",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-amazon-prime-membership",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-app-and-website-issues",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-customer-service-complaints"
+          ]
+        },
+        {
+          "qid": "t266",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-wrong-address-or-location",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-driver-and-courier-issues"
+          ]
+        },
+        {
+          "qid": "t267",
+          "top10_ids": [
+            "faq-account-payment-prime-membership-cancellation",
+            "faq-account-payment-unauthorized-charges",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-shipping-policy-shipping-costs-and-fees",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-account-management",
+            "faq-other-amazon-prime-membership",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-other-prime-video-and-streaming",
+            "faq-shipping-policy-international-and-regional-shipping"
+          ]
+        },
+        {
+          "qid": "t268",
+          "top10_ids": [
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-driver-and-courier-issues"
+          ]
+        },
+        {
+          "qid": "t269",
+          "top10_ids": [
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-account-payment-account-management",
+            "faq-other-alexa-and-echo-devices"
+          ]
+        },
+        {
+          "qid": "t270",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-lost-in-transit",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-tracking-and-status",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-shipping-policy-carrier-and-courier-issues",
+            "faq-order-status-missing-items-in-package",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        },
+        {
+          "qid": "t271",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-other-packaging-issues",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-missing-items-in-package",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-return-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t272",
+          "top10_ids": [
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-lost-in-transit"
+          ]
+        },
+        {
+          "qid": "t273",
+          "top10_ids": [
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-customer-service-complaints",
+            "faq-other-packaging-issues",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-app-and-website-issues",
+            "faq-other-delivery-and-logistics-complaints"
+          ]
+        },
+        {
+          "qid": "t274",
+          "top10_ids": [
+            "faq-order-status-preorder-delivery-issues",
+            "faq-other-product-availability-and-inquiries",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-lost-in-transit"
+          ]
+        },
+        {
+          "qid": "t275",
+          "top10_ids": [
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-app-and-website-issues",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-customer-service-complaints",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-packaging-issues",
+            "faq-other-kindle-and-e-readers",
+            "faq-account-payment-account-login-issues"
+          ]
+        },
+        {
+          "qid": "t276",
+          "top10_ids": [
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-account-payment-invoices-and-receipts",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-account-payment-account-login-issues"
+          ]
+        },
+        {
+          "qid": "t277",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-lost-in-transit",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-weekend-and-same-day-delivery"
+          ]
+        },
+        {
+          "qid": "t278",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-wrong-address-or-location",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-missing-or-stolen-delivered-package"
+          ]
+        },
+        {
+          "qid": "t279",
+          "top10_ids": [
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-amazon-prime-membership",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-app-and-website-issues",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-device-and-hardware-issues"
+          ]
+        },
+        {
+          "qid": "t280",
+          "top10_ids": [
+            "faq-other-device-and-hardware-issues",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-app-and-website-issues",
+            "faq-other-kindle-and-e-readers",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-refund-inquiries"
+          ]
+        },
+        {
+          "qid": "t281",
+          "top10_ids": [
+            "faq-account-payment-account-login-issues",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-account-payment-account-locked-blocked",
+            "faq-other-customer-service-complaints",
+            "faq-other-app-and-website-issues",
+            "faq-other-alexa-and-echo-devices",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-other-prime-video-and-streaming",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-account-payment-amazon-pay-balance"
+          ]
+        },
+        {
+          "qid": "t282",
+          "top10_ids": [
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-account-payment-account-locked-blocked",
+            "faq-other-app-and-website-issues",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-device-and-hardware-issues"
+          ]
+        },
+        {
+          "qid": "t283",
+          "top10_ids": [
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-account-login-issues",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-app-and-website-issues",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-payment-methods-emi",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-account-payment-account-management",
+            "faq-other-prime-video-and-streaming"
+          ]
+        },
+        {
+          "qid": "t284",
+          "top10_ids": [
+            "faq-other-packaging-issues",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-customer-service-complaints",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-amazon-prime-membership",
+            "faq-other-product-availability-and-inquiries",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-other-kindle-and-e-readers"
+          ]
+        },
+        {
+          "qid": "t285",
+          "top10_ids": [
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-lost-in-transit",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-wrong-address-or-location"
+          ]
+        },
+        {
+          "qid": "t286",
+          "top10_ids": [
+            "faq-account-payment-checkout-payment-errors",
+            "faq-account-payment-invoices-and-receipts",
+            "faq-account-payment-double-multiple-charges",
+            "faq-account-payment-payment-methods-emi",
+            "faq-account-payment-account-management",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-account-payment-account-locked-blocked",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-hacked-compromised-account"
+          ]
+        },
+        {
+          "qid": "t287",
+          "top10_ids": [
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-lost-in-transit"
+          ]
+        },
+        {
+          "qid": "t288",
+          "top10_ids": [
+            "faq-account-payment-unauthorized-charges",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-app-and-website-issues",
+            "faq-other-amazon-prime-membership",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-account-payment-amazon-pay-balance"
+          ]
+        },
+        {
+          "qid": "t289",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-app-and-website-issues",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-other-packaging-issues",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-preorder-delivery-issues"
+          ]
+        },
+        {
+          "qid": "t290",
+          "top10_ids": [
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-packaging-issues",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-other-device-and-hardware-issues"
+          ]
+        },
+        {
+          "qid": "t291",
+          "top10_ids": [
+            "faq-order-status-missing-or-stolen-delivered-package",
+            "faq-order-status-wrong-address-or-location",
+            "faq-order-status-driver-and-courier-issues",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-false-delivery-attempts",
+            "faq-shipping-policy-delivery-instructions-and-preferences",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-tracking-and-status",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-locker-and-pickup-issues"
+          ]
+        },
+        {
+          "qid": "t292",
+          "top10_ids": [
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-account-payment-cashback-promos-giftcards",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-false-delivery-attempts",
+            "faq-returns-refunds-missing-or-used-items"
+          ]
+        },
+        {
+          "qid": "t293",
+          "top10_ids": [
+            "faq-other-amazon-prime-membership",
+            "faq-other-packaging-issues",
+            "faq-account-payment-amazon-pay-balance",
+            "faq-order-status-missing-items-in-package",
+            "faq-other-product-availability-and-inquiries",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-fire-tv-and-streaming-devices"
+          ]
+        },
+        {
+          "qid": "t294",
+          "top10_ids": []
+        },
+        {
+          "qid": "t295",
+          "top10_ids": [
+            "faq-returns-refunds-damaged-or-defective-items",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-returns-refunds-missing-or-used-items",
+            "faq-other-packaging-issues",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-missing-items-in-package",
+            "faq-order-status-wrong-address-or-location",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-order-status-driver-and-courier-issues"
+          ]
+        },
+        {
+          "qid": "t296",
+          "top10_ids": [
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-returns-refunds-return-policy-and-process",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-order-status-false-delivery-attempts",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-order-status-lost-in-transit",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-order-status-locker-and-pickup-issues",
+            "faq-order-status-preorder-delivery-issues"
+          ]
+        },
+        {
+          "qid": "t297",
+          "top10_ids": [
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-amazon-prime-membership",
+            "faq-other-pricing-promotions-and-discounts",
+            "faq-account-payment-hacked-compromised-account",
+            "faq-account-payment-unauthorized-charges",
+            "faq-other-prime-video-and-streaming",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-fire-tv-and-streaming-devices",
+            "faq-other-customer-service-complaints"
+          ]
+        },
+        {
+          "qid": "t298",
+          "top10_ids": [
+            "faq-other-customer-service-complaints",
+            "faq-other-general-complaints-and-feedback",
+            "faq-other-scams-phishing-and-fraud",
+            "faq-other-kindle-and-e-readers",
+            "faq-other-delivery-and-logistics-complaints",
+            "faq-other-packaging-issues",
+            "faq-other-alexa-and-echo-devices",
+            "faq-other-app-and-website-issues",
+            "faq-other-device-and-hardware-issues",
+            "faq-other-product-availability-and-inquiries"
+          ]
+        },
+        {
+          "qid": "t299",
+          "top10_ids": [
+            "faq-shipping-policy-prime-delivery-speed-delays",
+            "faq-shipping-policy-weekend-and-same-day-delivery",
+            "faq-order-status-late-or-not-arrived-order",
+            "faq-returns-refunds-refund-inquiries",
+            "faq-returns-refunds-wrong-item-received",
+            "faq-shipping-policy-order-fulfillment-and-packaging",
+            "faq-order-status-cancellations-and-refunds",
+            "faq-returns-refunds-return-pickup-issues",
+            "faq-order-status-preorder-delivery-issues",
+            "faq-order-status-false-delivery-attempts"
+          ]
+        }
+      ]
+    }
+  ]
+}

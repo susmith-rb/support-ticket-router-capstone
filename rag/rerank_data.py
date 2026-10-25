@@ -295,9 +295,11 @@ def build_candidates_for_query(
     confusion_map: Dict[str, List[str]],
     rng: random.Random,
     target_k: int = 12,
+    hard_negatives: Optional[List[str]] = None,
 ) -> List[str]:
   """Construct a balanced set of ~12 candidates:
 
+  0. Hard negatives explicitly provided (e.g. from LLM annotators).
   1. Positives (all relevant docs, e.g. primary + secondaries).
   2. Hard negatives from DEV confusion map.
   3. Hard negatives from same-family siblings.
@@ -307,16 +309,26 @@ def build_candidates_for_query(
   candidates = list(positives)
   candidate_set = set(candidates)
 
-  # 1. Add confusion pairs for any positive doc
-  for pos in positives:
-    for confused in confusion_map.get(pos, []):
-      if confused not in candidate_set and confused in all_doc_ids:
-        candidates.append(confused)
-        candidate_set.add(confused)
+  # 0. Add explicit hard negatives if provided
+  if hard_negatives:
+    for hn in hard_negatives:
+      if hn and hn not in candidate_set and hn in all_doc_ids:
+        candidates.append(hn)
+        candidate_set.add(hn)
         if len(candidates) >= target_k:
           break
-    if len(candidates) >= target_k:
-      break
+
+  # 1. Add confusion pairs for any positive doc
+  if len(candidates) < target_k:
+    for pos in positives:
+      for confused in confusion_map.get(pos, []):
+        if confused not in candidate_set and confused in all_doc_ids:
+          candidates.append(confused)
+          candidate_set.add(confused)
+          if len(candidates) >= target_k:
+            break
+      if len(candidates) >= target_k:
+        break
 
   # 2. Add same-family siblings
   if len(candidates) < target_k and positives:
@@ -401,6 +413,87 @@ def load_graded_data(
           "primary": primary,
           "secondary": secondaries,
       })
+
+  verify_no_leakage(graded_items, eval_tids, eval_qnorms)
+  return graded_items
+
+
+def load_pool_graded_data(
+    labeling_dir: Path,
+    eval_tids: Set[str],
+    eval_qnorms: Set[str],
+    docs_catalog: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+  """Load newly graded queries from Gemini Pro shards ($S/labeling2/), enforcing zero leakage."""
+  pool_path = labeling_dir / "pool.jsonl"
+  if not pool_path.exists():
+    raise FileNotFoundError(f"Pool file not found: {pool_path}")
+
+  pool = {}
+  with open(pool_path, "r", encoding="utf-8") as f:
+    for line in f:
+      if not line.strip():
+        continue
+      row = json.loads(line)
+      pid = row.get("pid") or row.get("qid")
+      if pid:
+        pool[pid] = row
+
+  label_files = sorted(labeling_dir.glob("labels_pool_*.jsonl"))
+  if not label_files:
+    raise FileNotFoundError(f"No labels_pool_*.jsonl found in {labeling_dir}")
+
+  graded_items = []
+  for lf in label_files:
+    with open(lf, "r", encoding="utf-8") as f:
+      for line in f:
+        if not line.strip():
+          continue
+        rec = json.loads(line)
+        qid = rec.get("qid")
+        if not qid:
+          continue
+        if not rec.get("support_request"):
+          continue
+        if rec.get("language") != "en":
+          continue
+        primary = rec.get("primary")
+        if not primary or primary not in docs_catalog:
+          continue
+        p_info = pool.get(qid)
+        if not p_info:
+          continue
+        q = p_info.get("query", "")
+        tid = str(p_info.get("thread_id", ""))
+        if not q or not tid:
+          continue
+
+        # Prevent leakage into dev/test
+        if tid in eval_tids or normalize_query(q) in eval_qnorms:
+          continue
+
+        secondaries = [
+            s
+            for s in rec.get("secondary", [])
+            if s and s in docs_catalog and s != primary
+        ]
+        hard_neg = rec.get("hard_negative")
+        if hard_neg and (
+            hard_neg not in docs_catalog
+            or hard_neg == primary
+            or hard_neg in secondaries
+        ):
+          hard_neg = None
+
+        graded_items.append({
+            "qid": qid,
+            "query": q,
+            "source": "graded_pool",
+            "thread_id": tid,
+            "primary": primary,
+            "secondary": secondaries,
+            "hard_negative": hard_neg,
+        })
 
   verify_no_leakage(graded_items, eval_tids, eval_qnorms)
   return graded_items
@@ -546,6 +639,7 @@ def assemble_dataset_rows(
     primary = it["primary"]
     secondaries = it.get("secondary", [])
     positives = [primary] + [s for s in secondaries if s != primary]
+    hard_negs = [it["hard_negative"]] if it.get("hard_negative") else None
 
     candidates = build_candidates_for_query(
         positives=positives,
@@ -554,6 +648,7 @@ def assemble_dataset_rows(
         confusion_map=confusion_map,
         rng=rng,
         target_k=target_k,
+        hard_negatives=hard_negs,
     )
 
     rels = assign_candidate_grades(candidates, primary, secondaries)
@@ -612,12 +707,15 @@ def generate_data_card(
   """Generate markdown data card documenting counts, candidate statistics, and leakage proofs."""
   all_rows = train_rows + val_rows
   total_queries = len(all_rows)
-  graded_count = sum(1 for r in all_rows if r["source"] == "graded")
+  graded_v1_count = sum(1 for r in all_rows if r["source"] in ("graded", "graded_v1"))
+  graded_pool_count = sum(1 for r in all_rows if r["source"] == "graded_pool")
   silver_count = sum(1 for r in all_rows if r["source"] == "silver")
 
-  train_graded = sum(1 for r in train_rows if r["source"] == "graded")
+  train_graded_v1 = sum(1 for r in train_rows if r["source"] in ("graded", "graded_v1"))
+  train_pool = sum(1 for r in train_rows if r["source"] == "graded_pool")
   train_silver = sum(1 for r in train_rows if r["source"] == "silver")
-  val_graded = sum(1 for r in val_rows if r["source"] == "graded")
+  val_graded_v1 = sum(1 for r in val_rows if r["source"] in ("graded", "graded_v1"))
+  val_pool = sum(1 for r in val_rows if r["source"] == "graded_pool")
   val_silver = sum(1 for r in val_rows if r["source"] == "silver")
 
   train_tids = set(str(r["thread_id"]) for r in train_rows)
@@ -658,23 +756,24 @@ def generate_data_card(
 | Metric | Total | Train | Validation | Description |
 | :--- | :---: | :---: | :---: | :--- |
 | **Total Queries** | **{total_queries}** | **{len(train_rows)}** | **{len(val_rows)}** | 90% / 10% thread-level split |
-| **Graded Queries** | {graded_count} | {train_graded} | {val_graded} | Agent-labeled disambiguation pool (primary=2, secondary=1) |
-| **Silver Queries** | {silver_count} | {train_silver} | {val_silver} | Capped customer first turns from themes_v2 (target=2, other=0) |
+| **Disambiguation Pool (v1)** | {graded_v1_count} | {train_graded_v1} | {val_graded_v1} | Agent-labeled disambiguation pool (primary=2, secondary=1) |
+| **Gemini Pro Graded Pool (v2)** | {graded_pool_count} | {train_pool} | {val_pool} | 8 Gemini Pro shards audited pool (primary=2, secondary=1, hard_negative=0) |
+| **Silver Queries** | {silver_count} | {train_silver} | {val_silver} | Capped customer first turns from themes_v2 (0 in v2) |
 | **Unique Threads** | {len(train_tids | val_tids)} | {len(train_tids)} | {len(val_tids)} | Disjoint thread partition |
 | **Corpus Articles** | {len(docs_catalog)} | 50 | 50 | 100% Release 5 coverage |
 
 ## 2. Per-Article Primary Target Balance
 
-- **Min Queries / Article**: {min(counts_list)}
-- **Max Queries / Article**: {max(counts_list)}
-- **Mean Queries / Article**: {sum(counts_list)/len(counts_list):.1f}
-- **Median Queries / Article**: {sorted(counts_list)[len(counts_list)//2]}
+- **Min Queries / Article**: {min(counts_list) if counts_list else 0}
+- **Max Queries / Article**: {max(counts_list) if counts_list else 0}
+- **Mean Queries / Article**: {sum(counts_list)/len(counts_list) if counts_list else 0:.1f}
+- **Median Queries / Article**: {sorted(counts_list)[len(counts_list)//2] if counts_list else 0}
 
 ## 3. Candidate Composition & Label Distribution
 
-- **Mean Candidates / Query**: {sum(candidate_lens)/len(candidate_lens):.1f} (min={min(candidate_lens)}, max={max(candidate_lens)})
-- **Mean Positives / Query (Grade $\ge$ 1)**: {sum(pos_counts)/len(pos_counts):.2f}
-- **Mean Negatives / Query (Grade 0)**: {sum(hard_neg_counts)/len(hard_neg_counts):.2f}
+- **Mean Candidates / Query**: {sum(candidate_lens)/len(candidate_lens) if candidate_lens else 0:.1f} (min={min(candidate_lens) if candidate_lens else 0}, max={max(candidate_lens) if candidate_lens else 0})
+- **Mean Positives / Query (Grade $\ge$ 1)**: {sum(pos_counts)/len(pos_counts) if pos_counts else 0:.2f}
+- **Mean Negatives / Query (Grade 0)**: {sum(hard_neg_counts)/len(hard_neg_counts) if hard_neg_counts else 0:.2f}
 - **Graded Relevance Levels**:
   - `Grade 2`: Primary relevant FAQ document
   - `Grade 1`: Secondary relevant FAQ document
@@ -733,6 +832,12 @@ def main():
       help="Graded disambiguation pool labels JSONL",
   )
   parser.add_argument(
+      "--labeling-dir",
+      type=Path,
+      default=None,
+      help="Path to Gemini Pro labeling directory ($S/labeling2)",
+  )
+  parser.add_argument(
       "--themes-path",
       type=Path,
       default=None,
@@ -754,7 +859,7 @@ def main():
       "--out-dir",
       type=Path,
       default=None,
-      help="Output directory for rerank dataset ($S/rerank)",
+      help="Output directory for rerank dataset ($S/rerank or $S/rerank/v2)",
   )
   parser.add_argument(
       "--silver-cap",
@@ -785,7 +890,11 @@ def main():
   dev_rows_path = args.dev_rows_path or (
       s / "ablation" / "dev_rows_phaseD.json"
   )
-  out_dir = args.out_dir or (s / "rerank")
+  labeling_dir = args.labeling_dir
+  if labeling_dir:
+    out_dir = args.out_dir or (s / "rerank" / "v2")
+  else:
+    out_dir = args.out_dir or (s / "rerank")
 
   out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -805,22 +914,30 @@ def main():
       args.graded_path, eval_tids, eval_qnorms, docs_catalog
   )
   graded_tids = set(str(it["thread_id"]) for it in graded_items)
-  print(f"  Graded items: {len(graded_items)}")
+  print(f"  Graded items (v1): {len(graded_items)}")
 
-  print(f"Loading silver data from: {themes_path}")
-  silver_items = load_silver_data(
-      themes_path=themes_path,
-      threads_path=threads_path,
-      eval_tids=eval_tids,
-      eval_qnorms=eval_qnorms,
-      graded_tids=graded_tids,
-      docs_catalog=docs_catalog,
-      per_article_cap=args.silver_cap,
-      seed=args.seed,
-  )
-  print(f"  Silver items: {len(silver_items)}")
+  if labeling_dir:
+    print(f"Loading Gemini Pro graded data from: {labeling_dir}")
+    pool_items = load_pool_graded_data(
+        labeling_dir, eval_tids, eval_qnorms, docs_catalog
+    )
+    print(f"  Graded items (pool v2): {len(pool_items)}")
+    all_items = graded_items + pool_items
+  else:
+    print(f"Loading silver data from: {themes_path}")
+    silver_items = load_silver_data(
+        themes_path=themes_path,
+        threads_path=threads_path,
+        eval_tids=eval_tids,
+        eval_qnorms=eval_qnorms,
+        graded_tids=graded_tids,
+        docs_catalog=docs_catalog,
+        per_article_cap=args.silver_cap,
+        seed=args.seed,
+    )
+    print(f"  Silver items: {len(silver_items)}")
+    all_items = graded_items + silver_items
 
-  all_items = graded_items + silver_items
   print(f"Total pool items: {len(all_items)}")
 
   print(f"Splitting train/val by thread (val_ratio={args.val_ratio})...")

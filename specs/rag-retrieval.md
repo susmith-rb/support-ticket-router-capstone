@@ -306,6 +306,7 @@ Evaluation is stratified across three tiers to balance realism, benchmarking, an
 - **Rationale**: TDD §6.4 and PLAN7. Real-world customer tickets suffer ranking order ambiguity between closely related FAQ documents (e.g., Prime delivery speeds vs general late orders). Training a downstream reranker (cross-encoder or Laya typed choice) requires high-quality graded relevance judgments and challenging hard negatives without data leakage across evaluation splits. Offline candidate export enables reproducible, leakage-free hyperparameter selection on DEV prior to a single audited TEST evaluation.
 - **Acceptance**: `tests/rag/test_rerank_data.py` & `tests/rag/test_rerank_ce.py`
 - **Status**: done
+- **Final TEST (2026-10-25, audited; rag/EVAL_RESULTS.md §13)**: MAIN n=225, C2 labels. Production 0.907/0.784/0.695 (r@5/MRR/nDCG@5) -> Laya v2 0.907/0.838/0.735 -> fusion 2xLaya+CE 0.920/0.849/0.751. nDCG@5 target 0.80 still NOT met; recommended production reranker = Laya v2 (~35 ms p95 on T4).
 - **Owner**: rag-retrieval
 - **Arm A Evaluation Evidence: Cross-Encoder Reranker (`ms-marco-MiniLM-L-6-v2`) (2026-10-25)**:
   - **Model & Training**:
@@ -347,7 +348,7 @@ Evaluation is stratified across three tiers to balance realism, benchmarking, an
     - p90: **517.07 ms**
     - p95: **528.23 ms**
     - Minimum: **33.72 ms**, Maximum: **6772.13 ms** (cold-start / PyTorch JIT compilation overhead on query 1)
-- **Arm B Evaluation Evidence: Laya Typed-Decision Choice Reranker (2026-10-25)**:
+- **Arm B Round 1 Evaluation Evidence: Laya Choice Reranker (Initial Heuristic Data v1) (2026-10-25)**:
   - **Model & Training**:
     - Compared base `convaiinnovations/laya` (base english) vs fine-tuned `router-s1/v2` checkpoint on Argolis VM `laya-tune` (1x NVIDIA T4 GPU).
     - Architecture: Typed-decision choice model predicting soft categorical distribution over $\le 5$ article options (article title + short scope phrase from `docs.json`).
@@ -379,3 +380,38 @@ Evaluation is stratified across three tiers to balance realism, benchmarking, an
     - p90: **47.49 ms**
     - p95: **52.91 ms**
     - Total batch execution time: **12.77 s**
+- **Arm B Round 2 Evaluation Evidence: Laya Choice Reranker (Gemini Pro Pool Graded Data v2) (2026-10-25)**:
+  - **Dataset v2 Composition & Invariants**:
+    - Replaced all noisy silver heuristic rows with Gemini Pro pool annotations (`labels_pool_*.jsonl` joined against `pool.jsonl`).
+    - Filtered strictly to in-scope English customer support requests (`support_request==True`, `language=="en"`, valid `primary`), retaining 876 graded pool items with hard negative candidates.
+    - Combined with 447 human-reviewed agent disambiguation items (`primary=2`, `secondary=1`) for 1,323 total high-quality graded queries (1,191 train, 132 held-out val).
+    - Strict leakage discipline verified: 0 thread ID overlap with DEV/TEST, 0 normalized query text collision with DEV/TEST, 0 train/val overlap, 100% 50-article catalog conformance.
+  - **Model & Retraining Results**:
+    - Fine-tuned from `router-s1/v2` checkpoint on Argolis VM `laya-tune` (1x NVIDIA Tesla T4 GPU).
+    - Hyperparameters: `soft-ce` loss, `--shuffle-options` ("choice",), micro-batch 4, grad-accum 8 (effective batch size 32), AdamW, seed 42.
+    - 6-Epoch Run: Accuracy 0.6136 $\to$ **0.8182** (+0.2046), Val Loss 1.1678 $\to$ **0.7667** (-0.4011), ECE 0.2128, Brier (top-1) 0.1875, duration 680s (11m20s).
+    - 8-Epoch Run: Accuracy 0.6136 $\to$ 0.7955 (+0.1819), Val Loss 1.1678 $\to$ 0.7777 (-0.3901), ECE 0.1961, Brier (top-1) 0.1900, duration 799s (13m19s).
+    - Selection: 6-epoch checkpoint selected as winning model (higher accuracy 0.8182 vs 0.7955, lower loss 0.7667 vs 0.7777, lower top-1 Brier 0.1875 vs 0.1900). Checkpoint staged at `gs://susmith-fde-ticket-router-laya/rerank/v2/ckpt/`.
+  - **Offline DEV Reranking Quality (MAIN Scope, n=218)**:
+    - Reranks top 5 retrieved candidates by Laya choice probability, keeping initial ranks 6-10 intact.
+    - Evaluated with `rag/multi_label_eval.py` against adjudicated consensus labels (C2).
+    - Overall Metrics vs Baseline & Round 1:
+      - `recall@5`: **0.9128** (baseline: 0.9128, Round 1: 0.9128)
+      - `MRR@10`: **0.8240** (baseline: 0.8003, Round 1: 0.8275)
+      - `Graded nDCG@5`: **0.7546** (baseline: 0.7290, **+0.0256 gain over baseline**, Round 1: 0.7492, **+0.0054 gain over Round 1**)
+    - Sensitivity Bounds on DEV:
+      - LOWER Bound (Consensus primary only): recall@5 = 0.8532, MRR@10 = 0.7259, Graded nDCG@5 = **0.7538** (Round 1: 0.7476)
+      - CONSENSUS (Adjudicator C): recall@5 = **0.9128**, MRR@10 = **0.8240**, Graded nDCG@5 = **0.7546** (Round 1: 0.7492)
+      - UPPER Bound (Union A $\cup$ B $\cup$ C): recall@5 = 0.9312, MRR@10 = 0.8884, Graded nDCG@5 = **0.7527** (Round 1: 0.7502)
+    - Consensus Retrieval by Intent Family on DEV:
+      - `account_payment` (n=26): recall@5 = **0.9615**, MRR@10 = **0.8397**, Graded nDCG@5 = **0.8083**
+      - `order_status` (n=51): recall@5 = **0.9804**, MRR@10 = **0.9141**, Graded nDCG@5 = **0.8495** (Round 1: 0.8389)
+      - `returns_refunds` (n=56): recall@5 = **0.9464**, MRR@10 = **0.8988**, Graded nDCG@5 = **0.7913** (Round 1: 0.7893)
+      - `other` (n=62): recall@5 = **0.8548**, MRR@10 = **0.7324**, Graded nDCG@5 = **0.6755** (Round 1: 0.6518)
+      - `shipping_policy` (n=23): recall@5 = **0.7826**, MRR@10 = **0.6715**, Graded nDCG@5 = **0.6074** (Round 1: 0.5929)
+  - **In-Process GPU Inference Latency (NVIDIA T4, n=300 DEV Queries)**:
+    - Mean: **31.03 ms** (Round 1: 42.57 ms)
+    - p50: **32.18 ms** (Round 1: 43.59 ms)
+    - p90: **33.25 ms** (Round 1: 47.49 ms)
+    - p95: **33.75 ms** (Round 1: 52.91 ms)
+    - Total batch execution time: **9.31 s** (Round 1: 12.77 s)

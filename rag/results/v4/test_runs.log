@@ -1,0 +1,5 @@
+2026-10-24T06:14:49.203431+00:00 | FINAL_TEST_RUN | configs=baseline,intent_soft_noisy_0.2,intent_soft_oracle_0.2 | queries=/usr/local/google/home/susmith/.gemini/jetski/brain/92e6895e-6aa0-4668-8e1e-5cb583072600/scratch/rag/eval/test.jsonl | n=300
+2026-10-24T06:34:17.968317+00:00 | FINAL_TEST_RUN | configs=intent_soft_noisy_0.2,baseline | queries=/usr/local/google/home/susmith/.gemini/jetski/brain/92e6895e-6aa0-4668-8e1e-5cb583072600/scratch/rag/eval/test.jsonl | n=300
+2026-10-24T06:56:39.418840+00:00 | FINAL_TEST_RUN | configs=baseline,intent_soft_noisy_0.2 | queries=/usr/local/google/home/susmith/.gemini/jetski/brain/92e6895e-6aa0-4668-8e1e-5cb583072600/scratch/rag/eval/test.jsonl | n=300
+2026-10-25T17:30:34Z | FINAL_TEST_RERANK_AUTHORIZED | configs=laya_choice_top5_v2,ce_minilm_a0.7,rrf_laya2_ce | reason=fusion cleared DEV gate 0.7594>=0.759 (pre-declared round-1 weights) | conductor
+2026-10-25T17:36:40Z | FINAL_TEST_RERANK_SCORED | laya_v2 C2 nDCG 0.735; fused + ce scored | conductor

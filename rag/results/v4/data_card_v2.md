@@ -8,24 +8,25 @@
 
 | Metric | Total | Train | Validation | Description |
 | :--- | :---: | :---: | :---: | :--- |
-| **Total Queries** | **1643** | **1479** | **164** | 90% / 10% thread-level split |
-| **Graded Queries** | 447 | 398 | 49 | Agent-labeled disambiguation pool (primary=2, secondary=1) |
-| **Silver Queries** | 1196 | 1081 | 115 | Capped customer first turns from themes_v2 (target=2, other=0) |
-| **Unique Threads** | 1643 | 1479 | 164 | Disjoint thread partition |
+| **Total Queries** | **1323** | **1191** | **132** | 90% / 10% thread-level split |
+| **Disambiguation Pool (v1)** | 447 | 405 | 42 | Agent-labeled disambiguation pool (primary=2, secondary=1) |
+| **Gemini Pro Graded Pool (v2)** | 876 | 786 | 90 | 8 Gemini Pro shards audited pool (primary=2, secondary=1, hard_negative=0) |
+| **Silver Queries** | 0 | 0 | 0 | Capped customer first turns from themes_v2 (0 in v2) |
+| **Unique Threads** | 1323 | 1191 | 132 | Disjoint thread partition |
 | **Corpus Articles** | 50 | 50 | 50 | 100% Release 5 coverage |
 
 ## 2. Per-Article Primary Target Balance
 
-- **Min Queries / Article**: 6
-- **Max Queries / Article**: 132
-- **Mean Queries / Article**: 32.9
-- **Median Queries / Article**: 27
+- **Min Queries / Article**: 3
+- **Max Queries / Article**: 112
+- **Mean Queries / Article**: 26.5
+- **Median Queries / Article**: 20
 
 ## 3. Candidate Composition & Label Distribution
 
 - **Mean Candidates / Query**: 12.0 (min=12, max=12)
-- **Mean Positives / Query (Grade $\ge$ 1)**: 1.24
-- **Mean Negatives / Query (Grade 0)**: 10.76
+- **Mean Positives / Query (Grade $\ge$ 1)**: 1.71
+- **Mean Negatives / Query (Grade 0)**: 10.29
 - **Graded Relevance Levels**:
   - `Grade 2`: Primary relevant FAQ document
   - `Grade 1`: Secondary relevant FAQ document

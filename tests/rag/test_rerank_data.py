@@ -20,13 +20,10 @@ import pytest
 from rag.rerank_data import (
     assign_candidate_grades,
     build_candidates_for_query,
-    build_confusion_map,
     build_docs_catalog,
-    build_intent_family_map,
     export_dev_candidates,
     load_eval_leakage_sets,
     normalize_query,
-    parse_article_text,
     split_train_val_by_thread,
     verify_no_leakage,
 )
@@ -327,3 +324,155 @@ def test_dev_candidates_unlabeled_and_matches_dev_qids(tmp_path):
     assert "original_gold" not in row
     assert "intent" not in row
     assert "rels" not in row
+
+
+def test_build_candidates_with_hard_negatives():
+  """Verify hard_negatives are included in candidate list and receive grade 0."""
+  positives = ["doc_primary"]
+  all_docs = ["doc_primary", "doc_sec1", "doc_hn1", "doc_other1", "doc_other2"]
+  intent_map = {d: "intent_a" for d in all_docs}
+  confusion_map = {}
+  rng = random.Random(42)
+
+  candidates = build_candidates_for_query(
+      positives=positives,
+      all_doc_ids=all_docs,
+      intent_map=intent_map,
+      confusion_map=confusion_map,
+      rng=rng,
+      target_k=4,
+      hard_negatives=["doc_hn1"],
+  )
+  assert "doc_hn1" in candidates
+  assert "doc_primary" in candidates
+
+  grades = assign_candidate_grades(candidates, "doc_primary", [])
+  assert grades["doc_primary"] == 2
+  assert grades["doc_hn1"] == 0
+
+
+def test_load_pool_graded_data(tmp_path):
+  """Verify load_pool_graded_data filters non-support, non-English, primary=None, and leakage."""
+  from rag.rerank_data import load_pool_graded_data
+
+  docs_catalog = {
+      "faq-returns-refunds-return-pickup-issues": {"title": "Pickup Issues"},
+      "faq-order-status-driver-and-courier-issues": {"title": "Driver Issues"},
+      "faq-other-delivery-and-logistics-complaints": {"title": "Logistics Complaints"},
+  }
+  eval_tids = {"9999"}
+  eval_qnorms = {"where is my package"}
+
+  # Write pool.jsonl
+  pool_file = tmp_path / "pool.jsonl"
+  pool_data = [
+      {"pid": "s101", "query": "Pickup delayed for days", "thread_id": "101"},
+      {"pid": "s102", "query": "Package never arrived", "thread_id": "102"},
+      {"pid": "s103", "query": "Where is my package?", "thread_id": "103"},  # Leaked query!
+      {"pid": "s104", "query": "Leaked thread query", "thread_id": "9999"},  # Leaked thread!
+      {"pid": "s105", "query": "Non-support chatter", "thread_id": "105"},
+      {"pid": "s106", "query": "French query bonjour", "thread_id": "106"},
+  ]
+  with open(pool_file, "w") as f:
+    for p in pool_data:
+      f.write(json.dumps(p) + "\n")
+
+  # Write labels_pool_0.jsonl
+  labels_file = tmp_path / "labels_pool_0.jsonl"
+  labels_data = [
+      {
+          "qid": "s101",
+          "support_request": True,
+          "language": "en",
+          "primary": "faq-returns-refunds-return-pickup-issues",
+          "secondary": ["faq-other-delivery-and-logistics-complaints"],
+          "hard_negative": "faq-order-status-driver-and-courier-issues",
+      },
+      {
+          "qid": "s102",
+          "support_request": True,
+          "language": "en",
+          "primary": None,  # Excluded!
+          "secondary": [],
+          "hard_negative": None,
+      },
+      {
+          "qid": "s103",  # Leaked query text!
+          "support_request": True,
+          "language": "en",
+          "primary": "faq-returns-refunds-return-pickup-issues",
+          "secondary": [],
+          "hard_negative": None,
+      },
+      {
+          "qid": "s104",  # Leaked thread ID!
+          "support_request": True,
+          "language": "en",
+          "primary": "faq-returns-refunds-return-pickup-issues",
+          "secondary": [],
+          "hard_negative": None,
+      },
+      {
+          "qid": "s105",
+          "support_request": False,  # Excluded!
+          "language": "en",
+          "primary": "faq-returns-refunds-return-pickup-issues",
+          "secondary": [],
+          "hard_negative": None,
+      },
+      {
+          "qid": "s106",
+          "support_request": True,
+          "language": "fr",  # Excluded!
+          "primary": "faq-returns-refunds-return-pickup-issues",
+          "secondary": [],
+          "hard_negative": None,
+      },
+  ]
+  with open(labels_file, "w") as f:
+    for l in labels_data:
+      f.write(json.dumps(l) + "\n")
+
+  items = load_pool_graded_data(tmp_path, eval_tids, eval_qnorms, docs_catalog)
+  assert len(items) == 1
+  it = items[0]
+  assert it["qid"] == "s101"
+  assert it["primary"] == "faq-returns-refunds-return-pickup-issues"
+  assert it["secondary"] == ["faq-other-delivery-and-logistics-complaints"]
+  assert it["hard_negative"] == "faq-order-status-driver-and-courier-issues"
+  assert it["source"] == "graded_pool"
+
+
+def test_live_v2_data_zero_leakage_invariants():
+  """Enforce that generated v2 train and val datasets have ZERO leakage against live DEV and TEST."""
+  v2_dir = SCRATCH_DIR / "rerank" / "v2"
+  if not (EVAL_DIR / "dev.jsonl").exists() or not (v2_dir / "train.jsonl").exists():
+    pytest.skip("Live evaluation and rerank v2 data files not found in scratch")
+
+  eval_tids, eval_qnorms = load_eval_leakage_sets(
+      EVAL_DIR / "dev.jsonl", EVAL_DIR / "test.jsonl"
+  )
+
+  train_items = [
+      json.loads(line)
+      for line in (v2_dir / "train.jsonl").read_text().splitlines()
+      if line.strip()
+  ]
+  val_items = [
+      json.loads(line)
+      for line in (v2_dir / "val.jsonl").read_text().splitlines()
+      if line.strip()
+  ]
+
+  # Invariant 1: No train item leaks into eval
+  verify_no_leakage(train_items, eval_tids, eval_qnorms)
+
+  # Invariant 2: No val item leaks into eval
+  verify_no_leakage(val_items, eval_tids, eval_qnorms)
+
+  # Invariant 3: Train and Val thread IDs are strictly disjoint
+  train_tids = set(str(it["thread_id"]) for it in train_items)
+  val_tids = set(str(it["thread_id"]) for it in val_items)
+  overlap = train_tids & val_tids
+  assert not overlap, f"Train and val share thread IDs: {overlap}"
+

@@ -224,9 +224,11 @@ def test_rerank_dataset_io_schema():
         prior_mode="reciprocal",
         config_prefix="ce_minilm",
         model_name="mock-model",
+        meta="Arm A Test Meta",
     )
 
     # Top-level schema
+    assert out.get("meta") == "Arm A Test Meta"
     assert "timestamp" in out
     assert out["model_name"] == "mock-model"
     assert out["n_queries"] == 3

@@ -335,3 +335,33 @@ recall@5 and MRR meet their targets.
 - No arm reaches the pre-registered +0.03 gate, so TEST was not run.
 - The candidates are good, as the oracle ceiling (0.895) shows. The limit is reranker quality: only 447
   graded training queries, and silver labels with a single gold.
+
+## 13. Trained reranker, round 2 + final TEST (PLAN7, 2026-10-25)
+
+- Round 2 training data: Gemini Pro agents (8 Jetski shards) relabeled ~1.2k tweets with graded labels +
+  a hard negative, replacing the noisy silver rows. Total 1,323 graded queries (`results/v4/data_card_v2.md`).
+- Laya was retrained from router-s1 v2: 6 epochs, 11 min on a T4.
+- DEV result (C2 labels): Laya v2 0.755. The pre-declared fusion (2×Laya v2 + CE, round-1 weights) got
+  0.759, which cleared the +0.03 gate by 0.0004, so one audited TEST inference followed
+  (`results/v4/test_runs.log`).
+
+**TEST, MAIN scope (n=225, C2 labels; the Flash-C labels agree within 0.01 on nDCG):**
+
+| System | recall@5 | MRR@10 | graded nDCG@5 | Added latency |
+|---|---|---|---|---|
+| Production (search, soft intent boost) | 0.907 | 0.784 | 0.695 | — |
+| + MiniLM cross-encoder (α=0.7) | 0.907 | 0.805 | 0.727 | ~270 ms p50 / 333 ms p95 (CPU) |
+| + **Laya v2 choice reranker** | 0.907 | **0.838** | **0.735** | **~32 ms p50 / 35 ms p95 (T4)** |
+| + **Fusion 2×Laya v2 + CE** | **0.920** | **0.849** | **0.751** | Laya + CE |
+| TDD §6.4 target | ≥ 0.90 | ≥ 0.75 | ≥ 0.80 | |
+
+Reading it:
+- Training a reranker on agent-graded samples is the only lever that moved graded nDCG meaningfully:
+  +0.040 with Laya alone and +0.056 fused. The TEST gains are equal to or larger than the DEV gains, so
+  this is not an artifact of DEV tuning.
+- recall@5 and MRR meet their targets. Graded nDCG@5 is at 0.75 against 0.80, still a gap, but it has
+  closed by more than half.
+- Headroom remains: an oracle reorder of the top-10 reaches 0.895.
+- Production recommendation: **Laya v2 alone**. It gets most of the gain at ~35 ms on the same model
+  family as router-s1. Fusion adds +0.016 nDCG for ~300 ms of CPU.
+- Next lever: more graded training data. Gains went from round 1 to round 2 as label quality improved.

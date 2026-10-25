@@ -32,7 +32,7 @@ from pathlib import Path
 import random
 import sys
 import time
-from typing import Any, Callable, Dict, List, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 
 def grade_to_label(grade: Union[int, float]) -> float:
@@ -194,6 +194,7 @@ def rerank_dataset(
     prior_mode: str = "reciprocal",
     config_prefix: str = "ce_minilm",
     model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    meta: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Rerank an entire dataset across multiple fusion alphas, measuring latency.
 
@@ -287,12 +288,15 @@ def rerank_dataset(
             "rows": rows,
         })
 
-    return {
+    out_dict = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "model_name": model_name,
         "n_queries": n_queries,
         "results": results,
     }
+    if meta:
+        return {"meta": meta, **out_dict}
+    return out_dict
 
 
 class CrossEncoderScorer:
@@ -596,6 +600,11 @@ def parse_args():
     rerank_parser.add_argument(
         "--max-length", type=int, default=256, help="Max sequence length"
     )
+    rerank_parser.add_argument(
+        "--meta",
+        default="",
+        help="Optional top-level meta string or description in output JSON",
+    )
     rerank_parser.add_argument("--output-file", required=True, help="Path to save output JSON")
 
     return parser.parse_args()
@@ -637,6 +646,7 @@ def main():
             prior_mode=args.prior_mode,
             config_prefix=args.config_prefix,
             model_name=args.model_path,
+            meta=args.meta if args.meta else None,
         )
 
         out_p = Path(args.output_file)
