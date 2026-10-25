@@ -65,7 +65,7 @@ Evaluation is stratified across three tiers to balance realism, benchmarking, an
 | `REQ-RAG-RETR-013` | Evaluation Set Split and Metric Standards | `done` | `tests/rag/test_build_eval_splits.py::test_splits_disjointness` |
 | `REQ-RAG-RETR-014` | Paraphrase Augmentation Retrieval Parity Gate | `done` | `tests/rag/test_augment_paraphrases.py` |
 | `REQ-RAG-RETR-015` | Multi-Relevant Retrieval Measurement & Adjudication Evaluation | `done` | `tests/rag/test_multi_label_eval.py` |
-| `REQ-RAG-RETR-016` | Query Rewriting and Rich Record Reranking for Graded Retrieval Precision | `done` | `tests/rag/test_search_client.py` |
+| `REQ-RAG-RETR-016` | Trained Reranker: Training Data, Leakage Invariants, and Offline Evaluation Protocol | `done` | `tests/rag/test_rerank_data.py` |
 
 ---
 
@@ -301,9 +301,9 @@ Evaluation is stratified across three tiers to balance realism, benchmarking, an
     - `graded nDCG@5`: Target $\ge 0.80$ $\to$ TEST measured **0.7002** (FAILED, gap $-0.0998$).
     - Verdict: **NOT_MET** under strict conjunction of all 3 targets, despite recall@5 and MRR@10 substantially surpassing TDD benchmarks. The primary gap is graded nDCG ranking precision (primary article placed at rank 2-5 rather than rank 1).
 
-### REQ-RAG-RETR-016: Query Rewriting and Rich Record Reranking for Graded Retrieval Precision
-- **Statement**: The retrieval pipeline MUST support runtime query rewrite via Vertex AI `gemini-3.8-flash` (removing handles/URLs and producing clean FAQ queries) and post-retrieval reranking on top candidates using Discovery Engine Ranking API (`semantic-ranker-512@latest`) over rich document records (title, "Also asked as" paraphrases, and initial answer body). A score margin blending threshold MUST be supported to preserve original top-1 candidates unless the reranker score improvement strictly exceeds the margin.
-- **Rationale**: TDD §6.4 and PLAN5 Experiments 2 & 3. Real customer tweets contain noise, sarcasm, and handles that degrade embedding similarity; runtime query rewrite maps tweets to canonical customer questions. Discovery Engine Ranking API with rich article content (including paraphrases and policy snippets) provides fine-grained semantic reordering for graded nDCG, while margin-based blending avoids rank-1 churn on high-confidence initial hits.
-- **Acceptance**: `tests/rag/test_search_client.py` and `tests/rag/test_ablation_eval.py`
+### REQ-RAG-RETR-016: Trained Reranker: Training Data, Leakage Invariants, and Offline Evaluation Protocol
+- **Statement**: Reranker training data MUST be generated from Release 5 articles (`faq_v2p/docs`) combining graded agent-labeled samples (`disambiguation_pool_labels.jsonl`, primary=2, secondary=1) with balanced customer first turns from `themes_v2.json` / `threads.jsonl` (target=2, other=0, capped per article). The data builder MUST enforce strict split discipline (zero thread ID or normalized query text leakage into DEV or TEST sets), construct candidate sets of ~12 documents per query (positives + hard negatives from DEV confusion pairs and same-family siblings + random negatives), deterministically partition queries 90% train / 10% val by thread ID, and export an offline DEV candidate evaluation set (`dev_candidates.jsonl`, `{qid, query, top10}`) containing strictly zero DEV ground-truth labels.
+- **Rationale**: TDD §6.4 and PLAN7. Real-world customer tickets suffer ranking order ambiguity between closely related FAQ documents (e.g., Prime delivery speeds vs general late orders). Training a downstream reranker (cross-encoder or Laya typed choice) requires high-quality graded relevance judgments and challenging hard negatives without data leakage across evaluation splits. Offline candidate export enables reproducible, leakage-free hyperparameter selection on DEV prior to a single audited TEST evaluation.
+- **Acceptance**: `tests/rag/test_rerank_data.py`
 - **Status**: done
 - **Owner**: rag-retrieval
