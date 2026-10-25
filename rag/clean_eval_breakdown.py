@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """clean_eval_breakdown.py — abstention vs retrieval rank, unsupported claims, and an Eval Service retry with an explicit autorater."""
-import json, sys, subprocess, urllib.request, urllib.error
+import json
+import os
+import sys
+import subprocess
+import urllib.request
+import urllib.error
 
 
 def esc(x):
@@ -46,7 +51,7 @@ def main(argv=None):
 
     W = args[0]
     ans = [json.loads(l) for l in open(f"{W}/answers.jsonl")]
-    jd = [json.loads(l) for l in open(f"{W}/judge.jsonl")] if (pathlib_path := urllib.request.os.path.exists(f"{W}/judge.jsonl")) else []
+    jd = [json.loads(l) for l in open(f"{W}/judge.jsonl")] if os.path.exists(f"{W}/judge.jsonl") else []
 
     bd = compute_breakdown(ans, jd)
     print(f"abstained when source article in top-5: {bd['abstained_hit']}/{bd['hit_count']}; when NOT in top-5: {bd['abstained_miss']}/{bd['miss_count']}")

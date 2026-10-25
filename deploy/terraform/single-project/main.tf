@@ -15,6 +15,17 @@ provider "google-beta" {
 module "project_services" {
   source     = "./modules/project-services"
   project_id = var.project_id
+  services = [
+    "discoveryengine.googleapis.com",
+    "aiplatform.googleapis.com",
+    "storage.googleapis.com",
+    "iam.googleapis.com",
+    "serviceusage.googleapis.com",
+    "cloudresourcemanager.googleapis.com",
+    "cloudbuild.googleapis.com",
+    "cloudscheduler.googleapis.com",
+    "secretmanager.googleapis.com"
+  ]
 }
 
 module "agent_search" {
@@ -23,6 +34,16 @@ module "agent_search" {
   search_location = var.search_location
   search_tier     = var.search_tier
   search_add_ons  = var.search_add_ons
+
+  depends_on = [module.project_services]
+}
+
+module "cloudbuild" {
+  source                  = "./modules/cloudbuild"
+  project_id              = var.project_id
+  region                  = var.region
+  corpus_bucket_name      = data.google_storage_bucket.corpus_bucket.name
+  github_connection_ready = var.github_connection_ready
 
   depends_on = [module.project_services]
 }

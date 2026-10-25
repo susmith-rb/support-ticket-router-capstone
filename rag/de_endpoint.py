@@ -6,7 +6,6 @@ Default resource paths and base URLs target locations/global and
 https://discoveryengine.googleapis.com/v1/.
 """
 
-from typing import Optional
 
 DEFAULT_LOCATION = "global"
 DEFAULT_COLLECTION = "default_collection"

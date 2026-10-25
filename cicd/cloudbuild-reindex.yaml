@@ -1,0 +1,121 @@
+substitutions:
+  _CORPUS_BUCKET: 'susmith-fde-ticket-router-laya'
+  _LOCATION: 'global'
+  _PREVIOUS_RELEASE: '2'
+
+steps:
+  # ---------------------------------------------------------------------------
+  # Step 1: Pre-publish FAQ policy and metadata lint
+  # ---------------------------------------------------------------------------
+  - name: 'python:3.11-slim'
+    id: 'reindex-corpus-lint'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        python rag/publish_faq.py --work rag/corpus_v2 --lint-only
+
+  # ---------------------------------------------------------------------------
+  # Step 2: Publish new FAQ release to Discovery Engine
+  # ---------------------------------------------------------------------------
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'publish-faq-release'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        python3 rag/publish_faq.py \
+          --work rag/corpus_v2 \
+          --project "${PROJECT_ID}" \
+          --location "${_LOCATION}"
+
+  # ---------------------------------------------------------------------------
+  # Step 3: Fetch held-out evaluation query sets from GCS
+  # ---------------------------------------------------------------------------
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'fetch-eval-dataset'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        mkdir -p /workspace/eval
+        gsutil -m cp -r "gs://${_CORPUS_BUCKET}/eval/*" /workspace/eval/
+
+  # ---------------------------------------------------------------------------
+  # Step 4: Execute retrieval evaluation with production configuration
+  # ---------------------------------------------------------------------------
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'run-retrieval-eval'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        python3 rag/retrieval_eval.py \
+          --queries /workspace/eval/dev.jsonl \
+          ${_GOLD_MAP_FLAG:---gold-map /workspace/eval/gold_map.json} \
+          --threshold LOWEST \
+          --clean \
+          --project "${PROJECT_ID}" \
+          --location "${_LOCATION}" \
+          --out /workspace/reindex_eval.json
+
+  # ---------------------------------------------------------------------------
+  # Step 5: Regression gate check (Δrecall@5 >= -0.02) with atomic rollback
+  # ---------------------------------------------------------------------------
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'enforce-regression-gate'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        python3 - << 'EOF'
+        import json, os, subprocess, sys
+
+        GATE_THRESHOLD = -0.02
+        DEFAULT_BASELINE_RECALL = 0.780
+
+        eval_path = "/workspace/reindex_eval.json"
+        baseline_path = "/workspace/eval/baseline.json"
+
+        with open(eval_path) as f:
+            eval_data = json.load(f)
+
+        current_recall = eval_data.get("recall@5", eval_data.get("metrics", {}).get("recall@5", 0.0))
+        baseline_recall = DEFAULT_BASELINE_RECALL
+
+        if os.path.exists(baseline_path):
+            with open(baseline_path) as f:
+                b_data = json.load(f)
+                baseline_recall = b_data.get("recall@5", baseline_recall)
+
+        delta = current_recall - baseline_recall
+        print(f"Current recall@5: {current_recall:.4f}, Baseline: {baseline_recall:.4f}, Delta: {delta:+.4f}")
+
+        if delta < GATE_THRESHOLD:
+            print(f"CRITICAL: Regression gate FAILED (delta {delta:+.4f} < {GATE_THRESHOLD}). Initiating rollback!")
+            prev_release = os.environ.get("_PREVIOUS_RELEASE", "1")
+            project = "${PROJECT_ID}"
+            location = "${_LOCATION}"
+            cmd = [
+                "python3", "rag/publish_faq.py",
+                "--work", "rag/corpus_v2",
+                "--project", project,
+                "--location", location,
+                "--release", prev_release
+            ]
+            print("Executing rollback command:", " ".join(cmd))
+            subprocess.run(cmd, check=True)
+            sys.exit(1)
+
+        print(f"SUCCESS: Retrieval regression gate passed (delta {delta:+.4f} >= {GATE_THRESHOLD}).")
+        EOF
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '1800s'

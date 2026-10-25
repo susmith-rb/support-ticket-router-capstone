@@ -8,7 +8,6 @@ Tests cover:
 - Markdown table formatting
 """
 
-import json
 import pytest
 from ablation_eval import (
     AblationConfig,

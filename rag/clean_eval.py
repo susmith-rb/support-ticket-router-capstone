@@ -17,7 +17,16 @@ caches to --out so it can be resumed.
 
   python clean_eval.py --docs faq/docs --import faq/faq_articles_import.jsonl --out clean_eval/ [--per-article 2]
 """
-import argparse, concurrent.futures as cf, json, pathlib, re, subprocess, sys, time, urllib.error, urllib.request
+import argparse
+import concurrent.futures as cf
+import json
+import pathlib
+import re
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from de_endpoint import search_url, data_store_name  # noqa: E402
@@ -103,10 +112,14 @@ ANSWER_SCHEMA = {"type": "object", "required": ["answer", "citations", "grounded
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--docs", required=True); ap.add_argument("--import", dest="imp", required=True); ap.add_argument("--out", required=True)
+    ap.add_argument("--docs", required=True)
+    ap.add_argument("--import", dest="imp", required=True)
+    ap.add_argument("--out", required=True)
     ap.add_argument("--location", default="global", help="Discovery Engine location (default: global)")
-    ap.add_argument("--per-article", type=int, default=2); ap.add_argument("--gen-model", default="gemini-3.8-flash")
-    ap.add_argument("--qmodel", default="claude-sonnet-5-5"); ap.add_argument("--judge", default="claude-opus-5-5")
+    ap.add_argument("--per-article", type=int, default=2)
+    ap.add_argument("--gen-model", default="gemini-3.8-flash")
+    ap.add_argument("--qmodel", default="claude-sonnet-5-5")
+    ap.add_argument("--judge", default="claude-opus-5-5")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--gold-map", default=None, help="path to gold map JSON (old_id -> new_id)")
     ap.add_argument("--skip-judge", action="store_true", help="skip Eval Service and Claude judge evaluation")
@@ -116,7 +129,8 @@ def main():
     global SEARCH, DS
     SEARCH = search_url(P, "support-kb-search", location=a.location)
     DS = data_store_name(P, "faq-articles", location=a.location)
-    out = pathlib.Path(a.out); out.mkdir(parents=True, exist_ok=True)
+    out = pathlib.Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
     ids = [json.loads(l)["id"] for l in open(a.imp)]
     docs = {i: (pathlib.Path(a.docs) / f"{i}.txt").read_text(encoding="utf-8") for i in ids}
     usage = {"qgen": [0, 0], "answer": [0, 0], "judge": [0, 0]}
@@ -154,7 +168,8 @@ def main():
             return doc_id, res["questions"][: a.per_article], u
         with cf.ThreadPoolExecutor(a.workers) as ex, open(qf, "w") as fh:
             for doc_id, qs, u in ex.map(gen, ids):
-                usage["qgen"][0] += u.get("input_tokens", 0); usage["qgen"][1] += u.get("output_tokens", 0)
+                usage["qgen"][0] += u.get("input_tokens", 0)
+                usage["qgen"][1] += u.get("output_tokens", 0)
                 for q in qs:
                     fh.write(json.dumps({"question": q, "source_doc": doc_id}) + "\n")
     Q = [json.loads(l) for l in open(qf)]
@@ -194,14 +209,16 @@ def main():
             return r, res, u, ctx
         with cf.ThreadPoolExecutor(a.workers) as ex, open(af, "w") as fh:
             for r, res, u, ctx in ex.map(answer, RET):
-                usage["answer"][0] += u.get("promptTokenCount", 0); usage["answer"][1] += u.get("candidatesTokenCount", 0) + u.get("thoughtsTokenCount", 0)
+                usage["answer"][0] += u.get("promptTokenCount", 0)
+                usage["answer"][1] += u.get("candidatesTokenCount", 0) + u.get("thoughtsTokenCount", 0)
                 fh.write(json.dumps({**r, "gen": res, "context_ids": r["top"][:5]}) + "\n")
     ANS = [json.loads(l) for l in open(af)]
 
     # ---- B2. deterministic checks
     cit_total = cit_ok = with_cit = src_cited = abstain = 0
     for x in ANS:
-        g = x["gen"]; cits = g.get("citations", [])
+        g = x["gen"]
+        cits = g.get("citations", [])
         abstain += bool(g.get("escalate")) or not g.get("grounded", True)
         with_cit += bool(cits)
         target = gold_map.get(x["source_doc"], x["source_doc"]) if gold_map else x["source_doc"]
@@ -264,7 +281,8 @@ def main():
                     return {"error": str(e)[:300]}, {}
             with cf.ThreadPoolExecutor(a.workers) as ex, open(jf, "w") as fh:
                 for x, (res, u) in zip(ANS, ex.map(judge, ANS)):
-                    usage["judge"][0] += u.get("input_tokens", 0); usage["judge"][1] += u.get("output_tokens", 0)
+                    usage["judge"][0] += u.get("input_tokens", 0)
+                    usage["judge"][1] += u.get("output_tokens", 0)
                     fh.write(json.dumps({"question": x["question"], **res}) + "\n")
         JD = [json.loads(l) for l in open(jf)]
         claims = [c for j in JD for c in j.get("claims", [])]

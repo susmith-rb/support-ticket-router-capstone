@@ -1,5 +1,4 @@
 """test_redact.py — redaction must catch PII but keep order IDs as [ORDER] (not [CARD])."""
-import pytest
 from prepare_twcs import redact, luhn_ok
 
 CASES = {

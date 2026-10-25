@@ -1,0 +1,240 @@
+substitutions:
+  _DEPLOY: 'false'
+  _CORPUS_BUCKET: 'susmith-fde-ticket-router-laya'
+  _LOCATION: 'global'
+  _SERVICE_NAME: 'support-ticket-router'
+
+steps:
+  # ===========================================================================
+  # Step 0: Change Detection & Path Filtering (Change-Aware Pipeline)
+  # ===========================================================================
+  - name: 'python:3.11-slim'
+    id: 'detect-changes'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        python scripts/ci_changes.py --env-file /workspace/changes.env
+
+  # ===========================================================================
+  # Step 1: Unit, Resilience, Ruff Lint & Spec Traceability Tests (blocking)
+  # ===========================================================================
+  - name: 'python:3.11-slim'
+    id: 'unit-and-resilience-tests'
+    waitFor: ['detect-changes']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        echo "=== Installing test and lint dependencies ==="
+        python -m pip install --no-cache-dir -r requirements-dev.txt
+
+        echo "=== Running conservative Ruff linter (select E, F; ignore E501) ==="
+        ruff check rag/ tests/
+
+        echo "=== Running offline test suite and spec traceability ==="
+        python -m pytest -v
+
+        echo "=== Verifying Python byte-compilation ==="
+        python -m py_compile rag/*.py
+        if [ -d "training/router_s1/pipeline" ]; then
+          python -m py_compile training/router_s1/pipeline/*.py
+        fi
+
+        echo "=== Linting FAQ corpus policy and metadata ==="
+        python rag/publish_faq.py --work rag/corpus_v2 --lint-only
+
+  # ===========================================================================
+  # Step 2: Static Terraform Checks (runs only if deploy/terraform/** changed)
+  # ===========================================================================
+  - name: 'hashicorp/terraform:1.9.8'
+    id: 'terraform-fmt-check'
+    waitFor: ['detect-changes']
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        if [ -f /workspace/changes.env ]; then . /workspace/changes.env; fi
+        if [ "${TERRAFORM_CHANGED:-true}" != "true" ]; then
+          echo "Skipping terraform fmt check: deploy/terraform/ unchanged"
+          exit 0
+        fi
+        terraform fmt -check -recursive deploy/terraform
+
+  - name: 'hashicorp/terraform:1.9.8'
+    id: 'terraform-validate'
+    waitFor: ['terraform-fmt-check']
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        set -eu
+        if [ -f /workspace/changes.env ]; then . /workspace/changes.env; fi
+        if [ "${TERRAFORM_CHANGED:-true}" != "true" ]; then
+          echo "Skipping terraform validate: deploy/terraform/ unchanged"
+          exit 0
+        fi
+        cd deploy/terraform/bootstrap
+        terraform init -backend=false
+        terraform validate
+        cd ../single-project
+        terraform init -backend=false
+        terraform validate
+
+  - name: 'ghcr.io/terraform-linters/tflint:v0.53.0'
+    id: 'terraform-tflint'
+    waitFor: ['terraform-validate']
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        if [ -f /workspace/changes.env ]; then . /workspace/changes.env; fi
+        if [ "${TERRAFORM_CHANGED:-true}" != "true" ]; then
+          echo "Skipping tflint: deploy/terraform/ unchanged"
+          exit 0
+        fi
+        tflint --recursive --chdir=deploy/terraform
+
+  # ===========================================================================
+  # Step 3: Golden Retrieval Evaluation Gate (blocks build/deploy on regression)
+  # ===========================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'golden-eval-gate'
+    waitFor: ['unit-and-resilience-tests']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        echo "=== Fetching evaluation dataset and multi-annotator labels from GCS ==="
+        mkdir -p /workspace/eval
+        gsutil -m cp "gs://${_CORPUS_BUCKET}/eval/*" /workspace/eval/
+
+        LABELS_ARG=""
+        if [ -f /workspace/eval/labels_c.jsonl ]; then
+          LABELS_ARG="--labels-c /workspace/eval/labels_c.jsonl"
+        elif [ -f /workspace/eval/labels_c2.jsonl ]; then
+          LABELS_ARG="--labels-c /workspace/eval/labels_c2.jsonl"
+        fi
+
+        BASELINE_ARG=""
+        if [ -f /workspace/eval/baseline.json ]; then
+          BASELINE_ARG="--baseline /workspace/eval/baseline.json"
+        fi
+
+        echo "=== Executing Golden Evaluation Gate ==="
+        python3 rag/ci_eval_gate.py \
+          --queries /workspace/eval/dev.jsonl \
+          $${LABELS_ARG} \
+          $${BASELINE_ARG} \
+          --project "${PROJECT_ID}" \
+          --location "${_LOCATION}" \
+          --min-recall 0.90 \
+          --min-mrr 0.75 \
+          --max-ndcg-drop 0.02 \
+          --out /workspace/eval_gate_result.json \
+          --enforce-gate
+
+  # ===========================================================================
+  # Step 4: Corpus Reindexing (Runs only on main if rag/corpus_v2/** changed)
+  # ===========================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'corpus-reindex-on-main'
+    waitFor: ['golden-eval-gate']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        if [ -f /workspace/changes.env ]; then . /workspace/changes.env; fi
+        if [ "${CORPUS_CHANGED:-false}" != "true" ] || [ "${BRANCH_NAME:-}" != "main" ]; then
+          echo "Skipping corpus reindex: rag/corpus_v2/ unchanged or not running on main"
+          exit 0
+        fi
+        echo "=== Publishing new corpus release to Discovery Engine ==="
+        python3 rag/publish_faq.py \
+          --work rag/corpus_v2 \
+          --project "${PROJECT_ID}" \
+          --location "${_LOCATION}"
+
+  # ===========================================================================
+  # Step 5: Container Build (Placeholder — depends on Tests & Eval Gate)
+  # ===========================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'docker-build-service'
+    waitFor: ['golden-eval-gate']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        if [ "${_DEPLOY}" != "true" ]; then
+          echo "Build step deferred: service container definition pending agent service implementation."
+          exit 0
+        fi
+        echo "Building service container image: ${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/services/${_SERVICE_NAME}:${SHORT_SHA}"
+        # docker build -t "${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/services/${_SERVICE_NAME}:${SHORT_SHA}" -t "${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/services/${_SERVICE_NAME}:latest" .
+
+  # ===========================================================================
+  # Step 6: Container Push to Artifact Registry (Placeholder)
+  # ===========================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'docker-push-service'
+    waitFor: ['docker-build-service']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        if [ "${_DEPLOY}" != "true" ]; then
+          echo "Push step deferred: service container push pending."
+          exit 0
+        fi
+        # docker push "${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/services/${_SERVICE_NAME}:${SHORT_SHA}"
+        # docker push "${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/services/${_SERVICE_NAME}:latest"
+
+  # ===========================================================================
+  # Step 7: Deploy to Cloud Run (Placeholder — IAP Authenticated Ingress)
+  # ===========================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'deploy-cloud-run'
+    waitFor: ['docker-push-service']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        if [ "${_DEPLOY}" != "true" ]; then
+          echo "Deploy step deferred: Cloud Run service deployment pending."
+          exit 0
+        fi
+        # Security invariant: authenticated ingress required (no unauthenticated access permitted)
+        # gcloud run deploy "${_SERVICE_NAME}" \
+        #   --image "${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/services/${_SERVICE_NAME}:${SHORT_SHA}" \
+        #   --region "us-central1" \
+        #   --no-allow-unauthenticated \
+        #   --service-account "ticket-router-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
+
+  # ===========================================================================
+  # Step 8: Post-Deploy Smoke Verification (Placeholder)
+  # ===========================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'post-deploy-smoke'
+    waitFor: ['deploy-cloud-run']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        if [ "${_DEPLOY}" != "true" ]; then
+          echo "Post-deploy smoke verification deferred."
+          exit 0
+        fi
+        # python3 scripts/test_alerting_e2e.py --smoke-only
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '1800s'

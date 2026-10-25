@@ -8,13 +8,10 @@ Tests cover:
 
 from datetime import datetime, timezone
 import json
-import pytest
 from search_client import (
     build_filter,
     clean_query,
     SearchClient,
-    SearchResult,
-    DEFAULT_ALLOWED_STATUSES,
     load_rich_faq_records,
 )
 

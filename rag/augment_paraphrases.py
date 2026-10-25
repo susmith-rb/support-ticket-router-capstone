@@ -10,7 +10,6 @@ import json
 import pathlib
 import re
 import shutil
-import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 

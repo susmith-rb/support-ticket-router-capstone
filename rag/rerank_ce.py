@@ -32,7 +32,7 @@ from pathlib import Path
 import random
 import sys
 import time
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, Sequence, Tuple, Union
 
 
 def grade_to_label(grade: Union[int, float]) -> float:
@@ -315,7 +315,6 @@ class CrossEncoderScorer:
     def _lazy_init(self):
         if self._model is not None:
             return
-        import torch
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path)

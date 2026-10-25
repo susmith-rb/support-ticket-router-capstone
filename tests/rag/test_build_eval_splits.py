@@ -9,8 +9,6 @@ import pytest
 from build_eval_splits import (
     assert_disjointness,
     build_dev_split,
-    build_test_split,
-    extract_theme_candidates,
     write_jsonl,
 )
 

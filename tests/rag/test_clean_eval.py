@@ -1,5 +1,4 @@
 import json
-import pathlib
 import pytest
 from clean_eval import norm, is_verbatim_citation, main
 

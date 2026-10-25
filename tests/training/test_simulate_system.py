@@ -1,4 +1,3 @@
-import pytest
 from simulate_system import HARD, NEG, REPEAT, DEADLINE, non_english, shouting, tier0, p_esc, run
 
 

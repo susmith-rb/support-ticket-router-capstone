@@ -41,3 +41,9 @@ variable "corpus_bucket_name" {
   type        = string
   default     = "susmith-fde-ticket-router-laya"
 }
+
+variable "github_connection_ready" {
+  description = "Whether the Cloud Build GitHub connection is authorized"
+  type        = bool
+  default     = false
+}

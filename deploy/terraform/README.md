@@ -89,11 +89,60 @@ The helper script `scripts/tf_vm.sh` automates packaging the local code, uploadi
 
 ## Discovery Engine Details & Provider Field Notes
 
-### Location: `us` Multi-Region
-The data stores (`faq-articles`, `resolved-threads`) and engine (`support-kb-search`) are created in location `us` (API endpoint `https://us-discoveryengine.googleapis.com/v1/`). The legacy `global` data stores remain untouched for migration parity.
+### Location: `global` Multi-Region
+Per architectural decision on 2026-10-24, Agent Search is served permanently from `global` multi-region (endpoint `https://discoveryengine.googleapis.com/v1/`). The live `global` data stores (`faq-articles` with 50 docs release 3, `resolved-threads` with 81,103 docs) and search engine `support-kb-search` are managed via declarative `import {}` blocks in `imports.tf`.
 
 ### Discovery Engine Schema Handling
 In Discovery Engine, data stores configured with `content_config = "CONTENT_REQUIRED"` and `industry_vertical = "GENERIC"` automatically generate and update `default_schema` upon document ingestion (`documents:import`). Explicitly declaring a static `google_discovery_engine_schema` resource prior to document import causes schema collision or import failures; schema evolution is therefore driven by the structured metadata in the corpus import payload (`import.jsonl`).
 
 ### `document_processing_config` Lifecycle Rule
 Upon creation of `CONTENT_REQUIRED` data stores, Discovery Engine initializes an immutable server-side `document_processing_config` with `digital_parsing_config`. If omitted in Terraform configuration, Terraform attempts to destroy this block on subsequent plans, which triggers `# forces replacement`. A `lifecycle { ignore_changes = [document_processing_config] }` block is set on each data store resource to preserve clean drift detection.
+
+---
+
+## CI/CD Infrastructure (`modules/cloudbuild`)
+
+The `modules/cloudbuild` module provisions declarative build and scheduling infrastructure that mirrors the enterprise FDE delivery pattern (`ai-fde-delivery`):
+
+### 1. Dedicated Service Accounts & Least-Privilege IAM
+- **Build Service Account (`ticket-router-build`)**:
+  - `roles/discoveryengine.editor` on the project (publishes documents and executes search queries).
+  - `roles/logging.logWriter` on the project (streams Cloud Build logs).
+  - `roles/storage.objectAdmin` on `var.corpus_bucket_name` (`susmith-fde-ticket-router-laya`).
+  - Primitive roles (`roles/owner`, `roles/editor`) are forbidden.
+- **Scheduler Service Account (`ticket-router-scheduler`)**:
+  - `roles/cloudbuild.builds.editor` on the project (invokes the nightly trigger `:run` REST API endpoint).
+
+### 2. Pipelines (`cicd/`)
+- **`cicd/cloudbuild.yaml` (Main CI/CD Pipeline)**:
+  - Validates pull requests and pushes to `main`.
+  - Runs unit tests, spec traceability, `py_compile`, corpus linting, and Terraform checks.
+  - Executes the **Golden Retrieval Evaluation Gate** (`rag/ci_eval_gate.py`), exiting with code 1 to block subsequent deployment stages upon retrieval regression.
+  - Contains gated placeholders (`_DEPLOY=false`) for container build, push, Cloud Run deploy, and post-deploy smoke testing.
+- **`cicd/cloudbuild-reindex.yaml` (Corpus Reindexing)**:
+  - Triggered on pushes to `main` modifying `rag/corpus_v2/**`.
+  - Lints corpus, publishes to Discovery Engine `global`, evaluates DEV queries, and automatically rolls back if `Δrecall@5 < −0.02`.
+- **`cicd/cloudbuild-nightly.yaml` (Scheduled Retrieval Health)**:
+  - Triggered daily at 02:00 UTC by Cloud Scheduler to benchmark live retrieval health and drift.
+
+### 3. One-Time Manual Setup: 2nd Gen GitHub Connection
+
+Cloud Build 2nd gen connections (`google_cloudbuildv2_connection`) require an interactive GitHub OAuth / GitHub App installation that cannot be provisioned purely via headless CLI without browser interaction.
+
+#### Exact One-Time Manual Step Required:
+1. Open the Google Cloud Console for project `susmith-fde-ticket-router`:
+   `https://console.cloud.google.com/cloud-build/repositories/2nd-gen?project=susmith-fde-ticket-router`
+2. Ensure region is set to `us-central1`.
+3. Click **Create Host Connection**:
+   - Provider: **GitHub**
+   - Connection name: `github-connection`
+   - Secret Manager Secret: Click **Create Secret** (auto-generates an OAuth token in Secret Manager).
+4. Click **Authorize** to redirect to GitHub and authorize the **Google Cloud Build** GitHub App on repository `susmith-rb/support-ticket-router-capstone`.
+5. Link repository `support-ticket-router-capstone`.
+6. Once authorized, update `deploy/terraform/single-project/terraform.tfvars` (or pass `-var="github_connection_ready=true"`) on the VM to enable automated trigger management.
+
+#### Decoupled Gating (`github_connection_ready = false`):
+While `var.github_connection_ready = false`:
+- The service accounts (`ticket-router-build` and `ticket-router-scheduler`), IAM role bindings, manual nightly trigger, and Cloud Scheduler job are provisioned safely.
+- The 2nd-gen connection, repository, and push/PR triggers are skipped (`count = var.github_connection_ready ? 1 : 0`).
+- No Terraform errors occur due to uninstalled GitHub Apps.

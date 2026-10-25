@@ -1,4 +1,3 @@
-import pytest
 from golden_score import norm, kappa
 
 

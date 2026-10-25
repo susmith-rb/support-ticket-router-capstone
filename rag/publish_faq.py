@@ -19,7 +19,17 @@ Steps (each idempotent):
 
 Rollback = `--release <previous N>` with the previous manifest, nothing else.
 """
-import argparse, datetime, hashlib, json, pathlib, re, subprocess, sys, time, urllib.error, urllib.request
+import argparse
+import datetime
+import hashlib
+import json
+import pathlib
+import re
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from build_faq_corpus import POLICY_VERSION, SIMULATED_POLICY  # noqa: E402
@@ -55,9 +65,13 @@ def answer_only(body):
     """Drop the 'Also asked as:' paraphrase block — customer phrasing ("why is 2-day taking 3 days?") is not policy."""
     out, skip = [], False
     for l in body.splitlines():
-        if l.strip() == "Also asked as:": skip = True; continue
-        if skip and not l.strip(): skip = False
-        if not skip: out.append(l)
+        if l.strip() == "Also asked as:":
+            skip = True
+            continue
+        if skip and not l.strip():
+            skip = False
+        if not skip:
+            out.append(l)
     return "\n".join(out)
 
 
@@ -220,12 +234,16 @@ def main():
     ap.add_argument("--project", default="susmith-fde-ticket-router")
     ap.add_argument("--location", default="global", help="Discovery Engine location (default: global)")
     ap.add_argument("--release", type=int, help="release number N for gs://…/v<N>/ (default: previous+1)")
-    ap.add_argument("--dry-run", action="store_true"); ap.add_argument("--lint-only", action="store_true")
-    ap.add_argument("--retire", nargs="*", default=[]); ap.add_argument("--supersedes", default="")
-    ap.add_argument("--activate", nargs="*", default=[]); ap.add_argument("--reviewed-by", default="")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--lint-only", action="store_true")
+    ap.add_argument("--retire", nargs="*", default=[])
+    ap.add_argument("--supersedes", default="")
+    ap.add_argument("--activate", nargs="*", default=[])
+    ap.add_argument("--reviewed-by", default="")
     ap.add_argument("--allow-lint", action="store_true", help="publish even with lint findings")
     a = ap.parse_args()
-    w = pathlib.Path(a.work); today = datetime.date.today().isoformat()
+    w = pathlib.Path(a.work)
+    today = datetime.date.today().isoformat()
     manifest_path = w / "manifest.jsonl"
     if not manifest_path.exists() and (w / "faq_articles_import.jsonl").exists():
         manifest_path = w / "faq_articles_import.jsonl"     # first run: adopt the v1 import file
@@ -243,13 +261,15 @@ def main():
     docs = {p.stem: p.read_text(encoding="utf-8") for p in sorted((w / "docs").glob("*.txt"))}
     for doc_id in a.retire:                                # retire = remove from docs/, keep tombstone
         (w / "dropped").mkdir(exist_ok=True)
-        if (w / "docs" / f"{doc_id}.txt").exists(): (w / "docs" / f"{doc_id}.txt").rename(w / "dropped" / f"{doc_id}.txt")
+        if (w / "docs" / f"{doc_id}.txt").exists():
+            (w / "docs" / f"{doc_id}.txt").rename(w / "dropped" / f"{doc_id}.txt")
         docs.pop(doc_id, None)
 
     bad = lint(docs)
     if bad:
         print("POLICY LINT: numbers not in SIMULATED_POLICY (policy_version %s):" % POLICY_VERSION)
-        for k, v in bad.items(): print(f"  {k}: {', '.join(v)}")
+        for k, v in bad.items():
+            print(f"  {k}: {', '.join(v)}")
     else:
         print("policy lint clean")
     if a.lint_only or (bad and not a.allow_lint and not a.dry_run):
@@ -260,27 +280,34 @@ def main():
         sd = m["structData"]
         if sd["article_id"] in a.activate:
             sd["status"], sd["reviewed_by"], sd["reviewed_at"] = "active", a.reviewed_by or "unknown", today
-        if a.supersedes and sd["article_id"] in a.retire: pass
-        if a.supersedes and sd["article_id"] == a.supersedes: sd["supersedes"] = ",".join(a.retire)
+        if a.supersedes and sd["article_id"] in a.retire:
+            pass
+        if a.supersedes and sd["article_id"] == a.supersedes:
+            sd["supersedes"] = ",".join(a.retire)
     check_manifest_invariants(manifest)
     n_active = sum(1 for m in manifest if m["structData"]["status"] == "active")
     print(json.dumps({"release": rel, **{k: len(v) for k, v in changes.items()}, "active": n_active, "total": len(manifest)}))
     for k in ("added", "changed", "retired"):
-        if changes[k]: print(f"  {k}: {changes[k]}")
-    if a.dry_run: return
+        if changes[k]:
+            print(f"  {k}: {changes[k]}")
+    if a.dry_run:
+        return
 
     with open(w / "manifest.jsonl", "w") as fh:
-        for m in manifest: fh.write(json.dumps(m) + "\n")
+        for m in manifest:
+            fh.write(json.dumps(m) + "\n")
     import_payload = build_import_payload(manifest)
     with open(w / "import.jsonl", "w") as fh:
-        for m in import_payload: fh.write(json.dumps(m) + "\n")
+        for m in import_payload:
+            fh.write(json.dumps(m) + "\n")
     json.dump({"release": rel, "published_at": today, "policy_version": POLICY_VERSION, "changes": changes}, open(w / "release.json", "w"), indent=1)
 
     # 3. upload (docs for every manifest entry incl. tombstones, so FULL import can still fetch content)
     subprocess.run(["gcloud", "storage", "cp", "-r", str(w / "docs"), f"{gcs_prefix}/", "--project", a.project], check=True, capture_output=True)
     for doc_id in changes["retired"]:
         src = w / "dropped" / f"{doc_id}.txt"
-        if src.exists(): subprocess.run(["gcloud", "storage", "cp", str(src), f"{gcs_prefix}/docs/", "--project", a.project], check=True, capture_output=True)
+        if src.exists():
+            subprocess.run(["gcloud", "storage", "cp", str(src), f"{gcs_prefix}/docs/", "--project", a.project], check=True, capture_output=True)
     subprocess.run(["gcloud", "storage", "cp", str(w / "manifest.jsonl"), f"{gcs_prefix}/manifest.jsonl", "--project", a.project], check=True, capture_output=True)
     subprocess.run(["gcloud", "storage", "cp", str(w / "import.jsonl"), f"{gcs_prefix}/import.jsonl", "--project", a.project], check=True, capture_output=True)
     print(f"uploaded -> {gcs_prefix}")
@@ -291,10 +318,12 @@ def main():
     import_url = documents_import_url(a.project, "faq-articles", location=a.location)
     op = call("POST", import_url, a.project,
               {"gcsSource": {"inputUris": [f"{gcs_prefix}/import.jsonl"], "dataSchema": "document"}, "reconciliationMode": "FULL"})
-    name = op["name"]; print("import op", name)
+    name = op["name"]
+    print("import op", name)
     for _ in range(120):
         op = call("GET", f"{api}{name}", a.project)
-        if op.get("done"): break
+        if op.get("done"):
+            break
         time.sleep(10)
     if not op.get("done") or op.get("error"):
         sys.exit(f"import failed/timeout: {json.dumps(op)[:600]}")
@@ -304,7 +333,8 @@ def main():
     probe = (changes["changed"] or changes["added"] or changes["unchanged"] or [None])[0]
     search_endpoint = search_url(a.project, "support-kb-search", location=a.location)
     if probe:
-        pid = probe.split("@")[0]; want = next(m["structData"]["version"] for m in manifest if m["id"] == pid)
+        pid = probe.split("@")[0]
+        want = next(m["structData"]["version"] for m in manifest if m["id"] == pid)
         title = next(m["structData"]["title"] for m in manifest if m["id"] == pid)
         for i in range(30):
             res = call("POST", search_endpoint, a.project,
@@ -312,7 +342,8 @@ def main():
                         "dataStoreSpecs": [{"dataStore": ds}]})
             got = {r["document"]["id"]: r["document"].get("structData", {}).get("version") for r in res.get("results", [])}
             if got.get(pid) == want:
-                print(f"verified: {pid} served at version {want} (attempt {i+1})"); break
+                print(f"verified: {pid} served at version {want} (attempt {i+1})")
+                break
             time.sleep(20)
         else:
             sys.exit(f"NOT VERIFIED: {pid} expected v{want}, saw {got} — do not bump FAQ_VERSION yet")

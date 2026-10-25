@@ -4,7 +4,6 @@ import hashlib
 import json
 import pathlib
 import sys
-import pytest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -14,9 +13,7 @@ if str(RAG_DIR) not in sys.path:
     sys.path.insert(0, str(RAG_DIR))
 
 from build_faq_corpus import (
-    ARTICLE_SCHEMA,
     POLICY_VERSION,
-    SIMULATED_POLICY,
     build_article_body,
     build_corpus,
     doc_id_for_theme,
@@ -202,7 +199,7 @@ def test_reuse_from_copies_unchanged_articles_byte_identical(tmp_path):
 
     def fake_gemini(tok, project, prompt, schema):
         # Extract title from prompt
-        m = re_title = None
+        re_title = None
         for line in prompt.splitlines():
             if line.startswith("Theme: "):
                 re_title = line.split("—")[0].replace("Theme: ", "").strip()

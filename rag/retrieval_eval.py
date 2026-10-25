@@ -21,7 +21,7 @@ import re
 import subprocess
 import sys
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 import urllib.error
 import urllib.request
 
@@ -32,7 +32,6 @@ from search_client import (  # noqa: E402
     SearchResult,
     clean_query as client_clean_query,
     VALID_INTENT_FAMILIES,
-    DEFAULT_ALLOWED_STATUSES,
 )
 
 try:

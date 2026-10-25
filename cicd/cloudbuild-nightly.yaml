@@ -1,0 +1,68 @@
+substitutions:
+  _CORPUS_BUCKET: 'susmith-fde-ticket-router-laya'
+  _LOCATION: 'global'
+
+steps:
+  # ---------------------------------------------------------------------------
+  # Step 1: Download DEV query set, gold map, and baseline from GCS
+  # ---------------------------------------------------------------------------
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'download-eval-and-baseline'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        mkdir -p /workspace/eval /workspace/baseline
+        gsutil -m cp "gs://${_CORPUS_BUCKET}/eval/*" /workspace/eval/
+        if [ -f /workspace/eval/baseline.json ]; then
+          cp /workspace/eval/baseline.json /workspace/baseline/baseline.json
+        fi
+
+  # ---------------------------------------------------------------------------
+  # Step 2: Execute live retrieval health and drift evaluation
+  # ---------------------------------------------------------------------------
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'run-retrieval-health-eval'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        LABELS_ARG=""
+        if [ -f /workspace/eval/labels_c.jsonl ]; then
+          LABELS_ARG="--labels-c /workspace/eval/labels_c.jsonl"
+        fi
+
+        BASELINE_ARG="--baseline /workspace/baseline/baseline.json"
+
+        python3 rag/ci_eval_gate.py \
+          --queries /workspace/eval/dev.jsonl \
+          $${LABELS_ARG} \
+          $${BASELINE_ARG} \
+          --project "${PROJECT_ID}" \
+          --location "${_LOCATION}" \
+          --min-recall 0.90 \
+          --min-mrr 0.75 \
+          --max-ndcg-drop 0.03 \
+          --out /workspace/nightly_eval.json \
+          --enforce-gate
+
+  # ---------------------------------------------------------------------------
+  # Step 3: Archive nightly evaluation results to GCS
+  # ---------------------------------------------------------------------------
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'archive-evaluation-results'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        TIMESTAMP=$$(date -u +%Y%m%d_%H%M%S)
+        gsutil cp /workspace/nightly_eval.json "gs://${_CORPUS_BUCKET}/eval/nightly/eval_$${TIMESTAMP}.json"
+        gsutil cp /workspace/nightly_eval.json "gs://${_CORPUS_BUCKET}/eval/nightly/latest.json"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '1800s'

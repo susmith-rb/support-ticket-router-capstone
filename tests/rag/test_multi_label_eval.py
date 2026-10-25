@@ -20,12 +20,10 @@ from multi_label_eval import (
     compute_graded_dcg,
     compute_graded_idcg,
     compute_graded_ndcg,
-    compute_query_retrieval_metrics,
     evaluate_multilabel,
     filter_scope,
     generate_evaluation_report,
     infer_intent_from_doc_id,
-    load_labels,
     load_system_rows,
 )
 

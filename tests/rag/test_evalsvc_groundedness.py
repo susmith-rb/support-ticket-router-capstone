@@ -1,7 +1,6 @@
 import io
 import json
 import urllib.error
-import pytest
 from evalsvc_groundedness import build_request_body, evaluate_single_instance, aggregate_scores
 
 

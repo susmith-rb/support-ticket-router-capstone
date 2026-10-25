@@ -1,4 +1,3 @@
-import pytest
 from router_schema import QUESTIONS, SENTIMENTS, INTENTS, URGENCY_LEVELS
 
 

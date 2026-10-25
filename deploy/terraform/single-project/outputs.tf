@@ -32,3 +32,23 @@ output "labels" {
   description = "Configured resource labels"
   value       = var.labels
 }
+
+output "cloudbuild_service_account" {
+  description = "Email of the Cloud Build service account"
+  value       = module.cloudbuild.cloudbuild_service_account
+}
+
+output "scheduler_service_account" {
+  description = "Email of the Cloud Scheduler service account"
+  value       = module.cloudbuild.scheduler_service_account
+}
+
+output "nightly_trigger_id" {
+  description = "ID of the nightly Cloud Build trigger"
+  value       = module.cloudbuild.nightly_trigger_id
+}
+
+output "scheduler_job_name" {
+  description = "Name of the Cloud Scheduler job"
+  value       = module.cloudbuild.scheduler_job_name
+}

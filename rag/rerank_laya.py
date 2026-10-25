@@ -12,10 +12,9 @@ Provides:
 
 import argparse
 import json
-import math
 import pathlib
 import time
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Sequence, Tuple, Union
 
 
 QUESTION_ID = "article"

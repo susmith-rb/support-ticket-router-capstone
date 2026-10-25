@@ -19,7 +19,7 @@ import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from de_endpoint import search_url, data_store_name  # noqa: E402
-from search_client import SearchClient, clean_query, build_filter  # noqa: E402
+from search_client import build_filter  # noqa: E402
 
 
 def main():

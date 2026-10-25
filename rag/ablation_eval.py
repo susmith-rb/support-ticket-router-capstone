@@ -22,14 +22,14 @@ Supported Ablation Grid:
 """
 
 import argparse
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import pathlib
 import random
 import sys
 import time
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import eval_metrics
@@ -807,11 +807,9 @@ def evaluate_single_config(
                 doc_ids = reranked_ids
 
             total_lat = round(base_res.latency_ms + r_lat, 2)
-            rerank_applied = True
         else:
             doc_ids = base_res.document_ids
             total_lat = base_res.latency_ms
-            rerank_applied = False
 
         rank = eval_metrics.compute_rank(target, doc_ids)
         if base_res.fallback_triggered:

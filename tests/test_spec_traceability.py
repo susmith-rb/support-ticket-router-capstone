@@ -11,7 +11,6 @@ Validates that:
 
 from pathlib import Path
 import re
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SPECS_DIR = REPO_ROOT / "specs"
@@ -138,7 +137,7 @@ def test_done_requirements_have_traceability():
       if not (is_in_tests or is_manual):
         untraced.append(f"{req_id} in {req['file']} (acceptance: {req['acceptance']})")
 
-  assert not untraced, f"Done requirements without test reference or manual acceptance command:\n" + "\n".join(untraced)
+  assert not untraced, "Done requirements without test reference or manual acceptance command:\n" + "\n".join(untraced)
 
 
 def test_all_test_references_exist_in_specs():
@@ -152,4 +151,4 @@ def test_all_test_references_exist_in_specs():
       loc_str = ", ".join(f"{f}:{l}" for f, l in locations)
       unknown.append(f"{req_id} (referenced at {loc_str})")
 
-  assert not unknown, f"Test files reference unknown requirement IDs:\n" + "\n".join(unknown)
+  assert not unknown, "Test files reference unknown requirement IDs:\n" + "\n".join(unknown)

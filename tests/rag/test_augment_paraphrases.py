@@ -6,7 +6,6 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent / "rag"))
 
 from augment_paraphrases import (
-    augment_corpus,
     merge_paraphrases_into_body,
     normalize_text,
     verify_no_leakage,

@@ -1,14 +1,11 @@
 import json
 import pathlib
-import pytest
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent / "rag"))
 
 from augment_paraphrases import (
     apply_disambiguation_to_body,
-    augment_corpus,
-    normalize_text,
     verify_no_leakage,
 )
 from publish_faq import lint

@@ -9,7 +9,6 @@ from publish_faq import (
     stamp,
     build_import_payload,
     check_manifest_invariants,
-    VALID_INTENT_FAMILIES,
 )
 
 

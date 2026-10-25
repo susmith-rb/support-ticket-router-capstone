@@ -9,7 +9,6 @@ Validates compliance with:
 
 from pathlib import Path
 import re
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TF_DIR = REPO_ROOT / "deploy" / "terraform"
@@ -25,6 +24,7 @@ def test_terraform_directories_exist():
   assert SINGLE_PROJECT_DIR.is_dir(), f"Missing {SINGLE_PROJECT_DIR}"
   assert (SINGLE_PROJECT_DIR / "modules" / "project-services").is_dir()
   assert (SINGLE_PROJECT_DIR / "modules" / "agent-search").is_dir()
+  assert (SINGLE_PROJECT_DIR / "modules" / "cloudbuild").is_dir()
 
 
 # REQ-INFRA-SEARCH-001
@@ -35,6 +35,7 @@ def test_every_module_has_variables_and_outputs():
       SINGLE_PROJECT_DIR,
       SINGLE_PROJECT_DIR / "modules" / "project-services",
       SINGLE_PROJECT_DIR / "modules" / "agent-search",
+      SINGLE_PROJECT_DIR / "modules" / "cloudbuild",
   ]
   for mod in modules:
     assert (mod / "main.tf").is_file(), f"Missing main.tf in {mod}"

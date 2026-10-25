@@ -1,6 +1,4 @@
-import io
 import json
-import pytest
 from de_endpoint import (
     api_base,
     collection_name,

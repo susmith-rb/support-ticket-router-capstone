@@ -1,0 +1,21 @@
+# Conservative ruff configuration for support-ticket-router-capstone
+line-length = 120
+target-version = "py311"
+extend-exclude = [
+    # Excluded temporarily while worker R2 edits them concurrently
+    "rag/rerank_data.py",
+    "tests/rag/test_rerank_data.py",
+]
+
+[lint]
+select = ["E", "F"]
+ignore = [
+    "E501",  # line too long (handled flexibly in data/test fixtures)
+    "E741",  # ambiguous variable name (e.g. l for line in list comprehensions)
+]
+
+[lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/rag/test_build_faq_corpus.py" = ["E402"]  # sys.path mutation required prior to local rag imports
+"tests/rag/test_regroup_themes.py" = ["E402"]  # sys.path mutation required prior to local rag imports
+

@@ -2,7 +2,7 @@
 """eval_metrics.py — Pure evaluation metrics and slice helpers for RAG retrieval."""
 
 import math
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 
 def compute_rank(
