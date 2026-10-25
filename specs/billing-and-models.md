@@ -85,3 +85,9 @@ The Argolis project operates under strict sandbox quota and billing allocations.
 
 1. **Enterprise vs. Standard Search Tier Recommendation**: The search application `support-kb-search` was initially provisioned under the Enterprise tier with the LLM add-on enabled (estimate ~$8.00 / 1k queries based on list prices cited in `rag/README.md`). Because our multi-agent architecture performs answer synthesis and grounding directly inside `FaqResolverAgent` (using Gemini 3.8 Flash), the conductor recommended evaluating a downgrade to the Standard tier ($1.50 / 1k queries list price). This remains an open operational decision pending a user decision; the retrieval impact of the tier switch has not been tested.
 2. **Quota Monitoring**: The Argolis sandbox currently lacks automated BigQuery billing exports or Budget Alerts API enablement. Usage and spend must be monitored via the Google Cloud Console Reports under identity `admin@susmith.altostrat.com`.
+
+## Decision log
+
+- 2026-10-25 (user decision): Laya serves BOTH intent routing (router-s1) and FAQ reranking (Laya v2 choice reranker) on **GPU** (L4/T4 Vertex endpoint), sharing the replicas.
+  - CPU serving was rejected based on the measurement on n1-standard-8 (rag/results/v4/cpu/benchmark.md): router p50 913–1,334 ms against the 150 ms timeout, and int8 router agreement of only 88%.
+  - LLM alternatives (e.g. gpt-6-luna, Gemini Flash-Lite) are **not** part of the comparison until their routing and reranking accuracy has been measured on our labeled sets. Cost estimates for them stay in the appendix only, labeled unmeasured.
