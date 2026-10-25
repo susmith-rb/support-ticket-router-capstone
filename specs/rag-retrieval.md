@@ -65,7 +65,7 @@ Evaluation is stratified across three tiers to balance realism, benchmarking, an
 | `REQ-RAG-RETR-013` | Evaluation Set Split and Metric Standards | `done` | `tests/rag/test_build_eval_splits.py::test_splits_disjointness` |
 | `REQ-RAG-RETR-014` | Paraphrase Augmentation Retrieval Parity Gate | `done` | `tests/rag/test_augment_paraphrases.py` |
 | `REQ-RAG-RETR-015` | Multi-Relevant Retrieval Measurement & Adjudication Evaluation | `done` | `tests/rag/test_multi_label_eval.py` |
-| `REQ-RAG-RETR-016` | Trained Reranker: Training Data, Leakage Invariants, and Offline Evaluation Protocol | `done` | `tests/rag/test_rerank_data.py` |
+| `REQ-RAG-RETR-016` | Trained Reranker: Training Data, Leakage Invariants, and Offline Evaluation Protocol | `done` | `tests/rag/test_rerank_data.py & tests/rag/test_rerank_ce.py` |
 
 ---
 
@@ -304,6 +304,78 @@ Evaluation is stratified across three tiers to balance realism, benchmarking, an
 ### REQ-RAG-RETR-016: Trained Reranker: Training Data, Leakage Invariants, and Offline Evaluation Protocol
 - **Statement**: Reranker training data MUST be generated from Release 5 articles (`faq_v2p/docs`) combining graded agent-labeled samples (`disambiguation_pool_labels.jsonl`, primary=2, secondary=1) with balanced customer first turns from `themes_v2.json` / `threads.jsonl` (target=2, other=0, capped per article). The data builder MUST enforce strict split discipline (zero thread ID or normalized query text leakage into DEV or TEST sets), construct candidate sets of ~12 documents per query (positives + hard negatives from DEV confusion pairs and same-family siblings + random negatives), deterministically partition queries 90% train / 10% val by thread ID, and export an offline DEV candidate evaluation set (`dev_candidates.jsonl`, `{qid, query, top10}`) containing strictly zero DEV ground-truth labels.
 - **Rationale**: TDD §6.4 and PLAN7. Real-world customer tickets suffer ranking order ambiguity between closely related FAQ documents (e.g., Prime delivery speeds vs general late orders). Training a downstream reranker (cross-encoder or Laya typed choice) requires high-quality graded relevance judgments and challenging hard negatives without data leakage across evaluation splits. Offline candidate export enables reproducible, leakage-free hyperparameter selection on DEV prior to a single audited TEST evaluation.
-- **Acceptance**: `tests/rag/test_rerank_data.py`
+- **Acceptance**: `tests/rag/test_rerank_data.py` & `tests/rag/test_rerank_ce.py`
 - **Status**: done
 - **Owner**: rag-retrieval
+- **Arm A Evaluation Evidence: Cross-Encoder Reranker (`ms-marco-MiniLM-L-6-v2`) (2026-10-25)**:
+  - **Model & Training**:
+    - Fine-tuned `cross-encoder/ms-marco-MiniLM-L-6-v2` on Argolis VM `laya-tune` on CPU (8 threads, `CUDA_VISIBLE_DEVICES=""`).
+    - Graded targets: MSE regression on `grade / 2.0` (target values: 1.0 for primary, 0.5 for secondary, 0.0 for negative distractors).
+    - Dataset: 1,479 queries (17,748 pairs) train, 164 queries (1,968 pairs) validation.
+    - Hyperparameters: 3 epochs, batch size 16, lr 2e-5, AdamW with 10% linear warmup, max sequence length 256.
+    - Training time: **9,898.3 s** (~2h45m CPU wall time across 8 threads).
+    - Loss progression across epochs:
+      - Epoch 1: Train MSE = 4.3097, Val MSE = 0.0616 (checkpoint saved)
+      - Epoch 2: Train MSE = 0.0644, Val MSE = 0.0680
+      - Epoch 3: Train MSE = 0.0549, Val MSE = **0.0584** (best checkpoint saved)
+    - Checkpoint staged at `gs://susmith-fde-ticket-router-laya/rerank/model_minilm/`.
+  - **Score Fusion Protocol**:
+    - Formula: $\text{final} = \alpha \cdot \text{ce\_score} + (1 - \alpha) \cdot \text{rank\_prior}$
+    - Prior mode: Reciprocal rank prior $\text{rank\_prior} = 1.0 / (\text{rank} + 1)$ over the top-10 candidate pool.
+  - **Offline DEV Reranking Quality across $\alpha$ (MAIN Scope, n=218)**:
+    | Configuration | $\alpha$ | recall@5 | MRR@10 | Graded nDCG@5 | Latency p50 | Latency p95 |
+    | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+    | **Baseline (intent_noisy_0.2)** | — | 0.9128 | 0.8003 | 0.7290 | 171.55 ms | 229.18 ms |
+    | `ce_minilm_a0.3` | 0.3 | 0.9128 | 0.8003 | 0.7366 | 458.55 ms | 528.23 ms |
+    | `ce_minilm_a0.5` | 0.5 | 0.9174 | 0.7987 | 0.7403 | 458.55 ms | 528.23 ms |
+    | `ce_minilm_a0.7` **(Winning Arm A)** | 0.7 | **0.9266** | **0.8033** | **0.7433** | 458.55 ms | 528.23 ms |
+    | `ce_minilm_a1.0` (Pure CE) | 1.0 | 0.9220 | 0.7578 | 0.7057 | 458.55 ms | 528.23 ms |
+  - **Detailed Metrics for Winning Config (`ce_minilm_a0.7`, $\alpha=0.7$)**:
+    - Sensitivity Bounds on DEV:
+      - LOWER Bound (Consensus primary only): recall@5 = 0.8716, MRR@10 = 0.6972, Graded nDCG@5 = 0.7367
+      - CONSENSUS (Adjudicator C): recall@5 = **0.9266**, MRR@10 = **0.8033**, Graded nDCG@5 = **0.7433**
+      - UPPER Bound (Union A $\cup$ B $\cup$ C): recall@5 = 0.9450, MRR@10 = 0.8568, Graded nDCG@5 = 0.7453
+    - Consensus Retrieval by Intent Family on DEV:
+      - `account_payment` (n=26): recall@5 = **0.9615**, MRR@10 = **0.8686**, Graded nDCG@5 = **0.8169**
+      - `order_status` (n=51): recall@5 = **0.9608**, MRR@10 = **0.8765**, Graded nDCG@5 = **0.8134**
+      - `returns_refunds` (n=56): recall@5 = **0.9464**, MRR@10 = **0.8899**, Graded nDCG@5 = **0.7844**
+      - `other` (n=62): recall@5 = **0.9032**, MRR@10 = **0.6975**, Graded nDCG@5 = **0.6652**
+      - `shipping_policy` (n=23): recall@5 = **0.8261**, MRR@10 = **0.6413**, Graded nDCG@5 = **0.6147**
+  - **In-Process CPU Inference Latency (8 vCPUs, n=300 DEV Queries)**:
+    - Mean: **429.36 ms**
+    - p50: **458.55 ms**
+    - p90: **517.07 ms**
+    - p95: **528.23 ms**
+    - Minimum: **33.72 ms**, Maximum: **6772.13 ms** (cold-start / PyTorch JIT compilation overhead on query 1)
+- **Arm B Evaluation Evidence: Laya Typed-Decision Choice Reranker (2026-10-25)**:
+  - **Model & Training**:
+    - Compared base `convaiinnovations/laya` (base english) vs fine-tuned `router-s1/v2` checkpoint on Argolis VM `laya-tune` (1x NVIDIA T4 GPU).
+    - Architecture: Typed-decision choice model predicting soft categorical distribution over $\le 5$ article options (article title + short scope phrase from `docs.json`).
+    - Hyperparameters: 6 epochs, micro-batch 4, grad-accum 8 (effective batch size 32), 252 optimizer updates, `soft-ce` loss, `--shuffle-options` ("choice",).
+    - Validation Results (164 held-out items from `val.jsonl`):
+      - Base English: Accuracy 0.8232 (+0.0915 over base), Val Loss 0.6824 (-0.4640), ECE 0.1672, Brier 0.2402, Training time 758s.
+      - Router-S1-V2: Accuracy 0.8232 (+0.1159 over base), Val Loss 0.6244 (-0.4081), ECE 0.1390, Brier 0.2288, Training time 785s.
+      - Selection: `router-s1/v2` selected as winning checkpoint due to substantially lower validation loss (0.6244 vs 0.6824), superior calibration (ECE 0.1390 vs 0.1672), and lower Brier score (0.2288 vs 0.2402). Checkpoint staged at `gs://susmith-fde-ticket-router-laya/rerank/ckpt/`.
+  - **Offline DEV Reranking Quality (MAIN Scope, n=218)**:
+    - Reranks top 5 retrieved candidates by Laya choice probability, keeping initial ranks 6-10 intact.
+    - Evaluated with `rag/multi_label_eval.py` against adjudicated consensus labels (C2).
+    - Overall Metrics vs Baseline:
+      - `recall@5`: **0.9128** (baseline: 0.913)
+      - `MRR@10`: **0.8275** (baseline: 0.800, **+0.0275 gain**)
+      - `Graded nDCG@5`: **0.7492** (baseline: 0.729, **+0.0202 gain**)
+    - Sensitivity Bounds on DEV:
+      - LOWER Bound (Consensus primary only): recall@5 = 0.8532, MRR@10 = 0.7183, Graded nDCG@5 = 0.7476
+      - CONSENSUS (Adjudicator C): recall@5 = **0.9128**, MRR@10 = **0.8275**, Graded nDCG@5 = **0.7492**
+      - UPPER Bound (Union A $\cup$ B $\cup$ C): recall@5 = 0.9312, MRR@10 = 0.8963, Graded nDCG@5 = 0.7502
+    - Consensus Retrieval by Intent Family on DEV:
+      - `account_payment` (n=26): recall@5 = **0.9615**, MRR@10 = **0.9231**, Graded nDCG@5 = **0.8571**
+      - `order_status` (n=51): recall@5 = **0.9804**, MRR@10 = **0.9196**, Graded nDCG@5 = **0.8389**
+      - `returns_refunds` (n=56): recall@5 = **0.9464**, MRR@10 = **0.9152**, Graded nDCG@5 = **0.7893**
+      - `other` (n=62): recall@5 = **0.8548**, MRR@10 = **0.7010**, Graded nDCG@5 = **0.6518**
+      - `shipping_policy` (n=23): recall@5 = **0.7826**, MRR@10 = **0.6425**, Graded nDCG@5 = **0.5929**
+  - **In-Process GPU Inference Latency (NVIDIA T4, n=300 DEV Queries)**:
+    - Mean: **42.57 ms**
+    - p50: **43.59 ms**
+    - p90: **47.49 ms**
+    - p95: **52.91 ms**
+    - Total batch execution time: **12.77 s**

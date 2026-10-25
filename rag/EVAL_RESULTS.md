@@ -317,3 +317,21 @@ The gate failed, so the index was rolled back to release 5 and verified live. TE
 Conclusion: across runtime knobs (boost, rerank, query rewrite) and corpus edits (paraphrases,
 disambiguation), graded nDCG@5 stays at about 0.70–0.74, against the TDD target of 0.80.
 recall@5 and MRR meet their targets.
+
+## 12. Trained rerankers on generated samples (PLAN7, 2026-10-25)
+
+- Training data: 1,643 leakage-safe queries (447 Jetski-agent-graded 2/1/0 + 1,196 silver), with
+  sibling/confusion hard negatives (`results/v4/data_card.md`).
+- DEV evaluation: MAIN scope, n=218, C2 labels; rerankers reorder the production top-10.
+
+| Arm | nDCG@5 | recall@5 | MRR@10 | Added latency |
+|---|---|---|---|---|
+| Production (no rerank) | 0.729 | 0.913 | 0.800 | — |
+| A: MiniLM cross-encoder, fused α=0.7 | 0.743 | 0.927 | 0.803 | ~460 ms p50 (8 vCPU) |
+| B: Laya choice, top-5 (from router-s1 v2) | 0.749 | 0.913 | 0.828 | ~44 ms p50 (T4) |
+| Rank fusion 2×Laya + CE | 0.752 | 0.913 | 0.831 | both |
+| **Oracle reorder of top-10 (ceiling)** | **0.895** | | | |
+
+- No arm reaches the pre-registered +0.03 gate, so TEST was not run.
+- The candidates are good, as the oracle ceiling (0.895) shows. The limit is reranker quality: only 447
+  graded training queries, and silver labels with a single gold.
