@@ -21,7 +21,7 @@ from rag.laya_cpu_bench import (
 )
 
 try:
-    import torch
+    import torch  # noqa: F401  (availability probe for the skipif guard)
     import torch.nn as nn
 
     TORCH_AVAILABLE = True
