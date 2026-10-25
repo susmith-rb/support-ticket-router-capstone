@@ -415,3 +415,21 @@ Evaluation is stratified across three tiers to balance realism, benchmarking, an
     - p90: **33.25 ms** (Round 1: 47.49 ms)
     - p95: **33.75 ms** (Round 1: 52.91 ms)
     - Total batch execution time: **9.31 s** (Round 1: 12.77 s)
+  - **CPU Serving Evidence & Empirical Lower-Bound Benchmark (`n1-standard-8`, n=300 DEV Queries)**:
+    - *Hardware Target*: Intel Xeon @ 2.30GHz (Haswell/Broadwell, 8 vCPUs, AVX2, no AVX-512/AMX, BF16 unsupported).
+    - *Reranker Latency (Top-5 Choice)*:
+      - FP32 8-thread: mean = **657.34 ms**, p50 = **665.50 ms**, p95 = **814.38 ms**, QPS = **1.52**
+      - QINT8 8-thread: mean = **440.11 ms**, p50 = **445.11 ms**, p95 = **525.45 ms**, QPS = **2.27**
+      - QINT8 4-thread: mean = **453.18 ms**, p50 = **463.47 ms**, p95 = **547.97 ms**, QPS = **2.21**
+      - BF16 Autocast: *Skipped* due to lack of native AVX-512 VNNI / AMX hardware execution units.
+    - *Reranker Quality Parity*:
+      - FP32 8-thread: recall@5 = **0.9128**, MRR@10 = **0.8347**, Graded nDCG@5 = **0.7604**
+      - QINT8 8-thread: recall@5 = **0.9128**, MRR@10 = **0.8141**, Graded nDCG@5 = **0.7447** (within 0.010 of GPU 0.7546; recall@5 identical)
+    - *Router-S1 V2 Latency & Decision Agreement (4 questions)*:
+      - FP32 8-thread: p50 = **1334.46 ms**, p95 = **1777.75 ms**, QPS = **0.72**
+      - QINT8 8-thread: p50 = **913.15 ms**, p95 = **1248.56 ms**, QPS = **1.05**
+      - Decision Agreement: **88.33%** overall (1,060/1,200); `escalate` = **100.0%**, `urgency` = **100.0%**, `intent` = **81.0%**, `sentiment` = **72.3%**.
+    - *Throughput & Concurrency*:
+      - Single-process QINT8 (8 threads): **2.27 QPS** (reranker), **1.05 QPS** (router).
+      - Multi-process (2 workers × 4 threads): **~4.42 QPS** aggregate reranker capacity across independent server processes.
+    - *Recommendation*: Real-time ticket routing SLA (< 100 ms) strictly requires GPU serving (T4/L4, ~31 ms p50). If deploying on CPU, modern C3/C4 instances (AMX-BF16) and multi-process serving are mandatory.
