@@ -41,8 +41,8 @@ variable "github_repo_uri" {
 
 variable "github_app_installation_id" {
   description = "GitHub App Installation ID (used when connection is ready)"
-  type        = string
-  default     = ""
+  type        = number
+  default     = 0
 }
 
 variable "github_oauth_secret_version" {

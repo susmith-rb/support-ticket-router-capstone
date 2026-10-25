@@ -169,3 +169,62 @@ Following the enterprise delivery roadmap, the following operational capabilitie
 4. **Declarative OpenAPI / REST Contracts**:
    - OpenAPI v3 / Swagger specifications defining external serving surfaces, request validation models, and canonical HTTP status codes.
 
+---
+
+## 6. Live Infrastructure Verification & Evidence (Phase 2)
+
+Phase 2 infrastructure operations executed hermetically on Argolis VM `laya-tune` using `scripts/tf_vm.sh`:
+
+1. **Static Linters & Mock Provider Tests**:
+   - `terraform fmt -check -recursive`: PASSED (exit code 0).
+   - `tflint --recursive`: PASSED (exit code 0, 0 warnings/errors).
+   - `terraform validate`: Success! Configuration is valid (exit code 0).
+   - `terraform test`: **4 passed, 0 failed** across `agent_search.tftest.hcl` and `cloudbuild.tftest.hcl`.
+
+2. **First Plan & Zero-Impact Invariant**:
+   - Command: `terraform plan -out=tfplan` with `github_connection_ready=false`.
+   - Result: **11 to add, 0 to change, 0 to destroy**.
+   - Verified zero impact on existing resources: `module.agent_search` data stores (`faq-articles`, `resolved-threads`), search engine (`support-kb-search`), identity, and corpus bucket IAM were completely unchanged.
+
+3. **Apply Execution**:
+   - Command: `terraform apply "tfplan"`.
+   - Result: **11 added, 0 changed, 0 destroyed**.
+   - Outputs:
+     - `cloudbuild_service_account` = `ticket-router-build@susmith-fde-ticket-router.iam.gserviceaccount.com`
+     - `scheduler_service_account` = `ticket-router-scheduler@susmith-fde-ticket-router.iam.gserviceaccount.com`
+     - `nightly_trigger_id` = `7e64cfb8-cb26-4c68-9b69-31559d0f28dd`
+     - `scheduler_job_name` = `support-ticket-router-nightly-eval`
+
+4. **Zero-Drift Verification (Second Plan)**:
+   - Command: `terraform plan`.
+   - Verbatim result:
+     ```
+     No changes. Your infrastructure matches the configuration.
+     Terraform has compared your real infrastructure against your configuration
+     and found no differences, so no changes are needed.
+     ```
+
+5. **GCloud Production Asset Verification (`susmith-fde-ticket-router`)**:
+   - **Build SA**: `ticket-router-build@susmith-fde-ticket-router.iam.gserviceaccount.com` exists (ID: `108753949838472880360`).
+   - **Build SA Roles**:
+     - Project: `roles/discoveryengine.editor`, `roles/logging.logWriter`.
+     - Corpus Bucket (`gs://susmith-fde-ticket-router-laya`): `roles/storage.objectAdmin`.
+   - **Scheduler SA**: `ticket-router-scheduler@susmith-fde-ticket-router.iam.gserviceaccount.com` exists.
+   - **Scheduler SA Roles**:
+     - Project: `roles/cloudbuild.builds.editor`.
+   - **Nightly Cloud Build Trigger**:
+     - Name: `support-ticket-router-nightly` (ID: `7e64cfb8-cb26-4c68-9b69-31559d0f28dd`, region: `us-central1`).
+     - Path: `cicd/cloudbuild-nightly.yaml`.
+     - Service Account: `ticket-router-build@...`.
+   - **Cloud Scheduler Job**:
+     - Name: `support-ticket-router-nightly-eval` (location: `us-central1`).
+     - State: `ENABLED`.
+     - Schedule: `0 2 * * *` (UTC).
+     - Target: `https://cloudbuild.googleapis.com/v1/projects/susmith-fde-ticket-router/locations/us-central1/triggers/7e64cfb8-cb26-4c68-9b69-31559d0f28dd:run`.
+
+6. **Manual Trigger Execution**:
+   - `gcloud builds triggers run support-ticket-router-nightly --region=us-central1 --project=susmith-fde-ticket-router --branch=main`
+   - Result: Returned `ERROR: (gcloud.builds.triggers.run) NOT_FOUND: Couldn't read commit . detail: request_mode:gen1_repo_trigger`.
+   - Cause: Triggers referencing GitHub without 2nd gen connection require the one-time interactive Cloud Console authorization of the Google Cloud Build GitHub App into `susmith-rb/support-ticket-router-capstone`. Once authorized and `var.github_connection_ready` is flipped to `true`, 2nd-gen triggers resolve commits via Developer Connect.
+
+

@@ -38,7 +38,7 @@ run "verify_cloudbuild_defaults_without_github_connection" {
 }
 
 run "verify_cloudbuild_with_github_connection_ready" {
-  command = plan
+  command = apply
 
   variables {
     github_connection_ready = true
