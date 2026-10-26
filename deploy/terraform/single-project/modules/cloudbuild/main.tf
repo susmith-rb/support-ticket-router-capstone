@@ -84,6 +84,10 @@ resource "google_cloudbuild_trigger" "ci" {
   filename        = "cicd/cloudbuild.yaml"
   disabled        = !var.enable_ci_triggers
 
+  substitutions = {
+    _RUN_EVAL = "auto"
+  }
+
   repository_event_config {
     repository = google_cloudbuildv2_repository.repo[0].id
     push {
@@ -102,6 +106,10 @@ resource "google_cloudbuild_trigger" "ci_pr" {
   service_account = google_service_account.cloudbuild_sa.id
   filename        = "cicd/cloudbuild.yaml"
   disabled        = !var.enable_ci_triggers
+
+  substitutions = {
+    _RUN_EVAL = "auto"
+  }
 
   repository_event_config {
     repository = google_cloudbuildv2_repository.repo[0].id

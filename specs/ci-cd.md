@@ -65,6 +65,7 @@ cicd/
 | `REQ-CICD-006` | Cloud Build v2 GitHub Connection and Repository Resources | `done` | `tests/infra/test_cicd_static.py::test_github_connection_gating` |
 | `REQ-CICD-007` | Cloud Scheduler Nightly Evaluation Target Configuration | `done` | `tests/infra/test_cicd_static.py::test_scheduler_job_target_contract` |
 | `REQ-CICD-008` | Static Security and Secret Leakage Prevention | `done` | `tests/infra/test_cicd_static.py::test_no_secrets_in_cicd_yamls` |
+| `REQ-CICD-009` | Change-Aware Golden Retrieval Evaluation Gate Execution | `done` | `tests/infra/test_cicd_static.py::test_eval_gate_conditional_execution` |
 
 ---
 
@@ -126,6 +127,13 @@ cicd/
 - **Status**: done
 - **Owner**: ci-cd
 
+### REQ-CICD-009: Change-Aware Golden Retrieval Evaluation Gate Execution
+- **Statement**: The Golden Retrieval Evaluation Gate (`cicd/cloudbuild.yaml` step `golden-eval-gate`) MUST conditionally execute using the substitution variable `_RUN_EVAL` (`auto`|`true`|`false`, defaulting to `auto`). In `auto` mode, the gate executes only when changes touch retrieval-relevant files (`rag/corpus_v2/**`, top-level `rag/*.py`, or `deploy/terraform/single-project/modules/agent-search/**`, excluding docs, eval results, and label files) as detected by `scripts/ci_changes.py`, skipping execution with a clear diagnostic message when only unrelated files change. When `_RUN_EVAL=true`, the gate runs unconditionally; when `_RUN_EVAL=false`, it is skipped.
+- **Rationale**: The golden evaluation gate runs 300 sequential live Agent Search queries per run. Executing the gate only when retrieval-impacting code, corpus data, or search infrastructure changes prevents unnecessary API spend and pipeline latency during UI, documentation, non-retrieval terraform, or unrelated component updates, while preserving strict quality enforcement whenever retrieval could be affected (or on demand).
+- **Acceptance**: `tests/infra/test_cicd_static.py::test_eval_gate_conditional_execution`
+- **Status**: done
+- **Owner**: ci-cd
+
 ---
 
 ## 4. Open Questions, Deltas & AI FDE Delivery Alignment
@@ -149,7 +157,7 @@ cicd/
 4. **Standalone vs. Inline Reindex Trigger Strategy**:
    - `cicd/cloudbuild.yaml` incorporates change-aware path filtering (`scripts/ci_changes.py`) to execute corpus reindexing inline upon merges to `main` whenever `rag/corpus_v2/**` changes.
    - The dedicated trigger and pipeline `cicd/cloudbuild-reindex.yaml` (with `included_files = ["rag/corpus_v2/**"]`) are retained in parallel to allow fast, isolated knowledge-base publishing operations without triggering full multi-stage CI workflows when only documentation or FAQ articles are updated.
-5. **CI Triggers Disabled During Development**: Because the golden retrieval evaluation gate executes 300 sequential live Agent Search queries per CI run, automated triggering on every push/PR is disabled during development via `enable_ci_triggers = false`. Triggers are provisioned in GCP with `disabled = true` to preserve IaC definitions while preventing unexpected billing during rapid local iterations.
+5. **Change-Aware CI Triggers Enabled by Default**: With change-aware conditional execution in place (`REQ-CICD-009`), CI triggers on push and pull requests targeting `main` are enabled by default (`enable_ci_triggers = true`) with `_RUN_EVAL = "auto"`. Unrelated changes bypass the 300-query evaluation gate, while PRs and pushes touching retrieval code, corpus data, or search infrastructure automatically enforce the retrieval gate. Nightly scheduled runs remain paused by default (`enable_nightly_schedule = false`).
 
 ---
 

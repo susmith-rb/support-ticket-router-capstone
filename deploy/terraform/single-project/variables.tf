@@ -69,5 +69,5 @@ variable "enable_nightly_schedule" {
 variable "enable_ci_triggers" {
   description = "Whether CI/CD triggers are enabled to run on push/PR (disabled if false)"
   type        = bool
-  default     = false
+  default     = true
 }

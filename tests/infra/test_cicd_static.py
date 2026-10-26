@@ -26,6 +26,7 @@ def test_cicd_files_exist():
 
 
 # REQ-CICD-002
+# REQ-CICD-009
 def test_ci_pipeline_contract():
     """Main CI pipeline must execute tests, py_compile, corpus lint, terraform, and eval gate."""
     cb_path = CICD_DIR / "cloudbuild.yaml"
@@ -38,6 +39,11 @@ def test_ci_pipeline_contract():
     assert "id: 'terraform-validate'" in raw_content
     assert "id: 'terraform-tflint'" in raw_content
     assert "id: 'golden-eval-gate'" in raw_content
+
+    # Change detection and evaluation substitution
+    assert "_RUN_EVAL: 'auto'" in raw_content
+    assert "gcr.io/google.com/cloudsdktool/cloud-sdk:slim" in raw_content
+    assert "git fetch --deepen=1 origin || true" in raw_content
 
     # Step commands and tools
     assert "ruff check rag/ tests/" in raw_content
@@ -127,14 +133,39 @@ def test_github_connection_gating():
     assert "default     = false" in vars_tf
 
 
-def test_ci_triggers_disabled_by_default():
-    """CI triggers must be disabled by default during development."""
+# REQ-CICD-006
+# REQ-CICD-009
+def test_ci_triggers_enabled_by_default():
+    """CI triggers must be enabled by default and configure _RUN_EVAL substitution."""
     main_tf = (TF_CLOUDBUILD_DIR / "main.tf").read_text(encoding="utf-8")
     vars_tf = (TF_CLOUDBUILD_DIR / "variables.tf").read_text(encoding="utf-8")
+    sp_vars_tf = (SINGLE_PROJECT_DIR / "variables.tf").read_text(encoding="utf-8")
 
     assert "variable \"enable_ci_triggers\"" in vars_tf
-    assert "default     = false" in vars_tf
+    assert "default     = true" in vars_tf
+    assert "variable \"enable_ci_triggers\"" in sp_vars_tf
+    assert "default     = true" in sp_vars_tf
     assert "disabled        = !var.enable_ci_triggers" in main_tf
+    assert '_RUN_EVAL = "auto"' in main_tf
+
+
+# REQ-CICD-009
+def test_eval_gate_conditional_execution():
+    """Golden eval gate must conditionally execute based on _RUN_EVAL and RETRIEVAL_CHANGED."""
+    cb_path = CICD_DIR / "cloudbuild.yaml"
+    raw_content = cb_path.read_text(encoding="utf-8")
+
+    assert "_RUN_EVAL: 'auto'" in raw_content
+    assert "if [ -f /workspace/changes.env ]; then . /workspace/changes.env; fi" in raw_content
+    assert 'RUN_EVAL="${_RUN_EVAL}"' in raw_content
+    assert 'if [ "$${RUN_EVAL}" = "false" ]; then' in raw_content
+    assert "Skipping golden eval gate: disabled via _RUN_EVAL=false" in raw_content
+    assert 'elif [ "$${RUN_EVAL}" = "auto" ]; then' in raw_content
+    assert 'if [ "$${RETRIEVAL_CHANGED:-false}" != "true" ]; then' in raw_content
+    assert (
+        "Skipping golden eval gate: no retrieval-relevant changes (set _RUN_EVAL=true to force)"
+        in raw_content
+    )
 
 
 # REQ-CICD-007

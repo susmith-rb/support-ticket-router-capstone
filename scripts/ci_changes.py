@@ -3,7 +3,9 @@
 
 Inspects git diffs against previous commit or PR target branch to determine
 which pipeline subsystems require execution:
-- Tests and Golden Eval Gate: ALWAYS run (invariant)
+- Tests: ALWAYS run (invariant)
+- Golden Eval Gate (RETRIEVAL_CHANGED): Run only if retrieval-relevant files changed
+  (rag/corpus_v2/**, top-level rag/*.py, deploy/terraform/.../agent-search/**; docs/results excluded)
 - Terraform checks/plan: Run only if deploy/terraform/** changed
 - FAQ corpus reindex: Run only if rag/corpus_v2/** changed
 
@@ -16,6 +18,28 @@ from pathlib import Path
 import subprocess
 import sys
 from typing import Dict, List, Optional, Sequence
+
+
+def is_retrieval_file(path: str) -> bool:
+    """Return True if path affects retrieval or evaluation."""
+    norm = path.strip().replace("\\", "/")
+    if norm.endswith(".md"):
+        return False
+    if norm.startswith("rag/results/") or norm == "rag/results":
+        return False
+    if norm.startswith("rag/labels/") or norm == "rag/labels":
+        return False
+    if norm.startswith("rag/corpus_v2/") or norm == "rag/corpus_v2":
+        return True
+    if (
+        norm.startswith("deploy/terraform/single-project/modules/agent-search/")
+        or norm == "deploy/terraform/single-project/modules/agent-search"
+    ):
+        return True
+    parts = norm.split("/")
+    if len(parts) == 2 and parts[0] == "rag" and parts[1].endswith(".py"):
+        return True
+    return False
 
 
 def detect_changes(changed_files: Sequence[str]) -> Dict[str, bool]:
@@ -31,10 +55,11 @@ def detect_changes(changed_files: Sequence[str]) -> Dict[str, bool]:
     router_s1_changed = any(
         f.startswith("training/router_s1/") or f == "training/router_s1" for f in normalized
     )
+    retrieval_changed = any(is_retrieval_file(f) for f in normalized)
 
     return {
         "TESTS_ALWAYS_RUN": True,
-        "EVAL_GATE_ALWAYS_RUN": True,
+        "RETRIEVAL_CHANGED": retrieval_changed,
         "TERRAFORM_CHANGED": terraform_changed,
         "CORPUS_CHANGED": corpus_changed,
         "ROUTER_S1_CHANGED": router_s1_changed,
@@ -76,7 +101,7 @@ def resolve_flags(changed_files: Optional[Sequence[str]]) -> Dict[str, bool]:
         # Conservative fallback: run all subsystems if changes could not be determined
         return {
             "TESTS_ALWAYS_RUN": True,
-            "EVAL_GATE_ALWAYS_RUN": True,
+            "RETRIEVAL_CHANGED": True,
             "TERRAFORM_CHANGED": True,
             "CORPUS_CHANGED": True,
             "ROUTER_S1_CHANGED": True,

@@ -3,19 +3,21 @@ substitutions:
   _CORPUS_BUCKET: 'susmith-fde-ticket-router-laya'
   _LOCATION: 'global'
   _SERVICE_NAME: 'support-ticket-router'
+  _RUN_EVAL: 'auto'
 
 steps:
   # ===========================================================================
   # Step 0: Change Detection & Path Filtering (Change-Aware Pipeline)
   # ===========================================================================
-  - name: 'python:3.11-slim'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
     id: 'detect-changes'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         set -euo pipefail
-        python scripts/ci_changes.py --env-file /workspace/changes.env
+        git fetch --deepen=1 origin || true
+        python3 scripts/ci_changes.py --env-file /workspace/changes.env
 
   # ===========================================================================
   # Step 1: Unit, Resilience, Ruff Lint & Spec Traceability Tests (blocking)
@@ -108,6 +110,18 @@ steps:
       - '-c'
       - |
         set -euo pipefail
+        if [ -f /workspace/changes.env ]; then . /workspace/changes.env; fi
+        RUN_EVAL="${_RUN_EVAL}"
+        if [ "$${RUN_EVAL}" = "false" ]; then
+          echo "Skipping golden eval gate: disabled via _RUN_EVAL=false"
+          exit 0
+        elif [ "$${RUN_EVAL}" = "auto" ]; then
+          if [ "$${RETRIEVAL_CHANGED:-false}" != "true" ]; then
+            echo "Skipping golden eval gate: no retrieval-relevant changes (set _RUN_EVAL=true to force)"
+            exit 0
+          fi
+        fi
+
         echo "=== Fetching evaluation dataset and multi-annotator labels from GCS ==="
         mkdir -p /workspace/eval
         gsutil -m cp "gs://${_CORPUS_BUCKET}/eval/*" /workspace/eval/
