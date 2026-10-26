@@ -219,11 +219,16 @@ Phase 2 infrastructure operations executed hermetically on Argolis VM `laya-tune
      - Service Account: `ticket-router-build@...`.
    - **Cloud Scheduler Job**:
      - Name: `support-ticket-router-nightly-eval` (location: `us-central1`).
-     - State: `ENABLED`.
+     - State: `PAUSED` (`paused = !var.enable_nightly_schedule`; nightly evals are a stretch item). The nightly trigger is also disabled (`disabled = !var.enable_nightly_schedule`).
      - Schedule: `0 2 * * *` (UTC).
      - Target: `https://cloudbuild.googleapis.com/v1/projects/susmith-fde-ticket-router/locations/us-central1/triggers/7e64cfb8-cb26-4c68-9b69-31559d0f28dd:run`.
 
-6. **Manual Trigger Execution**:
+6. **GitHub repository link (2026-10-26)**:
+   - `connections/github-connection/repositories/support-ticket-router-capstone` → `https://github.com/cloud-ai-fde/susmith-capstone-support-ticket-router.git` (installation 124561748, OAuth user susmith-rb; the org repo is listed by `fetchLinkableRepositories`).
+   - Triggers `support-ticket-router-ci`, `-ci-pr`, `-reindex` exist and are DISABLED (`enable_ci_triggers = false`, development phase). Post-apply plan: "No changes".
+   - Historical: before the 2nd-gen repo link, `gcloud builds triggers run support-ticket-router-nightly` returned `NOT_FOUND: Couldn't read commit . detail: request_mode:gen1_repo_trigger`.
+
+7. **Manual Trigger Execution**:
    - `gcloud builds triggers run support-ticket-router-nightly --region=us-central1 --project=susmith-fde-ticket-router --branch=main`
    - Result: Returned `ERROR: (gcloud.builds.triggers.run) NOT_FOUND: Couldn't read commit . detail: request_mode:gen1_repo_trigger`.
    - Cause: Triggers referencing GitHub without 2nd gen connection require the one-time interactive Cloud Console authorization of the Google Cloud Build GitHub App into `susmith-rb/support-ticket-router-capstone`. Once authorized and `var.github_connection_ready` is flipped to `true`, 2nd-gen triggers resolve commits via Developer Connect.

@@ -138,6 +138,8 @@ resource "google_cloudbuild_trigger" "nightly" {
   name            = "support-ticket-router-nightly"
   description     = "Nightly retrieval health and drift evaluation against DEV query set"
   service_account = google_service_account.cloudbuild_sa.id
+  # Nightly evals are a stretch item: keep the trigger disabled alongside the paused schedule.
+  disabled = !var.enable_nightly_schedule
 
   git_file_source {
     path       = "cicd/cloudbuild-nightly.yaml"
