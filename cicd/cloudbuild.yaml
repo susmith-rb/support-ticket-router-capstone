@@ -62,7 +62,7 @@ steps:
       - '-c'
       - |
         if [ -f /workspace/changes.env ]; then . /workspace/changes.env; fi
-        if [ "${TERRAFORM_CHANGED:-true}" != "true" ]; then
+        if [ "$${TERRAFORM_CHANGED:-true}" != "true" ]; then
           echo "Skipping terraform fmt check: deploy/terraform/ unchanged"
           exit 0
         fi
@@ -77,7 +77,7 @@ steps:
       - |
         set -eu
         if [ -f /workspace/changes.env ]; then . /workspace/changes.env; fi
-        if [ "${TERRAFORM_CHANGED:-true}" != "true" ]; then
+        if [ "$${TERRAFORM_CHANGED:-true}" != "true" ]; then
           echo "Skipping terraform validate: deploy/terraform/ unchanged"
           exit 0
         fi
@@ -96,7 +96,7 @@ steps:
       - '-c'
       - |
         if [ -f /workspace/changes.env ]; then . /workspace/changes.env; fi
-        if [ "${TERRAFORM_CHANGED:-true}" != "true" ]; then
+        if [ "$${TERRAFORM_CHANGED:-true}" != "true" ]; then
           echo "Skipping tflint: deploy/terraform/ unchanged"
           exit 0
         fi
@@ -166,7 +166,7 @@ steps:
       - |
         set -euo pipefail
         if [ -f /workspace/changes.env ]; then . /workspace/changes.env; fi
-        if [ "${CORPUS_CHANGED:-false}" != "true" ] || [ "${BRANCH_NAME:-}" != "main" ]; then
+        if [ "$${CORPUS_CHANGED:-false}" != "true" ] || [ "${BRANCH_NAME}" != "main" ]; then
           echo "Skipping corpus reindex: rag/corpus_v2/ unchanged or not running on main"
           exit 0
         fi
@@ -262,7 +262,7 @@ steps:
       - '-c'
       - |
         set -euo pipefail
-        if [ "${BRANCH_NAME:-}" != "main" ]; then
+        if [ "${BRANCH_NAME}" != "main" ]; then
           echo "Skipping CI state recording: not running on main branch"
           exit 0
         fi

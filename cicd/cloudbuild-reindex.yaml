@@ -54,9 +54,14 @@ steps:
       - '-c'
       - |
         set -euo pipefail
+        GOLD_MAP_ARG=""
+        if [ -f /workspace/eval/gold_map.json ]; then
+          GOLD_MAP_ARG="--gold-map /workspace/eval/gold_map.json"
+        fi
+
         python3 rag/retrieval_eval.py \
           --queries /workspace/eval/dev.jsonl \
-          ${_GOLD_MAP_FLAG:---gold-map /workspace/eval/gold_map.json} \
+          $${GOLD_MAP_ARG} \
           --threshold LOWEST \
           --clean \
           --project "${PROJECT_ID}" \

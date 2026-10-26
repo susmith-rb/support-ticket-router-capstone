@@ -9,6 +9,7 @@ Validates compliance with:
 
 import json
 from pathlib import Path
+import re
 from rag.ci_eval_gate import compute_chain_version, execute_gate_check, main
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -51,7 +52,7 @@ def test_ci_pipeline_contract():
     # State recording final step
     assert "id: 'record-ci-state'" in raw_content
     assert "waitFor: ['post-deploy-smoke', 'corpus-reindex-on-main', 'terraform-tflint']" in raw_content
-    assert 'if [ "${BRANCH_NAME:-}" != "main" ]; then' in raw_content
+    assert 'if [ "${BRANCH_NAME}" != "main" ]; then' in raw_content
     assert 'gsutil cp /workspace/ci_state_new.json "gs://${_CORPUS_BUCKET}/ci/state.json"' in raw_content
 
     # Step commands and tools
@@ -175,6 +176,26 @@ def test_eval_gate_conditional_execution():
         "Skipping golden eval gate: no retrieval-relevant changes (set _RUN_EVAL=true to force)"
         in raw_content
     )
+
+
+# REQ-CICD-009
+def test_no_unsupported_cloudbuild_substitution_fallbacks():
+    """Cloud Build built-ins and substitutions must not use bash fallback syntax (${VAR:-...}).
+
+    Cloud Build only substitutes the exact form ${VAR}; ${VAR:-default} is passed
+    to bash unsubstituted, resulting in empty values for environment variables not exported.
+    """
+    pattern = re.compile(r"\$\{(BRANCH_NAME|PROJECT_ID|SHORT_SHA|COMMIT_SHA|_[A-Z_]+):-")
+
+    for yaml_path in sorted(CICD_DIR.glob("*.yaml")):
+        content = yaml_path.read_text(encoding="utf-8")
+        assert "${BRANCH_NAME:-" not in content, (
+            f"Found unsupported '${{BRANCH_NAME:-' in {yaml_path.name}"
+        )
+        match = pattern.search(content)
+        assert not match, (
+            f"Found unsupported substitution fallback '{match.group(0)}' in {yaml_path.name}"
+        )
 
 
 # REQ-CICD-007
