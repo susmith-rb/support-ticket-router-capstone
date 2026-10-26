@@ -96,6 +96,22 @@ def load_baseline(baseline_path: Optional[str]) -> Dict[str, float]:
     return {**default_baseline, **data}
 
 
+def _query_id(q: Dict[str, Any]) -> str:
+    """Extract query identifier with priority: qid -> query_id -> id -> str(thread_id)."""
+    raw_id = (
+        q.get("qid")
+        or q.get("query_id")
+        or q.get("id")
+        or (str(q["thread_id"]) if "thread_id" in q and q["thread_id"] is not None else "")
+    )
+    return str(raw_id).strip()
+
+
+def _query_text(q: Dict[str, Any]) -> str:
+    """Extract query text with priority: query -> text."""
+    return str(q.get("query") or q.get("text") or "").strip()
+
+
 def evaluate_system_results(
     system_top10: Dict[str, List[str]],
     labels_c_path: Optional[str],
@@ -125,8 +141,13 @@ def evaluate_system_results(
     recalls = []
     mrrs = []
     for q in queries:
-        qid = q.get("query_id") or q.get("id") or str(q.get("thread_id"))
-        gold = q.get("gold_doc") or q.get("primary") or q.get("relevant_doc")
+        qid = _query_id(q)
+        gold = (
+            q.get("gold_doc")
+            or q.get("primary")
+            or q.get("relevant_doc")
+            or q.get("relevant")
+        )
         retrieved = system_top10.get(qid, [])
         if not gold:
             continue
@@ -273,11 +294,28 @@ def main(argv: Optional[List[str]] = None) -> int:
                 location=args.location,
             )
             print(f"Executing search requests against {args.project}/{args.engine} ({args.location})...")
+            empty_query_count = 0
             for q in queries:
-                qid = q.get("query_id") or q.get("id") or str(q.get("thread_id"))
-                qtext = clean_query(q.get("text", "")) if clean_query else q.get("text", "")
+                qid = _query_id(q)
+                raw_text = _query_text(q)
+                if not raw_text:
+                    empty_query_count += 1
+                    sys.stderr.write(f"Warning: Empty query text for query ID '{qid}'\n")
+                    continue
+                qtext = clean_query(raw_text) if clean_query else raw_text
+                if not qtext:
+                    empty_query_count += 1
+                    sys.stderr.write(f"Warning: Cleaned query text is empty for query ID '{qid}'\n")
+                    continue
                 res = client.search(qtext, threshold="LOWEST", page_size=10)
                 system_top10[qid] = list(res.document_ids[:10])
+
+            if empty_query_count > 0:
+                sys.stderr.write(
+                    f"Error: {empty_query_count} query/queries had empty text. "
+                    "Refusing to execute evaluation gate with missing query text.\n"
+                )
+                return 2  # Exit code 2: Gate could not run
         elif not system_top10 and not queries:
             sys.stderr.write(
                 "Error: Neither --system-run nor valid --queries file provided.\n"
@@ -324,6 +362,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             "passed": passed,
             "scope": args.scope,
             "split": args.split,
+            "system_top10": system_top10,
             "metrics": metrics,
             "baseline": baseline,
             "gate_thresholds": {

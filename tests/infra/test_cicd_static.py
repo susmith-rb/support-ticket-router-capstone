@@ -287,15 +287,18 @@ def test_ci_eval_gate_logic(tmp_path):
 # REQ-CICD-002
 # REQ-CICD-004
 def test_ci_eval_gate_live_search_branch(monkeypatch, tmp_path):
-    """Verify live SearchClient integration in ci_eval_gate uses SearchResult attributes without drift."""
+    """Verify live SearchClient integration uses real dev.jsonl schema (qid/query) and cleans text."""
     from rag.search_client import SearchResult
     import rag.ci_eval_gate as eval_gate_module
+
+    received_queries = []
 
     class FakeSearchClient:
         def __init__(self, project=None, engine=None, location=None):
             self.project = project
 
         def search(self, query_text, threshold="LOWEST", page_size=10):
+            received_queries.append(query_text)
             return SearchResult(
                 document_ids=["doc-1", "doc-2"],
                 latency_ms=12.5,
@@ -305,10 +308,28 @@ def test_ci_eval_gate_live_search_branch(monkeypatch, tmp_path):
 
     monkeypatch.setattr(eval_gate_module, "SearchClient", FakeSearchClient)
 
-    queries_file = tmp_path / "queries.json"
-    queries_file.write_text(json.dumps([
-        {"id": "q1", "text": "how do I reset password?", "gold_doc": "doc-1"}
-    ]))
+    # Real dev.jsonl row schema: qid, query, relevant, intent, split, thread_id
+    dev_rows = [
+        {
+            "qid": "d000",
+            "query": "Where is my order #12345? [ORDER]",
+            "relevant": "doc-1",
+            "intent": "order_status",
+            "split": "dev",
+            "thread_id": "784356",
+        },
+        {
+            "qid": "d001",
+            "query": "How do I return an item?",
+            "relevant": "doc-2",
+            "intent": "returns_refunds",
+            "split": "dev",
+            "thread_id": "992144",
+        },
+    ]
+
+    queries_file = tmp_path / "dev.jsonl"
+    queries_file.write_text("\n".join(json.dumps(r) for r in dev_rows) + "\n", encoding="utf-8")
     out_file = tmp_path / "out.json"
 
     exit_code = eval_gate_module.main([
@@ -325,7 +346,68 @@ def test_ci_eval_gate_live_search_branch(monkeypatch, tmp_path):
     assert out_file.exists()
     saved = json.loads(out_file.read_text())
     assert saved["verdict"] == "PASS"
-    assert saved["metrics"]["recall@5"] == 1.0
+
+    # 1. Assert fake client receives non-empty, cleaned query text
+    assert len(received_queries) == 2
+    assert "Where is my order" in received_queries[0]
+    assert "[ORDER]" not in received_queries[0]
+    assert received_queries[1] == "How do I return an item?"
+
+    # 2. Assert results are keyed by qid, not thread_id
+    assert "d000" in saved["system_top10"]
+    assert "d001" in saved["system_top10"]
+    assert "784356" not in saved["system_top10"]
+    assert "992144" not in saved["system_top10"]
+
+    # 3. Assert evaluate_system_results receives and handles the qid keys
+    metrics = eval_gate_module.evaluate_system_results(
+        system_top10=saved["system_top10"],
+        labels_c_path=None,
+        queries=dev_rows,
+        scope="MAIN",
+        split="dev",
+    )
+    assert metrics["recall@5"] == 1.0
+    assert metrics["n_evaluated"] == 2
+
+
+# REQ-CICD-002
+# REQ-CICD-004
+def test_ci_eval_gate_empty_query_fails_exit_2(monkeypatch, tmp_path):
+    """Empty query strings in queries file must produce counted warning and fail with exit code 2."""
+    from rag.search_client import SearchResult
+    import rag.ci_eval_gate as eval_gate_module
+
+    class FakeSearchClient:
+        def __init__(self, project=None, engine=None, location=None):
+            pass
+
+        def search(self, query_text, threshold="LOWEST", page_size=10):
+            return SearchResult(
+                document_ids=["doc-1"],
+                latency_ms=5.0,
+                total_size=1,
+                filter_applied="",
+            )
+
+    monkeypatch.setattr(eval_gate_module, "SearchClient", FakeSearchClient)
+
+    bad_rows = [
+        {"qid": "d000", "query": "", "relevant": "doc-1", "thread_id": "111"},
+        {"qid": "d001", "query": "valid query", "relevant": "doc-2", "thread_id": "222"},
+    ]
+    queries_file = tmp_path / "bad_queries.jsonl"
+    queries_file.write_text("\n".join(json.dumps(r) for r in bad_rows) + "\n", encoding="utf-8")
+    out_file = tmp_path / "out.json"
+
+    exit_code = eval_gate_module.main([
+        "--queries", str(queries_file),
+        "--out", str(out_file),
+        "--project", "test-project",
+        "--engine", "test-engine",
+        "--location", "global",
+    ])
+    assert exit_code == 2
 
 
 # REQ-CICD-004
