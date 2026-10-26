@@ -43,7 +43,16 @@ def test_ci_pipeline_contract():
     # Change detection and evaluation substitution
     assert "_RUN_EVAL: 'auto'" in raw_content
     assert "gcr.io/google.com/cloudsdktool/cloud-sdk:slim" in raw_content
-    assert "git fetch --deepen=1 origin || true" in raw_content
+    assert "git fetch" not in raw_content
+    assert 'gsutil cat "gs://${_CORPUS_BUCKET}/ci/state.json" > /workspace/ci_state_prev.json' in raw_content
+    assert "--state-in /workspace/ci_state_prev.json" in raw_content
+    assert "--state-out /workspace/ci_state_new.json" in raw_content
+
+    # State recording final step
+    assert "id: 'record-ci-state'" in raw_content
+    assert "waitFor: ['post-deploy-smoke', 'corpus-reindex-on-main', 'terraform-tflint']" in raw_content
+    assert 'if [ "${BRANCH_NAME:-}" != "main" ]; then' in raw_content
+    assert 'gsutil cp /workspace/ci_state_new.json "gs://${_CORPUS_BUCKET}/ci/state.json"' in raw_content
 
     # Step commands and tools
     assert "ruff check rag/ tests/" in raw_content
@@ -252,6 +261,50 @@ def test_ci_eval_gate_logic(tmp_path):
     saved = json.loads(out_file.read_text())
     assert saved["verdict"] == "PASS"
     assert saved["chain_version"] == cv1
+
+
+# REQ-CICD-002
+# REQ-CICD-004
+def test_ci_eval_gate_live_search_branch(monkeypatch, tmp_path):
+    """Verify live SearchClient integration in ci_eval_gate uses SearchResult attributes without drift."""
+    from rag.search_client import SearchResult
+    import rag.ci_eval_gate as eval_gate_module
+
+    class FakeSearchClient:
+        def __init__(self, project=None, engine=None, location=None):
+            self.project = project
+
+        def search(self, query_text, threshold="LOWEST", page_size=10):
+            return SearchResult(
+                document_ids=["doc-1", "doc-2"],
+                latency_ms=12.5,
+                total_size=2,
+                filter_applied="status: ANY(\"active\")",
+            )
+
+    monkeypatch.setattr(eval_gate_module, "SearchClient", FakeSearchClient)
+
+    queries_file = tmp_path / "queries.json"
+    queries_file.write_text(json.dumps([
+        {"id": "q1", "text": "how do I reset password?", "gold_doc": "doc-1"}
+    ]))
+    out_file = tmp_path / "out.json"
+
+    exit_code = eval_gate_module.main([
+        "--queries", str(queries_file),
+        "--out", str(out_file),
+        "--project", "test-project",
+        "--engine", "test-engine",
+        "--location", "global",
+        "--min-recall", "0.50",
+        "--min-mrr", "0.50",
+        "--enforce-gate"
+    ])
+    assert exit_code == 0
+    assert out_file.exists()
+    saved = json.loads(out_file.read_text())
+    assert saved["verdict"] == "PASS"
+    assert saved["metrics"]["recall@5"] == 1.0
 
 
 # REQ-CICD-004

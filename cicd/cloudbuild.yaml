@@ -16,8 +16,11 @@ steps:
       - '-c'
       - |
         set -euo pipefail
-        git fetch --deepen=1 origin || true
-        python3 scripts/ci_changes.py --env-file /workspace/changes.env
+        gsutil cat "gs://${_CORPUS_BUCKET}/ci/state.json" > /workspace/ci_state_prev.json 2>/dev/null || echo '{}' > /workspace/ci_state_prev.json
+        python3 scripts/ci_changes.py \
+          --env-file /workspace/changes.env \
+          --state-in /workspace/ci_state_prev.json \
+          --state-out /workspace/ci_state_new.json
 
   # ===========================================================================
   # Step 1: Unit, Resilience, Ruff Lint & Spec Traceability Tests (blocking)
@@ -247,6 +250,32 @@ steps:
           exit 0
         fi
         # python3 scripts/test_alerting_e2e.py --smoke-only
+
+  # ===========================================================================
+  # Step 9: Record CI State (Only on main after all prior terminal steps pass)
+  # ===========================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'record-ci-state'
+    waitFor: ['post-deploy-smoke', 'corpus-reindex-on-main', 'terraform-tflint']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        if [ "${BRANCH_NAME:-}" != "main" ]; then
+          echo "Skipping CI state recording: not running on main branch"
+          exit 0
+        fi
+        RUN_EVAL="${_RUN_EVAL}"
+        if [ "$${RUN_EVAL}" = "false" ]; then
+          echo "Preserving previous retrieval fingerprint because _RUN_EVAL=false"
+          python3 scripts/ci_changes.py \
+            --keep-prev retrieval \
+            --state-in /workspace/ci_state_prev.json \
+            --state-out /workspace/ci_state_new.json
+        fi
+        echo "=== Recording updated CI state to GCS ==="
+        gsutil cp /workspace/ci_state_new.json "gs://${_CORPUS_BUCKET}/ci/state.json"
 
 options:
   logging: CLOUD_LOGGING_ONLY

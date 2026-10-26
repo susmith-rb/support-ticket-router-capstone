@@ -1,14 +1,24 @@
 """Unit tests for change-aware CI path detection (scripts/ci_changes.py).
 
 Validates that:
-- detect_changes correctly identifies modified subsystems.
-- Tests are marked as always running.
-- Golden Eval Gate (RETRIEVAL_CHANGED) runs on retrieval files and skips on docs/unrelated.
-- resolve_flags falls back to running all subsystems if changed files are None.
+- detect_changes correctly identifies modified subsystems for pure file lists.
+- compute_fingerprints generates deterministic SHA-256 fingerprints per subsystem.
+- Subsystem isolation: changes to one subsystem do not trigger unrelated subsystems.
+- Docs, results, and label changes do not flip retrieval fingerprints.
+- CLI --state-in with missing/empty baseline flags all subsystems as changed.
+- CLI --keep-prev preserves specified subsystem fingerprints across state updates.
 - write_env_file generates valid shell environment exports.
 """
 
-from scripts.ci_changes import detect_changes, resolve_flags, write_env_file
+from scripts.ci_changes import (
+    compute_fingerprints,
+    detect_changes,
+    load_state,
+    main,
+    resolve_flags,
+    write_env_file,
+    write_state,
+)
 
 
 # REQ-CICD-002
@@ -115,3 +125,160 @@ def test_write_env_file(tmp_path):
     assert "export RETRIEVAL_CHANGED=true\n" in content
     assert "export TERRAFORM_CHANGED=false\n" in content
     assert "export CORPUS_CHANGED=true\n" in content
+
+
+# REQ-CICD-009
+def test_compute_fingerprints_deterministic(tmp_path):
+    """compute_fingerprints must be stable across multiple runs on identical files."""
+    tf_dir = tmp_path / "deploy" / "terraform" / "single-project"
+    tf_dir.mkdir(parents=True)
+    (tf_dir / "main.tf").write_text("resource null_resource x {}", encoding="utf-8")
+
+    corpus_dir = tmp_path / "rag" / "corpus_v2"
+    corpus_dir.mkdir(parents=True)
+    (corpus_dir / "faq.txt").write_text("Sample FAQ content", encoding="utf-8")
+
+    fp1 = compute_fingerprints(tmp_path)
+    fp2 = compute_fingerprints(tmp_path)
+
+    assert fp1 == fp2
+    assert set(fp1.keys()) == {"retrieval", "corpus", "terraform"}
+    for k, v in fp1.items():
+        assert len(v) == 64  # SHA-256 hex string
+
+
+# REQ-CICD-009
+def test_fingerprints_subsystem_isolation_and_doc_exclusions(tmp_path):
+    """Changes to one subsystem only affect its fingerprint; doc edits don't flip retrieval."""
+    tf_dir = tmp_path / "deploy" / "terraform" / "single-project"
+    tf_dir.mkdir(parents=True)
+    tf_file = tf_dir / "main.tf"
+    tf_file.write_text("resource null_resource x {}", encoding="utf-8")
+
+    corpus_dir = tmp_path / "rag" / "corpus_v2"
+    corpus_dir.mkdir(parents=True)
+    corpus_file = corpus_dir / "faq.txt"
+    corpus_file.write_text("FAQ 1", encoding="utf-8")
+
+    rag_dir = tmp_path / "rag"
+    gate_file = rag_dir / "ci_eval_gate.py"
+    gate_file.write_text("print('gate')", encoding="utf-8")
+
+    doc_file = rag_dir / "README.md"
+    doc_file.write_text("# Documentation", encoding="utf-8")
+
+    base_fps = compute_fingerprints(tmp_path)
+
+    # 1. Edit docs: none of retrieval, corpus, or terraform should change
+    doc_file.write_text("# Updated Documentation", encoding="utf-8")
+    doc_fps = compute_fingerprints(tmp_path)
+    assert doc_fps == base_fps
+
+    # 2. Edit terraform: only terraform changes
+    tf_file.write_text("resource null_resource y {}", encoding="utf-8")
+    tf_fps = compute_fingerprints(tmp_path)
+    assert tf_fps["terraform"] != base_fps["terraform"]
+    assert tf_fps["corpus"] == base_fps["corpus"]
+    assert tf_fps["retrieval"] == base_fps["retrieval"]
+
+    # 3. Edit standalone rag script: only retrieval changes
+    gate_file.write_text("print('updated gate')", encoding="utf-8")
+    rag_fps = compute_fingerprints(tmp_path)
+    assert rag_fps["retrieval"] != tf_fps["retrieval"]
+    assert rag_fps["corpus"] == tf_fps["corpus"]
+    assert rag_fps["terraform"] == tf_fps["terraform"]
+
+    # 4. Edit corpus: both corpus and retrieval change
+    corpus_file.write_text("FAQ 2", encoding="utf-8")
+    corpus_fps = compute_fingerprints(tmp_path)
+    assert corpus_fps["corpus"] != rag_fps["corpus"]
+    assert corpus_fps["retrieval"] != rag_fps["retrieval"]
+    assert corpus_fps["terraform"] == rag_fps["terraform"]
+
+
+# REQ-CICD-009
+def test_cli_state_in_missing_triggers_all(tmp_path):
+    """Missing or empty --state-in marks all subsystems as changed and writes state-out."""
+    corpus_dir = tmp_path / "rag" / "corpus_v2"
+    corpus_dir.mkdir(parents=True)
+    (corpus_dir / "faq.txt").write_text("FAQ", encoding="utf-8")
+
+    env_file = tmp_path / "changes.env"
+    state_out = tmp_path / "state_new.json"
+    missing_state = tmp_path / "nonexistent.json"
+
+    ret = main([
+        "--root", str(tmp_path),
+        "--state-in", str(missing_state),
+        "--state-out", str(state_out),
+        "--env-file", str(env_file),
+    ])
+    assert ret == 0
+
+    assert state_out.is_file()
+    saved_state = load_state(state_out)
+    assert "retrieval" in saved_state
+    assert "corpus" in saved_state
+    assert "terraform" in saved_state
+
+    env_content = env_file.read_text(encoding="utf-8")
+    assert "export RETRIEVAL_CHANGED=true\n" in env_content
+    assert "export CORPUS_CHANGED=true\n" in env_content
+    assert "export TERRAFORM_CHANGED=true\n" in env_content
+
+
+# REQ-CICD-009
+def test_cli_state_in_matching_skips_all(tmp_path):
+    """When current fingerprints match --state-in, all subsystem flags are false."""
+    corpus_dir = tmp_path / "rag" / "corpus_v2"
+    corpus_dir.mkdir(parents=True)
+    (corpus_dir / "faq.txt").write_text("FAQ", encoding="utf-8")
+
+    current_fps = compute_fingerprints(tmp_path)
+    state_in = tmp_path / "state_prev.json"
+    write_state(current_fps, state_in)
+
+    env_file = tmp_path / "changes.env"
+    state_out = tmp_path / "state_new.json"
+
+    ret = main([
+        "--root", str(tmp_path),
+        "--state-in", str(state_in),
+        "--state-out", str(state_out),
+        "--env-file", str(env_file),
+    ])
+    assert ret == 0
+
+    env_content = env_file.read_text(encoding="utf-8")
+    assert "export RETRIEVAL_CHANGED=false\n" in env_content
+    assert "export CORPUS_CHANGED=false\n" in env_content
+    assert "export TERRAFORM_CHANGED=false\n" in env_content
+
+
+# REQ-CICD-009
+def test_cli_keep_prev_subsystem(tmp_path):
+    """--keep-prev preserves specified subsystem fingerprint in state-out."""
+    rag_dir = tmp_path / "rag"
+    rag_dir.mkdir(parents=True)
+    gate_file = rag_dir / "ci_eval_gate.py"
+    gate_file.write_text("v1", encoding="utf-8")
+
+    initial_fps = compute_fingerprints(tmp_path)
+    state_in = tmp_path / "state_prev.json"
+    write_state(initial_fps, state_in)
+
+    # Modify retrieval file so its new fingerprint differs
+    gate_file.write_text("v2", encoding="utf-8")
+    state_out = tmp_path / "state_new.json"
+
+    ret = main([
+        "--root", str(tmp_path),
+        "--state-in", str(state_in),
+        "--state-out", str(state_out),
+        "--keep-prev", "retrieval",
+    ])
+    assert ret == 0
+
+    saved_state = load_state(state_out)
+    # Retrieval fingerprint must be kept from state_in (initial_fps)
+    assert saved_state["retrieval"] == initial_fps["retrieval"]

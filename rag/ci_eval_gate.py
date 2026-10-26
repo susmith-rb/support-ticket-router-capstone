@@ -277,7 +277,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 qid = q.get("query_id") or q.get("id") or str(q.get("thread_id"))
                 qtext = clean_query(q.get("text", "")) if clean_query else q.get("text", "")
                 res = client.search(qtext, threshold="LOWEST", page_size=10)
-                system_top10[qid] = [doc.id for doc in res.results]
+                system_top10[qid] = list(res.document_ids[:10])
         elif not system_top10 and not queries:
             sys.stderr.write(
                 "Error: Neither --system-run nor valid --queries file provided.\n"
