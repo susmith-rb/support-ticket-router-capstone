@@ -38,7 +38,10 @@ The Argolis project operates under strict sandbox quota and billing allocations.
 | `REQ-BILLING-002` | Reuse of Offline Evaluation Artifacts | `done` | `tests/rag/test_clean_eval.py::test_reuse_questions_file_loading` |
 | `REQ-BILLING-003` | Token-Based Cost Measurement and Probe Requirement | `done` | `manual: cd training/router_s1 && .venv/bin/python pipeline/usage_probe.py` |
 | `REQ-BILLING-004` | Permitted Runtime Argolis API Calls | `done` | `manual: python rag/search_test.py "Where is my order"` |
-| `REQ-BILLING-005` | Agent Search Pricing Tier Optimization | `open` | `manual: ./scripts/tf_vm.sh logged-run single-project single_project_plan plan` |
+| `REQ-BILLING-005` | Agent Search Pricing Tier Optimization | `done` | `manual: ./scripts/tf_vm.sh logged-run single-project single_project_plan plan` |
+| `REQ-BILL-MODELS-001` | Centralized Model Configuration Registry | `done` | `tests/test_no_hardcoded_models.py::test_model_id_resolves_all_standard_roles` |
+| `REQ-BILL-MODELS-002` | Automated Hard-Coded Model Guard | `done` | `tests/test_no_hardcoded_models.py::test_no_hardcoded_model_literals_in_repo` |
+| `REQ-BILL-MODELS-003` | Model Change & Upgrade Runbook | `done` | `tests/test_no_hardcoded_models.py::test_fallback_yaml_parser_accurately_parses_models_yaml` |
 
 ---
 
@@ -76,7 +79,8 @@ The Argolis project operates under strict sandbox quota and billing allocations.
 - **Statement**: The Agent Search application `support-kb-search` SHOULD be evaluated for migration to the Standard search tier ($1.50 per 1,000 queries list price) without the Enterprise LLM add-on ($4.00 base + $4.00 add-on per 1,000 queries list price), subject to user decision and empirical retrieval verification.
 - **Rationale**: Potential cost reduction opportunity identified by conductor, pending user decision and retrieval parity measurement (PLAN.md; rag/EVAL_RESULTS.md §7; list prices in rag/README.md).
 - **Acceptance**: `manual: ./scripts/tf_vm.sh logged-run single-project single_project_plan plan`
-- **Status**: open
+- **Evidence**: Migrated `support-kb-search` to Standard tier with no add-ons via in-place Terraform update on VM `laya-tune` (2026-10-26). Live REST verification confirms `searchEngineConfig = {"searchTier": "SEARCH_TIER_STANDARD"}`. DEV parity sweep (`dev_rows_standard.json`, n=218 MAIN) confirmed retrieval quality: recall@5 = 0.9128 (matches Enterprise 0.9128), MRR@10 = 0.7955 (vs Enterprise 0.7996), nDCG@5 = 0.7262 (vs Enterprise 0.7288, Δ = -0.0026). Zero request parameters rejected (`relevanceThreshold`, `boostSpec`, `summarySpec` all functional).
+- **Status**: done
 - **Owner**: billing-and-models
 
 ---

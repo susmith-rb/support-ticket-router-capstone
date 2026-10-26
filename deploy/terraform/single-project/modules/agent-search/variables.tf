@@ -12,11 +12,11 @@ variable "search_location" {
 variable "search_tier" {
   description = "Search tier (SEARCH_TIER_STANDARD or SEARCH_TIER_ENTERPRISE)"
   type        = string
-  default     = "SEARCH_TIER_ENTERPRISE"
+  default     = "SEARCH_TIER_STANDARD"
 }
 
 variable "search_add_ons" {
   description = "Search add-ons (e.g. SEARCH_ADD_ON_LLM)"
   type        = list(string)
-  default     = ["SEARCH_ADD_ON_LLM"]
+  default     = []
 }

@@ -19,13 +19,13 @@ variable "search_location" {
 variable "search_tier" {
   description = "Search tier for support-kb-search"
   type        = string
-  default     = "SEARCH_TIER_ENTERPRISE"
+  default     = "SEARCH_TIER_STANDARD"
 }
 
 variable "search_add_ons" {
   description = "Search add-ons for support-kb-search"
   type        = list(string)
-  default     = ["SEARCH_ADD_ON_LLM"]
+  default     = []
 }
 
 variable "labels" {
@@ -44,6 +44,30 @@ variable "corpus_bucket_name" {
 
 variable "github_connection_ready" {
   description = "Whether the Cloud Build GitHub connection is authorized"
+  type        = bool
+  default     = true
+}
+
+variable "github_app_installation_id" {
+  description = "GitHub App Installation ID (used when connection is ready)"
+  type        = number
+  default     = 124561748
+}
+
+variable "github_oauth_secret_version" {
+  description = "Secret Manager secret version storing the GitHub OAuth/PAT token"
+  type        = string
+  default     = "projects/susmith-fde-ticket-router/locations/us-central1/secrets/github-connection-github-oauthtoken-2a4cdb/versions/latest"
+}
+
+variable "enable_nightly_schedule" {
+  description = "Whether the Cloud Scheduler nightly evaluation job is enabled (paused if false)"
+  type        = bool
+  default     = false
+}
+
+variable "enable_ci_triggers" {
+  description = "Whether CI/CD triggers are enabled to run on push/PR (disabled if false)"
   type        = bool
   default     = false
 }

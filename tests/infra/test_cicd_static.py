@@ -127,6 +127,16 @@ def test_github_connection_gating():
     assert "default     = false" in vars_tf
 
 
+def test_ci_triggers_disabled_by_default():
+    """CI triggers must be disabled by default during development."""
+    main_tf = (TF_CLOUDBUILD_DIR / "main.tf").read_text(encoding="utf-8")
+    vars_tf = (TF_CLOUDBUILD_DIR / "variables.tf").read_text(encoding="utf-8")
+
+    assert "variable \"enable_ci_triggers\"" in vars_tf
+    assert "default     = false" in vars_tf
+    assert "disabled        = !var.enable_ci_triggers" in main_tf
+
+
 # REQ-CICD-007
 def test_scheduler_job_target_contract():
     """Scheduler job must target nightly trigger :run endpoint via OAuth."""

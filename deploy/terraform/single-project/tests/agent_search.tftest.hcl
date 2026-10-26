@@ -13,6 +13,10 @@ override_resource {
   target = module.agent_search.google_discovery_engine_search_engine.support_kb_search
 }
 
+override_resource {
+  target = module.cloudbuild.google_cloudbuildv2_connection.github[0]
+}
+
 run "verify_agent_search_defaults" {
   command = plan
 
@@ -22,8 +26,8 @@ run "verify_agent_search_defaults" {
   }
 
   assert {
-    condition     = module.agent_search.search_tier == "SEARCH_TIER_ENTERPRISE"
-    error_message = "Expected search_tier to default to SEARCH_TIER_ENTERPRISE"
+    condition     = module.agent_search.search_tier == "SEARCH_TIER_STANDARD"
+    error_message = "Expected search_tier to default to SEARCH_TIER_STANDARD"
   }
 
   assert {
@@ -62,13 +66,13 @@ run "verify_custom_tier_and_location" {
 
   variables {
     search_location = "us"
-    search_tier     = "SEARCH_TIER_STANDARD"
-    search_add_ons  = []
+    search_tier     = "SEARCH_TIER_ENTERPRISE"
+    search_add_ons  = ["SEARCH_ADD_ON_LLM"]
   }
 
   assert {
-    condition     = module.agent_search.search_tier == "SEARCH_TIER_STANDARD"
-    error_message = "Expected search_tier to flow through as SEARCH_TIER_STANDARD"
+    condition     = module.agent_search.search_tier == "SEARCH_TIER_ENTERPRISE"
+    error_message = "Expected search_tier to flow through as SEARCH_TIER_ENTERPRISE"
   }
 
   assert {

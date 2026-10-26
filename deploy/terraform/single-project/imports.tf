@@ -14,3 +14,9 @@ import {
   to = module.agent_search.google_discovery_engine_search_engine.support_kb_search
   id = "projects/susmith-fde-ticket-router/locations/global/collections/default_collection/engines/support-kb-search"
 }
+
+# Import block for existing 2nd-gen Cloud Build GitHub connection
+import {
+  to = module.cloudbuild.google_cloudbuildv2_connection.github[0]
+  id = "projects/susmith-fde-ticket-router/locations/us-central1/connections/github-connection"
+}

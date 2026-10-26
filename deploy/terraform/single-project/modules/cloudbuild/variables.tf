@@ -42,17 +42,29 @@ variable "github_repo_uri" {
 variable "github_app_installation_id" {
   description = "GitHub App Installation ID (used when connection is ready)"
   type        = number
-  default     = 0
+  default     = 124561748
 }
 
 variable "github_oauth_secret_version" {
   description = "Secret Manager secret version storing the GitHub OAuth/PAT token"
   type        = string
-  default     = ""
+  default     = "projects/susmith-fde-ticket-router/locations/us-central1/secrets/github-connection-github-oauthtoken-2a4cdb/versions/latest"
 }
 
 variable "nightly_schedule_cron" {
   description = "Cron schedule for nightly evaluation"
   type        = string
   default     = "0 2 * * *"
+}
+
+variable "enable_nightly_schedule" {
+  description = "Whether the Cloud Scheduler nightly evaluation job is enabled (paused if false)"
+  type        = bool
+  default     = false
+}
+
+variable "enable_ci_triggers" {
+  description = "Whether CI/CD triggers are enabled to run on push/PR (disabled if false)"
+  type        = bool
+  default     = false
 }

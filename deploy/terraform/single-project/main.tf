@@ -39,11 +39,15 @@ module "agent_search" {
 }
 
 module "cloudbuild" {
-  source                  = "./modules/cloudbuild"
-  project_id              = var.project_id
-  region                  = var.region
-  corpus_bucket_name      = data.google_storage_bucket.corpus_bucket.name
-  github_connection_ready = var.github_connection_ready
+  source                      = "./modules/cloudbuild"
+  project_id                  = var.project_id
+  region                      = var.region
+  corpus_bucket_name          = data.google_storage_bucket.corpus_bucket.name
+  github_connection_ready     = var.github_connection_ready
+  github_app_installation_id  = var.github_app_installation_id
+  github_oauth_secret_version = var.github_oauth_secret_version
+  enable_nightly_schedule     = var.enable_nightly_schedule
+  enable_ci_triggers          = var.enable_ci_triggers
 
   depends_on = [module.project_services]
 }

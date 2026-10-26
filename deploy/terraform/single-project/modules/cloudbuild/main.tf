@@ -82,6 +82,7 @@ resource "google_cloudbuild_trigger" "ci" {
   description     = "CI pipeline executed on push to main branch"
   service_account = google_service_account.cloudbuild_sa.id
   filename        = "cicd/cloudbuild.yaml"
+  disabled        = !var.enable_ci_triggers
 
   repository_event_config {
     repository = google_cloudbuildv2_repository.repo[0].id
@@ -100,6 +101,7 @@ resource "google_cloudbuild_trigger" "ci_pr" {
   description     = "CI pipeline executed on pull requests targeting main branch"
   service_account = google_service_account.cloudbuild_sa.id
   filename        = "cicd/cloudbuild.yaml"
+  disabled        = !var.enable_ci_triggers
 
   repository_event_config {
     repository = google_cloudbuildv2_repository.repo[0].id
@@ -119,6 +121,7 @@ resource "google_cloudbuild_trigger" "reindex" {
   service_account = google_service_account.cloudbuild_sa.id
   filename        = "cicd/cloudbuild-reindex.yaml"
   included_files  = ["rag/corpus_v2/**"]
+  disabled        = !var.enable_ci_triggers
 
   repository_event_config {
     repository = google_cloudbuildv2_repository.repo[0].id
@@ -137,16 +140,18 @@ resource "google_cloudbuild_trigger" "nightly" {
   service_account = google_service_account.cloudbuild_sa.id
 
   git_file_source {
-    path      = "cicd/cloudbuild-nightly.yaml"
-    uri       = var.github_repo_uri
-    revision  = "refs/heads/main"
-    repo_type = "GITHUB"
+    path       = "cicd/cloudbuild-nightly.yaml"
+    uri        = var.github_connection_ready ? null : var.github_repo_uri
+    repository = var.github_connection_ready ? google_cloudbuildv2_repository.repo[0].id : null
+    revision   = "refs/heads/main"
+    repo_type  = "GITHUB"
   }
 
   source_to_build {
-    uri       = var.github_repo_uri
-    ref       = "refs/heads/main"
-    repo_type = "GITHUB"
+    uri        = var.github_connection_ready ? null : var.github_repo_uri
+    repository = var.github_connection_ready ? google_cloudbuildv2_repository.repo[0].id : null
+    ref        = "refs/heads/main"
+    repo_type  = "GITHUB"
   }
 }
 
@@ -162,6 +167,7 @@ resource "google_cloud_scheduler_job" "nightly_eval" {
   schedule         = var.nightly_schedule_cron
   time_zone        = "UTC"
   attempt_deadline = "320s"
+  paused           = !var.enable_nightly_schedule
 
   http_target {
     http_method = "POST"
