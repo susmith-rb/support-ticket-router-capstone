@@ -22,7 +22,7 @@ Global Retail Hub receives millions of inquiries per day across chat, email, and
 | **Peak-event behaviour** | Prior pilot chatbot hard-failed on GenAI 429s; ~11k tickets dropped in one event (illustrative) | Availability is a business requirement, not an SRE nicety |
 | **Context carry-over** | None; returning customers re-explain the issue | Drives AHT and repeat contacts |
 
-**Solution.** A sentiment- and intent-aware router plus grounded FAQ assistant built as ADK agents on GEAP Agent Runtime and surfaced through the GE App. A three-tier router (deterministic rules → fine-tuned typed-decision encoder → Gemini) classifies each PII-redacted message; angry/urgent tickets bypass automation entirely and are handed to a human queue with a calming acknowledgement; neutral/factual tickets receive an answer grounded in Agent Search with enforced citations; order-status questions use a read-only MCP mock. Ticket state lives in Cloud SQL (system of record) with BigQuery analytics; conversation state in GEAP Sessions; cross-session customer context in GEAP Memory Bank. Every external dependency is behind a circuit breaker with a defined degraded path, and no ticket is dropped under any failure.
+**Solution.** A sentiment- and intent-aware router plus grounded FAQ assistant built as ADK agents federated across **GEAP Agent Runtime** (`TriageRouterAgent`), **GKE Autopilot** (`FaqResolverAgent`), and **Cloud Run** (`HumanQueueAgent` + MCP servers) via **Agent Gateway / Agent Registry (A2A)** and surfaced through the GE App. A three-tier router (deterministic rules → fine-tuned typed-decision encoder → Gemini) classifies each PII-redacted message; angry/urgent tickets bypass automation entirely and are handed to a human queue with a calming acknowledgement; neutral/factual tickets receive an answer grounded in Agent Search with enforced citations; order-status questions use a read-only MCP mock. Ticket state lives in Cloud SQL (system of record) with BigQuery analytics; conversation state in GEAP Sessions; cross-session customer context in GEAP Memory Bank. Every external dependency is behind a circuit breaker with a defined degraded path, and no ticket is dropped under any failure.
 
 ### 1.1 Core "North Star" Metrics
 
@@ -48,15 +48,17 @@ flowchart LR
     SM["Secret Manager (DB creds, webhook HMAC)"]
   end
   subgraph VPCSC["VPC-SC perimeter: support-sandbox (us-central1)"]
-    subgraph Runtime["GEAP Agent Runtime"]
-      TR["TriageRouterAgent (ADK custom agent: rules + encoder + thresholds, no LLM on hot path)"]
-      FR["FaqResolverAgent (ADK LlmAgent, Gemini 3.8 Flash; intent skills)"]
-      EH["EscalationHandoffAgent (templated ack; Flash for tone only)"]
-      HQ["HumanQueueAgent (Tier-1 agent view in GE App)"]
+    subgraph Runtime["GEAP Agent Runtime (Front-Door Orchestrator)"]
+      TR["TriageRouterAgent (ADK custom agent: rules + encoder + thresholds + calming ack)"]
+      EH["EscalationHandoffAgent (folded into TriageRouter; templated ack)"]
       SES["GEAP Sessions (conversation state, 24 h idle TTL)"]
       MEM["GEAP Memory Bank (durable customer facts, 180 d, no PII)"]
     end
-    subgraph Fallback["Cloud Run (fallback + tools)"]
+    subgraph GKE["GKE Autopilot (Enterprise K8s + Workload Identity)"]
+      FR["FaqResolverAgent (ADK LlmAgent, Gemini 3.8 Flash; HPA 2-10 pods)"]
+    end
+    subgraph Fallback["Cloud Run (Serverless Ops Agent + MCP Tools + Fallback)"]
+      HQ["HumanQueueAgent (Tier-1 supervisor view in GE App)"]
       CR["ADK agents fallback host (same image, min 1 warm)"]
       OL["order-lookup-mcp (read-only mock, SELECT-only DB role)"]
       TK["ticket-db-mcp (Cloud SQL connector)"]
@@ -140,7 +142,7 @@ flowchart LR
 ### 2.1 GCP Project Structure
 
 - **Project:** `susmith-fde-ticket-router` (Argolis). Terraform root `deploy/terraform/single-project`, state in GCS with object versioning.
-- **`us-central1` (data plane, co-located for latency and zero-egress):** Agent Runtime (4 agents), Cloud Run (fallback agent host, MCP servers), GEAP Sessions + Memory Bank, Cloud SQL (regional HA), Pub/Sub, Agent Gateway, Model Armor templates, Cloud Build workers, Artifact Registry.
+- **`us-central1` (data plane, co-located for latency and zero-egress):** Heterogeneous 3-runtime ADK deployment — **GEAP Agent Runtime** (1 agent: `TriageRouterAgent` with escalation handoff folded in), **GKE Autopilot** (1 agent: `FaqResolverAgent` with Workload Identity + HPA, demonstrating enterprise Kubernetes/GPU-cluster integration), and **Cloud Run** (1 agent: `HumanQueueAgent`, plus fallback agent host and MCP servers `order-lookup-mcp` / `ticket-db-mcp`) — alongside GEAP Sessions + Memory Bank, Cloud SQL (regional HA), Pub/Sub, Agent Gateway, Model Armor templates, Cloud Build workers, Artifact Registry.
 - **`us-central1` or `us-east4` (variable `laya_region`):** Vertex endpoint `router-s1` (Laya `typed-decisions`, `g2-standard-4` + L4, min 2 replicas). Cross-region adds ~10–15 ms RTT if `us-east4` is used; inside the Tier-1 budget.
 - **`us` multi-region:** Agent Search data stores (`faq-articles`, `resolved-threads`) and BigQuery dataset `support_analytics` — residency kept in the US, matching the simulated customer's US entity.
 - **`global`:** GE App, Agent Registry (cross-project discovery of agents, tools, MCP servers), IAP.
@@ -272,11 +274,10 @@ sequenceDiagram
 
 | Agent / MCP Service | Runtime | Model | Tools & Data Access | IAM Scope & Permissions | Loop Guards |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`TriageRouterAgent`** *(Root · Published to GE App)* | Agent Runtime *(Cloud Run fallback)* | **Tier 1:** `router-s1` (`:rawPredict`)<br>**Tier 2:** `gemini-3.8-flash` | `router-s1` endpoint, `ticket-db-mcp` (upsert), GEAP Sessions, Memory Bank (read) | `sa-triage`: endpoint-only `predictionUser`, `cloudsql.client` | ≤ 1 Tier-2 call, ≤ 2 tools, **3 s budget** |
-| **`FaqResolverAgent`** *(Bounded ReAct Answerer)* | Agent Runtime *(Cloud Run fallback)* | **Default:** `gemini-3.8-flash`<br>**Multi-hop (≤ 3%):** `gemini-3.1-pro` | `agent-search-mcp`, `order-lookup-mcp` (read-only), `ticket-db-mcp` (update), semantic cache | `sa-faq`: `discoveryengine.viewer`, Memory Bank summary writer | ≤ 6 tools, ≤ 2 retrieval rounds, 1 regen, **20 s budget** |
-| **`EscalationHandoffAgent`** *(Async HITL Dispatcher)* | Agent Runtime *(Cloud Run fallback)* | Templated ack (`gemini-3.8-flash` optional for context-aware tone) | `ticket-db-mcp` (status), Pub/Sub `human-queue` publisher | `sa-handoff`: `pubsub.publisher` (1 topic), `cloudsql.client` | ≤ 1 LLM call (120 tok), ≤ 2 tools, **2 s budget** |
-| **`HumanQueueAgent`** *(GE App View for Marco)* | Agent Runtime | `gemini-3.8-flash` | `ticket-db-mcp` (read, claim, PII re-ID), `agent-search-mcp` (suggested reply) | `sa-queue`: read + claim only; re-ID restricted to claimed tickets | ≤ 4 tool calls |
-| **`order-lookup-mcp` & `ticket-db-mcp`** | Cloud Run MCP Servers | — | Cloud SQL Postgres (`orders_mock`, `tickets`, `redaction_maps`) via Auth Proxy | `sa-order-mcp` (`SELECT`-only `orders_ro`; Postgres RLS) · `sa-ticket-mcp` (table-scoped) | **300 ms / 500 ms** timeouts, uniform `not_found` |
+| **`TriageRouterAgent`** *(Root + Escalation Handoff · Published to GE App)* | **GEAP Agent Runtime** *(Cloud Run fallback)* | **Tier 1:** `router-s1` (`:rawPredict`)<br>**Tier 2:** `gemini-3.8-flash` | `router-s1` endpoint, `ticket-db-mcp` (upsert), Pub/Sub `human-queue`, GEAP Sessions, Memory Bank (read) | `sa-triage`: endpoint-only `predictionUser`, `pubsub.publisher` (1 topic), `cloudsql.client` | ≤ 1 Tier-2 call, ≤ 2 tools, **3 s budget** |
+| **`FaqResolverAgent`** *(Bounded ReAct Answerer)* | **GKE Autopilot** *(HPA 2–10 pods, Workload Identity; Cloud Run fallback)* | **Default:** `gemini-3.8-flash`<br>**Multi-hop (≤ 3%):** `gemini-3.1-pro` | `agent-search-mcp`, `order-lookup-mcp` (read-only), `ticket-db-mcp` (update), semantic cache | K8s SA `ksa-faq` → GCP SA `sa-faq` (`iam.workloadIdentityUser`): `discoveryengine.viewer`, Memory Bank writer | ≤ 6 tools, ≤ 2 retrieval rounds, 1 regen, **20 s budget** |
+| **`HumanQueueAgent`** *(GE App View for Marco)* | **Cloud Run** *(Serverless ops surface, min 0–1 warm)* | `gemini-3.8-flash` | `ticket-db-mcp` (read, claim, PII re-ID), `agent-search-mcp` (suggested reply) | `sa-queue`: read + claim only; re-ID restricted to claimed tickets | ≤ 4 tool calls |
+| **`order-lookup-mcp` & `ticket-db-mcp`** | **Cloud Run** MCP Servers | — | Cloud SQL Postgres (`orders_mock`, `tickets`, `redaction_maps`) via Auth Proxy | `sa-order-mcp` (`SELECT`-only `orders_ro`; Postgres RLS) · `sa-ticket-mcp` (table-scoped) | **300 ms / 500 ms** timeouts, uniform `not_found` |
 
 Multi-agent coordination pattern: **router-dispatcher with A2A handoff**, not a free-form planner. `TriageRouterAgent` never asks an LLM "what to do next"; the `RouterDecision` is a typed object and the dispatch is a `match` statement. Only `FaqResolverAgent` runs a bounded ReAct loop (`retrieve → generate → validate`). This keeps the angry path deterministic and auditable, and avoids runaway execution by construction.
 
@@ -462,7 +463,7 @@ The evaluation suite runs against a **30-case PR gate suite** (Cloud Build block
 | **2. Unit & Contract Tests** | `pytest --cov` (≥ 80% on router packages), A2A card + MCP schema validation, `schemathesis` vs. OpenAPI, Postgres `testcontainer`. | **Blocking (PR)** — 100% pass + coverage floor required. |
 | **3. AI Evaluation Gate** | **Gen AI Evaluation Service** runs the 30-case PR suite on every PR and the 320-case golden benchmark nightly against BigQuery `eval_runs`. | **Blocking** — PR suite gates merge; nightly golden gates release promotion. |
 | **4. Build, Sign & Provision** | Build Docker images → Artifact Registry with SBOM + `cosign` signature (content-hash skips unchanged); `terraform plan` (PR) / `apply` (`main` via Workload Identity SA). | **Blocking (`main`)** — signed provenance + clean `terraform apply`. |
-| **5. Canary & Promotion (Stretch)** | Deploy dark revisions (Agent Runtime, Cloud Run, Vertex `router-s1`); shift **10% agent / 5% `router-s1`** traffic for a 30-min bake → promote to **100%** and tag `eval_runs.promoted=true`. | **Auto-Rollback** on SLO burn or sampled angry recall < 0.995. |
+| **5. Canary & Promotion (Stretch)** | Deploy dark revisions across **Agent Runtime** (`TriageRouterAgent`), **GKE Autopilot** (`kubectl set image` for `FaqResolverAgent`), **Cloud Run** (`HumanQueueAgent`), and Vertex `router-s1`; shift **10% agent / 5% `router-s1`** traffic for a 30-min bake → promote to **100%** and tag `eval_runs.promoted=true`. | **Auto-Rollback** on SLO burn or sampled angry recall < 0.995. |
 
 ---
 
