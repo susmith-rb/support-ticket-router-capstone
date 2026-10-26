@@ -137,7 +137,7 @@ Cloud Build 2nd gen connections (`google_cloudbuildv2_connection`) require an in
    - Provider: **GitHub**
    - Connection name: `github-connection`
    - Secret Manager Secret: Click **Create Secret** (auto-generates an OAuth token in Secret Manager).
-4. Click **Authorize** to redirect to GitHub and authorize the **Google Cloud Build** GitHub App on repository `susmith-rb/support-ticket-router-capstone`.
+4. Click **Authorize** to redirect to GitHub and authorize the **Google Cloud Build** GitHub App on repository `cloud-ai-fde/susmith-capstone-support-ticket-router`.
 5. Link repository `support-ticket-router-capstone`.
 6. Once authorized, update `deploy/terraform/single-project/terraform.tfvars` (or pass `-var="github_connection_ready=true"`) on the VM to enable automated trigger management.
 

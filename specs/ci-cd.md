@@ -106,7 +106,7 @@ cicd/
 - **Owner**: ci-cd
 
 ### REQ-CICD-006: Cloud Build v2 GitHub Connection and Repository Resources
-- **Statement**: Terraform MUST codify 2nd-gen Cloud Build GitHub connection (`google_cloudbuildv2_connection`) and repository (`google_cloudbuildv2_repository`) resources for `susmith-rb/support-ticket-router-capstone`, gated behind `var.github_connection_ready` (default `false`) to allow graceful provisioning prior to manual GitHub App OAuth token authorization. CI triggers (`ci`, `ci_pr`, `reindex`) MUST support a gating variable `enable_ci_triggers` (default `false`), ensuring triggers remain disabled during development (`disabled = !var.enable_ci_triggers`) to avoid unwanted live Agent Search query load and costs on routine commits.
+- **Statement**: Terraform MUST codify 2nd-gen Cloud Build GitHub connection (`google_cloudbuildv2_connection`) and repository (`google_cloudbuildv2_repository`) resources for `cloud-ai-fde/susmith-capstone-support-ticket-router`, gated behind `var.github_connection_ready` (default `false`) to allow graceful provisioning prior to manual GitHub App OAuth token authorization. CI triggers (`ci`, `ci_pr`, `reindex`) MUST support a gating variable `enable_ci_triggers` (default `false`), ensuring triggers remain disabled during development (`disabled = !var.enable_ci_triggers`) to avoid unwanted live Agent Search query load and costs on routine commits.
 - **Rationale**: Provides declarative infrastructure-as-code for GitHub CI triggers while cleanly decoupling from the one-time interactive OAuth setup in Cloud Console and protecting development budgets (PLAN8.md §2).
 - **Acceptance**: `tests/infra/test_cicd_static.py::test_github_connection_gating`
 - **Status**: done
@@ -130,7 +130,7 @@ cicd/
 
 ## 4. Open Questions, Deltas & AI FDE Delivery Alignment
 
-1. **One-Time Manual GitHub App Authorization**: Cloud Build 2nd generation requires an interactive authorization flow where the user navigates to Cloud Build > Repositories in Google Cloud Console, installs the Google Cloud Build GitHub App into `susmith-rb/support-ticket-router-capstone`, and authorizes the Secret Manager secret containing the personal access token. Terraform manages the connection and triggers once `var.github_connection_ready` is flipped to `true`.
+1. **One-Time Manual GitHub App Authorization**: Cloud Build 2nd generation requires an interactive authorization flow where the user navigates to Cloud Build > Repositories in Google Cloud Console, installs the Google Cloud Build GitHub App into `cloud-ai-fde/susmith-capstone-support-ticket-router`, and authorizes the Secret Manager secret containing the personal access token. Terraform manages the connection and triggers once `var.github_connection_ready` is flipped to `true`.
 2. **Golden Eval Gate Thresholds vs. Targets**:
    - Consensus `recall@5 ≥ 0.90` and `MRR@10 ≥ 0.75` are enforced directly from TDD §6.4 targets.
    - For `nDCG@5`, while the long-term TDD aspirational target is `0.80`, current empirical measurements achieve `0.650` under silver baseline and `0.681` under Release 3. Therefore, following `ai-fde-delivery` guidance, `nDCG@5` is enforced as a **non-regression gate** against the stored baseline (`nDCG@5 ≥ baseline − 0.02`), rather than an unachievable hard floor that would deadlock pipeline merges.

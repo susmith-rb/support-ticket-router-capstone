@@ -4,7 +4,7 @@
 - **Last Updated:** Oct 23, 2026
 - **Status:** In progress (Ready for Team Review)
 - **Customer:** Global Retail Hub (simulated international e-commerce)
-- **Code Repository:** [https://github.com/susmith-rb/support-ticket-router-capstone](https://github.com/susmith-rb/support-ticket-router-capstone)
+- **Code Repository:** [https://github.com/cloud-ai-fde/susmith-capstone-support-ticket-router](https://github.com/cloud-ai-fde/susmith-capstone-support-ticket-router)
 - **Full Detailed Spec (20 Sections):** [docs/TDD_DETAILED.md](TDD_DETAILED.md)
 
 ---

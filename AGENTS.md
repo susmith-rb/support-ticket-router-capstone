@@ -36,7 +36,7 @@ This repository strictly enforces Spec-Driven Development (SDD). Specifications 
 
 - Org policies enforce: no external VM IPs (use Cloud NAT + IAP SSH), OS Login, Shielded VM with Secure Boot. There is no default VPC.
 - SSH to the GPU VM `laya-tune` as `susmith@gcp.altostrat.com` via `--tunnel-through-iap`.
-- GitHub push path runs on the VM using `sudo -u admin_susmith_altostrat_com` (where the repo clone and deploy key live; see PLAN2.md and deploy/terraform/README.md).
+- GitHub push path runs on the VM using `sudo -u admin_susmith_altostrat_com` (repo clone `~/capstone-git`, remote `org` = `github-capstone-org:cloud-ai-fde/susmith-capstone-support-ticket-router.git` via deploy key `~/.ssh/github_capstone_org_deploy`). The old personal repo `susmith-rb/support-ticket-router-capstone` is retired (archive only).
 - Laya: train with `laya>=0.4.13` (`laya-train`), evaluate and serve with `laya==0.3.20` (the Model Garden container's version). Keep both working.
 - Teacher model: `gemini-3.1-pro-preview` at location `global`.
 

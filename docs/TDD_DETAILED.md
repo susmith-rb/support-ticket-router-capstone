@@ -2,7 +2,7 @@
 
 **Author:** @susmith (Cloud AI FDE) · **Last Updated:** Oct 20, 2026 · **Status:** Draft for Review
 **Customer:** Global Retail Hub (simulated international e-commerce) · **Sponsor:** VP Customer Experience · **Customer Lead:** Support Platform Lead
-**Code Repository:** [https://github.com/susmith-rb/support-ticket-router-capstone](https://github.com/susmith-rb/support-ticket-router-capstone)
+**Code Repository:** [https://github.com/cloud-ai-fde/susmith-capstone-support-ticket-router](https://github.com/cloud-ai-fde/susmith-capstone-support-ticket-router)
 **Reviewers:** Dhawal (team lead), FDE pod lead / onboarding buddy
 **Supersedes:** Scoping doc architecture (FastAPI + React + Cloud Run-only); conflicts resolved in §15 ADRs 2, 5, 6, 10.
 

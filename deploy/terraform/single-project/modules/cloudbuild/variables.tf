@@ -36,7 +36,7 @@ variable "github_repo_name" {
 variable "github_repo_uri" {
   description = "Remote URI for the GitHub repository"
   type        = string
-  default     = "https://github.com/susmith-rb/support-ticket-router-capstone.git"
+  default     = "https://github.com/cloud-ai-fde/susmith-capstone-support-ticket-router.git"
 }
 
 variable "github_app_installation_id" {
