@@ -146,6 +146,7 @@ steps:
           --queries /workspace/eval/dev.jsonl \
           $${LABELS_ARG} \
           $${BASELINE_ARG} \
+          --retrieval-config intent_soft_noisy_0.2 \
           --project "${PROJECT_ID}" \
           --location "${_LOCATION}" \
           --min-recall 0.90 \

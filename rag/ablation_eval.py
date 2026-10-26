@@ -649,6 +649,53 @@ def generate_noisy_intents(
     return noisy
 
 
+def build_search_kwargs(
+    cfg: AblationConfig,
+    query_item: Dict[str, Any],
+    noisy_intent: Optional[str] = None,
+    rewrite_cache: Optional[Dict[str, Dict[str, Any]]] = None,
+    token: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Construct keyword arguments for SearchClient.search based on an AblationConfig."""
+    qid = (
+        query_item.get("qid")
+        or query_item.get("query_id")
+        or query_item.get("id")
+        or str(query_item.get("thread_id", ""))
+    )
+    qtext = query_item.get("query") or query_item.get("text") or ""
+    oracle_intent = query_item.get("intent", "other")
+
+    if cfg.intent_mode == "oracle":
+        active_intent = oracle_intent
+    elif cfg.intent_mode == "noisy":
+        active_intent = noisy_intent
+    else:
+        active_intent = None
+
+    if cfg.query_rewrite_mode == "rewrite_only" and rewrite_cache and qid in rewrite_cache:
+        effective_q = rewrite_cache[qid].get("rewritten", qtext)
+    elif cfg.query_rewrite_mode == "rewrite_plus_original" and rewrite_cache and qid in rewrite_cache:
+        rw = rewrite_cache[qid].get("rewritten", qtext)
+        cl_orig = clean_query(qtext)
+        effective_q = f"{rw} {cl_orig}".strip()
+    else:
+        effective_q = qtext
+
+    return {
+        "query": effective_q,
+        "page_size": cfg.page_size,
+        "threshold": cfg.threshold,
+        "clean": cfg.clean,
+        "intent_family": active_intent,
+        "intent_boost": cfg.intent_boost,
+        "fallback_min_results": cfg.fallback_min_results,
+        "ranking_expression": cfg.ranking_expression,
+        "rerank": False,
+        "token": token,
+    }
+
+
 def evaluate_single_config(
     cfg: AblationConfig,
     queries: List[Dict[str, Any]],
@@ -698,51 +745,30 @@ def evaluate_single_config(
 
         target = gold_map.get(doc, doc) if gold_map else doc
 
-        # Select intent family based on intent_mode
-        if cfg.intent_mode == "oracle":
-            active_intent = oracle_intent
-        elif cfg.intent_mode == "noisy":
-            active_intent = noisy_intent
-        else:
-            active_intent = None
-
-        # Determine effective query based on query_rewrite_mode
-        if cfg.query_rewrite_mode == "rewrite_only" and rewrite_cache and qid in rewrite_cache:
-            effective_q = rewrite_cache[qid].get("rewritten", qtext)
-        elif cfg.query_rewrite_mode == "rewrite_plus_original" and rewrite_cache and qid in rewrite_cache:
-            rw = rewrite_cache[qid].get("rewritten", qtext)
-            cl_orig = clean_query(qtext)
-            effective_q = f"{rw} {cl_orig}".strip()
-        else:
-            effective_q = qtext
-
         # 1. Base search execution (with search_cache reuse across configs)
+        search_kwargs = build_search_kwargs(
+            cfg=cfg,
+            query_item=item,
+            noisy_intent=noisy_intent,
+            rewrite_cache=rewrite_cache,
+            token=tok,
+        )
+        effective_q = search_kwargs["query"]
         search_key = (
-            effective_q,
-            active_intent,
-            cfg.intent_boost,
-            cfg.threshold,
-            cfg.clean,
-            cfg.page_size,
-            cfg.fallback_min_results,
-            cfg.ranking_expression,
+            search_kwargs["query"],
+            search_kwargs["intent_family"],
+            search_kwargs["intent_boost"],
+            search_kwargs["threshold"],
+            search_kwargs["clean"],
+            search_kwargs["page_size"],
+            search_kwargs["fallback_min_results"],
+            search_kwargs["ranking_expression"],
         )
 
         if search_key in search_cache:
             base_res = search_cache[search_key]
         else:
-            base_res = client.search(
-                query=effective_q,
-                page_size=cfg.page_size,
-                threshold=cfg.threshold,
-                clean=cfg.clean,
-                intent_family=active_intent,
-                intent_boost=cfg.intent_boost,
-                fallback_min_results=cfg.fallback_min_results,
-                ranking_expression=cfg.ranking_expression,
-                rerank=False,
-                token=tok,
-            )
+            base_res = client.search(**search_kwargs)
             search_cache[search_key] = base_res
 
         if cfg.name == "baseline" and baseline_cache is not None:
@@ -835,7 +861,7 @@ def evaluate_single_config(
             "top10_ids": doc_ids[:10],
             "latency": total_lat,
             "latency_ms": total_lat,
-            "applied_intent": active_intent,
+            "applied_intent": search_kwargs["intent_family"],
             "gold": target,
             "relevant": doc,
             "original_gold": item.get("original_gold", doc),

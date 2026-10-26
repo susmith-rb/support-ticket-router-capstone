@@ -62,6 +62,7 @@ def test_ci_pipeline_contract():
     assert "publish_faq.py --work rag/corpus_v2 --lint-only" in raw_content
     assert "terraform fmt -check" in raw_content
     assert "ci_eval_gate.py" in raw_content
+    assert "--retrieval-config intent_soft_noisy_0.2" in raw_content
     assert "--min-recall 0.90" in raw_content
     assert "--min-mrr 0.75" in raw_content
     assert "--max-ndcg-drop 0.02" in raw_content
@@ -101,6 +102,7 @@ def test_nightly_pipeline_contract():
     assert "id: 'archive-evaluation-results'" in raw
 
     assert "ci_eval_gate.py" in raw
+    assert "--retrieval-config intent_soft_noisy_0.2" in raw
     assert "eval/nightly/" in raw
 
 
@@ -297,8 +299,12 @@ def test_ci_eval_gate_live_search_branch(monkeypatch, tmp_path):
         def __init__(self, project=None, engine=None, location=None):
             self.project = project
 
-        def search(self, query_text, threshold="LOWEST", page_size=10):
-            received_queries.append(query_text)
+        def search(self, query=None, query_text=None, threshold="LOWEST", page_size=10, clean=False, **kwargs):
+            from rag.search_client import clean_query
+            text = query if query is not None else query_text
+            if clean and text:
+                text = clean_query(text)
+            received_queries.append(text)
             return SearchResult(
                 document_ids=["doc-1", "doc-2"],
                 latency_ms=12.5,
@@ -608,3 +614,110 @@ def test_ci_eval_gate_multi_label_scoring_regression(monkeypatch, tmp_path):
     assert saved_live["metrics"]["recall@5"] == 1.0
     assert saved_live["metrics"]["mrr@10"] == 1.0
     assert saved_live["metrics"]["n_evaluated"] == 2
+
+
+# REQ-CICD-002
+# REQ-CICD-004
+def test_ci_eval_gate_search_kwargs_match_ablation_eval(monkeypatch, tmp_path):
+    """Verify SearchClient.search kwargs produced by the gate for intent_soft_noisy_0.2 equal those from ablation_eval."""
+    import rag.ablation_eval as ae
+    import rag.ci_eval_gate as eval_gate_module
+    from rag.search_client import SearchResult
+
+    dev_rows = [
+        {
+            "qid": "d000",
+            "query": "Where is my order #12345? [ORDER]",
+            "relevant": "faq-order-status-track",
+            "intent": "order_status",
+            "split": "dev",
+            "thread_id": "784356",
+        },
+        {
+            "qid": "d001",
+            "query": "How do I return an item?",
+            "relevant": "faq-returns-refunds-window",
+            "intent": "returns_refunds",
+            "split": "dev",
+            "thread_id": "992144",
+        },
+        {
+            "qid": "d002",
+            "query": "Credit card was charged twice for same purchase",
+            "relevant": "faq-account-payment-double-charge",
+            "intent": "account_payment",
+            "split": "dev",
+            "thread_id": "334455",
+        },
+    ]
+
+    gate_captured_kwargs = []
+    ae_captured_kwargs = []
+
+    class FakeGateClient:
+        def __init__(self, project=None, engine=None, location=None, data_store=None, sleep_sec=0.0):
+            pass
+
+        def get_token(self):
+            return "mock-token-xyz"
+
+        def search(self, **kwargs):
+            gate_captured_kwargs.append(dict(kwargs))
+            return SearchResult(
+                document_ids=["doc-1"],
+                latency_ms=10.0,
+                total_size=1,
+                filter_applied="",
+            )
+
+    class FakeAeClient:
+        def __init__(self, project=None, engine=None, location=None, data_store=None, sleep_sec=0.0):
+            pass
+
+        def get_token(self):
+            return "mock-token-xyz"
+
+        def search(self, **kwargs):
+            ae_captured_kwargs.append(dict(kwargs))
+            return SearchResult(
+                document_ids=["doc-1"],
+                latency_ms=10.0,
+                total_size=1,
+                filter_applied="",
+            )
+
+    # 1. Run ablation_eval.evaluate_single_config for intent_soft_noisy_0.2
+    cfg = ae.get_ablation_configs(["intent_soft_noisy_0.2"])[0]
+    noisy_intents = ae.generate_noisy_intents(dev_rows, seed=42, error_rate=0.14)
+    ae.evaluate_single_config(
+        cfg=cfg,
+        queries=dev_rows,
+        noisy_intents=noisy_intents,
+        gold_map={},
+        client=FakeAeClient(),
+    )
+
+    # 2. Run ci_eval_gate.main with --retrieval-config intent_soft_noisy_0.2
+    monkeypatch.setattr(eval_gate_module, "SearchClient", FakeGateClient)
+    dev_file = tmp_path / "dev.jsonl"
+    dev_file.write_text("\n".join(json.dumps(r) for r in dev_rows) + "\n", encoding="utf-8")
+    out_file = tmp_path / "out.json"
+
+    exit_code = eval_gate_module.main([
+        "--queries", str(dev_file),
+        "--retrieval-config", "intent_soft_noisy_0.2",
+        "--out", str(out_file),
+        "--project", "test-project",
+        "--engine", "test-engine",
+        "--location", "global",
+        "--no-enforce-gate",
+    ])
+    assert exit_code == 0
+    assert len(gate_captured_kwargs) == len(dev_rows)
+    assert len(ae_captured_kwargs) == len(dev_rows)
+
+    # 3. Assert search kwargs produced by gate EQUAL those produced by ablation_eval
+    for idx in range(len(dev_rows)):
+        gate_kw = gate_captured_kwargs[idx]
+        ae_kw = ae_captured_kwargs[idx]
+        assert gate_kw == ae_kw, f"Mismatch at query index {idx}:\nGate: {gate_kw}\nAE:   {ae_kw}"

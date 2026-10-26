@@ -36,6 +36,14 @@ except ImportError:
     SearchClient = None
     clean_query = None
 
+try:
+    import ablation_eval
+except ImportError:
+    try:
+        from rag import ablation_eval
+    except ImportError:
+        ablation_eval = None
+
 
 def compute_chain_version(
     code_sha: str = "HEAD",
@@ -240,6 +248,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         default=None,
         help="Configuration name in system run (default: None, auto-selects production config)",
     )
+    parser.add_argument(
+        "--retrieval-config",
+        default="intent_soft_noisy_0.2",
+        help="Retrieval configuration for live evaluation (e.g. intent_soft_noisy_0.2, baseline)",
+    )
     parser.add_argument("--project", default="susmith-fde-ticket-router", help="GCP Project ID")
     parser.add_argument("--engine", default="support-kb-search", help="Search engine ID")
     parser.add_argument("--location", default="global", help="Location (global)")
@@ -311,14 +324,52 @@ def main(argv: Optional[List[str]] = None) -> int:
             if not SearchClient:
                 sys.stderr.write("Error: search_client not available to query live Discovery Engine\n")
                 return 2
+
+            # Resolve retrieval configuration from ablation_eval
+            cfg = None
+            if ablation_eval:
+                matched_cfgs = ablation_eval.get_ablation_configs([args.retrieval_config])
+                if matched_cfgs:
+                    cfg = matched_cfgs[0]
+            if cfg is None:
+                sys.stderr.write(
+                    f"Warning: Configuration '{args.retrieval_config}' not found in ablation_eval, using fallback\n"
+                )
+                cfg = (
+                    ablation_eval.AblationConfig(
+                        name=args.retrieval_config,
+                        description=args.retrieval_config,
+                        threshold="LOWEST",
+                        clean=True,
+                        page_size=10,
+                    )
+                    if ablation_eval
+                    else None
+                )
+
+            # Generate deterministic noisy intents if required by config
+            noisy_intents = None
+            if cfg and cfg.intent_mode == "noisy" and ablation_eval:
+                noisy_intents = ablation_eval.generate_noisy_intents(
+                    queries, seed=42, error_rate=0.14
+                )
+
             client = SearchClient(
                 project=args.project,
                 engine=args.engine,
                 location=args.location,
             )
-            print(f"Executing search requests against {args.project}/{args.engine} ({args.location})...")
+            print(
+                f"Executing search requests against {args.project}/{args.engine} ({args.location}) "
+                f"with config '{args.retrieval_config}'..."
+            )
+            try:
+                tok = client.get_token()
+            except AttributeError:
+                tok = None
+
             empty_query_count = 0
-            for q in queries:
+            for idx, q in enumerate(queries):
                 qid = _query_id(q)
                 raw_text = _query_text(q)
                 if not raw_text:
@@ -330,7 +381,32 @@ def main(argv: Optional[List[str]] = None) -> int:
                     empty_query_count += 1
                     sys.stderr.write(f"Warning: Cleaned query text is empty for query ID '{qid}'\n")
                     continue
-                res = client.search(qtext, threshold="LOWEST", page_size=10)
+
+                if cfg and ablation_eval:
+                    noisy_intent = noisy_intents[idx] if noisy_intents is not None else None
+                    search_kwargs = ablation_eval.build_search_kwargs(
+                        cfg=cfg,
+                        query_item=q,
+                        noisy_intent=noisy_intent,
+                        token=tok,
+                    )
+                    try:
+                        res = client.search(**search_kwargs)
+                    except TypeError:
+                        # Compatibility fallback for mock/fake clients in tests defining search(query_text, ...)
+                        fb_kwargs = dict(search_kwargs)
+                        if "query" in fb_kwargs:
+                            fb_kwargs["query_text"] = fb_kwargs.pop("query")
+                        try:
+                            res = client.search(**fb_kwargs)
+                        except TypeError:
+                            res = client.search(
+                                search_kwargs["query"],
+                                threshold=search_kwargs.get("threshold", "LOWEST"),
+                                page_size=search_kwargs.get("page_size", 10),
+                            )
+                else:
+                    res = client.search(qtext, threshold="LOWEST", page_size=10)
                 system_top10[qid] = list(res.document_ids[:10])
 
             if empty_query_count > 0:
