@@ -130,10 +130,10 @@ steps:
         gsutil -m cp "gs://${_CORPUS_BUCKET}/eval/*" /workspace/eval/
 
         LABELS_ARG=""
-        if [ -f /workspace/eval/labels_c.jsonl ]; then
-          LABELS_ARG="--labels-c /workspace/eval/labels_c.jsonl"
-        elif [ -f /workspace/eval/labels_c2.jsonl ]; then
+        if [ -f /workspace/eval/labels_c2.jsonl ]; then
           LABELS_ARG="--labels-c /workspace/eval/labels_c2.jsonl"
+        elif [ -f /workspace/eval/labels_c.jsonl ]; then
+          LABELS_ARG="--labels-c /workspace/eval/labels_c.jsonl"
         fi
 
         BASELINE_ARG=""

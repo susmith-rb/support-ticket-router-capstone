@@ -466,3 +466,145 @@ def test_cloudbuild_no_hardcoded_project_literal():
     reindex = (CICD_DIR / "cloudbuild-reindex.yaml").read_text(encoding="utf-8")
     assert 'project = os.environ.get("PROJECT_ID", "susmith-fde-ticket-router")' not in reindex
     assert 'project = "${PROJECT_ID}"' in reindex
+
+
+# REQ-CICD-004
+def test_cloudbuild_labels_c2_preferred_over_labels_c():
+    """Cloud Build pipelines must prioritize canonical labels_c2.jsonl before fallback labels_c.jsonl."""
+    cloudbuild = (CICD_DIR / "cloudbuild.yaml").read_text(encoding="utf-8")
+    assert re.search(
+        r"if \[ -f /workspace/eval/labels_c2\.jsonl \]; then\s+LABELS_ARG=\"--labels-c /workspace/eval/labels_c2\.jsonl\"\s+elif \[ -f /workspace/eval/labels_c\.jsonl \]; then",
+        cloudbuild,
+    ), "cloudbuild.yaml must check labels_c2.jsonl before labels_c.jsonl"
+
+    nightly = (CICD_DIR / "cloudbuild-nightly.yaml").read_text(encoding="utf-8")
+    assert re.search(
+        r"if \[ -f /workspace/eval/labels_c2\.jsonl \]; then\s+LABELS_ARG=\"--labels-c /workspace/eval/labels_c2\.jsonl\"\s+elif \[ -f /workspace/eval/labels_c\.jsonl \]; then",
+        nightly,
+    ), "cloudbuild-nightly.yaml must check labels_c2.jsonl before labels_c.jsonl"
+
+
+# REQ-CICD-002
+# REQ-CICD-004
+def test_ci_eval_gate_multi_label_scoring_regression(monkeypatch, tmp_path):
+    """Regression test: multi_label_eval consensus metrics must correctly populate non-zero recall.
+
+    Verifies end-to-end execution:
+    1. Through main() with --system-run and --labels-c
+    2. Through main() with live search branch (Fake SearchClient) and --labels-c
+    """
+    from rag.search_client import SearchResult
+    import rag.ci_eval_gate as eval_gate_module
+
+    # Real schemas: dev queries, C2 labels, system top-10
+    dev_rows = [
+        {
+            "qid": "d000",
+            "query": "Where is my order #12345? [ORDER]",
+            "relevant": "faq-order-status-track",
+            "intent": "order_status",
+            "split": "dev",
+            "thread_id": "784356",
+        },
+        {
+            "qid": "d001",
+            "query": "How do I return an item?",
+            "relevant": "faq-returns-refunds-window",
+            "intent": "returns_refunds",
+            "split": "dev",
+            "thread_id": "992144",
+        },
+    ]
+    labels_c2_rows = [
+        {
+            "qid": "d000",
+            "support_request": True,
+            "language": "en",
+            "primary": "faq-order-status-track",
+            "relevant": ["faq-order-status-track", "faq-order-status-delay"],
+            "note": "order tracking",
+        },
+        {
+            "qid": "d001",
+            "support_request": True,
+            "language": "en",
+            "primary": "faq-returns-refunds-window",
+            "relevant": ["faq-returns-refunds-window"],
+            "note": "return window",
+        },
+    ]
+
+    dev_file = tmp_path / "dev.jsonl"
+    dev_file.write_text("\n".join(json.dumps(r) for r in dev_rows) + "\n", encoding="utf-8")
+
+    labels_file = tmp_path / "labels_c2.jsonl"
+    labels_file.write_text("\n".join(json.dumps(r) for r in labels_c2_rows) + "\n", encoding="utf-8")
+
+    system_run_file = tmp_path / "system_run.json"
+    system_run_file.write_text(json.dumps({
+        "system_top10": {
+            "d000": ["faq-order-status-track", "faq-other-complaint"],
+            "d001": ["faq-returns-refunds-window", "faq-other-complaint"],
+        }
+    }), encoding="utf-8")
+
+    # 1. End-to-end through main() with --system-run and --labels-c
+    out_file_sys = tmp_path / "out_sys.json"
+    exit_code = eval_gate_module.main([
+        "--system-run", str(system_run_file),
+        "--queries", str(dev_file),
+        "--labels-c", str(labels_file),
+        "--out", str(out_file_sys),
+        "--min-recall", "0.90",
+        "--min-mrr", "0.75",
+        "--enforce-gate",
+    ])
+    assert exit_code == 0
+    assert out_file_sys.exists()
+    saved_sys = json.loads(out_file_sys.read_text())
+    assert saved_sys["verdict"] == "PASS"
+    assert saved_sys["metrics"]["recall@5"] == 1.0
+    assert saved_sys["metrics"]["mrr@10"] == 1.0
+    assert saved_sys["metrics"]["n_evaluated"] == 2
+
+    # 2. End-to-end through main() with live search branch and --labels-c
+    class FakeSearchClient:
+        def __init__(self, project=None, engine=None, location=None):
+            pass
+
+        def search(self, query_text, threshold="LOWEST", page_size=10):
+            if "Where is my order" in query_text:
+                return SearchResult(
+                    document_ids=["faq-order-status-track"],
+                    latency_ms=10.0,
+                    total_size=1,
+                    filter_applied="",
+                )
+            return SearchResult(
+                document_ids=["faq-returns-refunds-window"],
+                latency_ms=10.0,
+                total_size=1,
+                filter_applied="",
+            )
+
+    monkeypatch.setattr(eval_gate_module, "SearchClient", FakeSearchClient)
+
+    out_file_live = tmp_path / "out_live.json"
+    exit_code_live = eval_gate_module.main([
+        "--queries", str(dev_file),
+        "--labels-c", str(labels_file),
+        "--out", str(out_file_live),
+        "--project", "test-project",
+        "--engine", "test-engine",
+        "--location", "global",
+        "--min-recall", "0.90",
+        "--min-mrr", "0.75",
+        "--enforce-gate",
+    ])
+    assert exit_code_live == 0
+    assert out_file_live.exists()
+    saved_live = json.loads(out_file_live.read_text())
+    assert saved_live["verdict"] == "PASS"
+    assert saved_live["metrics"]["recall@5"] == 1.0
+    assert saved_live["metrics"]["mrr@10"] == 1.0
+    assert saved_live["metrics"]["n_evaluated"] == 2

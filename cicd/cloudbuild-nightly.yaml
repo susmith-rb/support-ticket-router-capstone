@@ -30,7 +30,9 @@ steps:
       - |
         set -euo pipefail
         LABELS_ARG=""
-        if [ -f /workspace/eval/labels_c.jsonl ]; then
+        if [ -f /workspace/eval/labels_c2.jsonl ]; then
+          LABELS_ARG="--labels-c /workspace/eval/labels_c2.jsonl"
+        elif [ -f /workspace/eval/labels_c.jsonl ]; then
           LABELS_ARG="--labels-c /workspace/eval/labels_c.jsonl"
         fi
 

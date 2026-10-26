@@ -128,7 +128,7 @@ def evaluate_system_results(
             scope=scope,
             split=split,
         )
-        scope_res = eval_res.get(scope, {})
+        scope_res = eval_res.get(scope) if isinstance(eval_res.get(scope), dict) else eval_res
         cons = scope_res.get("consensus", {})
         return {
             "recall@5": cons.get("recall@5", 0.0),
@@ -152,15 +152,25 @@ def evaluate_system_results(
         if not gold:
             continue
 
-        hit = 1.0 if gold in retrieved[:5] else 0.0
-        recalls.append(hit)
-
-        mrr = 0.0
-        for rank, doc in enumerate(retrieved[:10], 1):
-            if doc == gold:
-                mrr = 1.0 / rank
-                break
-        mrrs.append(mrr)
+        if isinstance(gold, (list, tuple, set)):
+            gold_set = set(gold)
+            hit = 1.0 if any(d in gold_set for d in retrieved[:5]) else 0.0
+            recalls.append(hit)
+            mrr = 0.0
+            for rank, doc in enumerate(retrieved[:10], 1):
+                if doc in gold_set:
+                    mrr = 1.0 / rank
+                    break
+            mrrs.append(mrr)
+        else:
+            hit = 1.0 if gold in retrieved[:5] else 0.0
+            recalls.append(hit)
+            mrr = 0.0
+            for rank, doc in enumerate(retrieved[:10], 1):
+                if doc == gold:
+                    mrr = 1.0 / rank
+                    break
+            mrrs.append(mrr)
 
     mean_recall = sum(recalls) / len(recalls) if recalls else 0.0
     mean_mrr = sum(mrrs) / len(mrrs) if mrrs else 0.0
@@ -225,7 +235,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--gold-map", required=False, default=None, help="Path to gold map JSON")
     parser.add_argument("--baseline", required=False, default=None, help="Path to baseline metrics JSON")
     parser.add_argument("--system-run", required=False, default=None, help="Path to existing system run JSON")
-    parser.add_argument("--config", default="baseline", help="Configuration name in system run")
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Configuration name in system run (default: None, auto-selects production config)",
+    )
     parser.add_argument("--project", default="susmith-fde-ticket-router", help="GCP Project ID")
     parser.add_argument("--engine", default="support-kb-search", help="Search engine ID")
     parser.add_argument("--location", default="global", help="Location (global)")
@@ -269,14 +283,23 @@ def main(argv: Optional[List[str]] = None) -> int:
                 sys.stderr.write(f"Error: Missing input system run file: {args.system_run}\n")
                 return 2
             print(f"Loading system results from: {args.system_run}")
-            with open(args.system_run, "r", encoding="utf-8") as f:
-                run_data = json.load(f)
-            if isinstance(run_data, dict) and "system_top10" in run_data:
-                system_top10 = run_data["system_top10"]
-            elif isinstance(run_data, dict) and args.config in run_data:
-                system_top10 = run_data[args.config].get("system_top10", {})
-            elif isinstance(run_data, dict):
-                system_top10 = run_data
+            if multi_label_eval:
+                try:
+                    system_top10 = multi_label_eval.load_system_rows(
+                        args.system_run, config_name=args.config
+                    )
+                except Exception as e:
+                    sys.stderr.write(f"Warning: load_system_rows error: {e}, falling back to raw load\n")
+                    system_top10 = {}
+            if not system_top10:
+                with open(args.system_run, "r", encoding="utf-8") as f:
+                    run_data = json.load(f)
+                if isinstance(run_data, dict) and "system_top10" in run_data:
+                    system_top10 = run_data["system_top10"]
+                elif isinstance(run_data, dict) and args.config and args.config in run_data:
+                    system_top10 = run_data[args.config].get("system_top10", {})
+                elif isinstance(run_data, dict):
+                    system_top10 = run_data
 
         if args.labels_c:
             p = pathlib.Path(args.labels_c)
