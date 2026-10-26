@@ -28,6 +28,12 @@ import time
 import urllib.error
 import urllib.request
 
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from config.models import model_id  # noqa: E402
+
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from de_endpoint import search_url, data_store_name  # noqa: E402
 
@@ -117,9 +123,9 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--location", default="global", help="Discovery Engine location (default: global)")
     ap.add_argument("--per-article", type=int, default=2)
-    ap.add_argument("--gen-model", default="gemini-3.8-flash")
-    ap.add_argument("--qmodel", default="claude-sonnet-5-5")
-    ap.add_argument("--judge", default="claude-opus-5-5")
+    ap.add_argument("--gen-model", default=model_id("answer"))
+    ap.add_argument("--qmodel", default=model_id("question_gen"))
+    ap.add_argument("--judge", default=model_id("judge"))
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--gold-map", default=None, help="path to gold map JSON (old_id -> new_id)")
     ap.add_argument("--skip-judge", action="store_true", help="skip Eval Service and Claude judge evaluation")

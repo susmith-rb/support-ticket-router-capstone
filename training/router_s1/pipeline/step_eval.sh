@@ -12,7 +12,8 @@ python pipeline/evaluate.py --ckpt convaiinnovations/laya --subfolder typed-deci
 SHA=$(sha256sum $OUT/ckpt/model.safetensors | cut -c1-16)
 EPOCHS=$(grep -oE 'epochs=[0-9]+' logs/train_$RUN.log | head -1 | cut -d= -f2)
 TS=$(grep -oE 'train_seconds=[0-9]+' logs/train_$RUN.log | tail -1 | cut -d= -f2)
-printf '{"run":"%s","data":"%s","base":"english","loss":"soft-ce","shuffle_options":true,"epochs":%s,"seed":0,"train_seconds":%s,"gpu":"T4","teacher":"gemini-3.1-pro-preview x3","ckpt_sha256_16":"%s"}\n' "$RUN" "$DATA" "${EPOCHS:-4}" "${TS:-0}" "$SHA" > $OUT/manifest.json
+TEACHER_NAME="${TEACHER_NAME:-$(python3 -m config.models teacher 2>/dev/null || echo 'teacher')} x3"
+printf '{"run":"%s","data":"%s","base":"english","loss":"soft-ce","shuffle_options":true,"epochs":%s,"seed":0,"train_seconds":%s,"gpu":"T4","teacher":"%s","ckpt_sha256_16":"%s"}\n' "$RUN" "$DATA" "${EPOCHS:-4}" "${TS:-0}" "$TEACHER_NAME" "$SHA" > $OUT/manifest.json
 cp logs/train_$RUN.log $OUT/train_full.log 2>/dev/null || true
 gsutil -m -q rsync -r $OUT "$BUCKET/runs/$RUN"; gsutil -q cp runs/baseline_* "$BUCKET/runs/"
 gsutil -m -q rsync -r $OUT/ckpt "$BUCKET/checkpoints/router-s1/$RUN"

@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """rag/rerank_ce.py — Cross-encoder reranker training, inference, and score fusion (PLAN7 Arm A).
 
-Fine-tunes a cross-encoder model (e.g. cross-encoder/ms-marco-MiniLM-L-6-v2) on
-graded relevance targets using MSE regression on grade/2, and provides post-retrieval
-score fusion with retrieval rank priors:
+Fine-tunes a cross-encoder model on graded relevance targets using MSE regression
+on grade/2, and provides post-retrieval score fusion with retrieval rank priors:
     final_score = α · ce_score + (1 − α) · rank_prior
 
 Justification for MSE regression on grade/2:
@@ -33,6 +32,12 @@ import random
 import sys
 import time
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from config.models import model_id  # noqa: E402
 
 
 def grade_to_label(grade: Union[int, float]) -> float:
@@ -193,13 +198,14 @@ def rerank_dataset(
     alphas: Sequence[float] = (0.3, 0.5, 0.7, 1.0),
     prior_mode: str = "reciprocal",
     config_prefix: str = "ce_minilm",
-    model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    model_name: Optional[str] = None,
     meta: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Rerank an entire dataset across multiple fusion alphas, measuring latency.
 
     Produces output matching the ablation/dev_rows_phaseD.json schema.
     """
+    resolved_model_name = model_name or model_id("ce_reranker_base")
     n_queries = len(candidate_rows)
 
     # Precompute CE scores for all queries to ensure latency measurements are fair
@@ -290,7 +296,7 @@ def rerank_dataset(
 
     out_dict = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "model_name": model_name,
+        "model_name": resolved_model_name,
         "n_queries": n_queries,
         "results": results,
     }
@@ -367,7 +373,7 @@ def train_cross_encoder(
     val_file: str,
     docs_file: str,
     output_dir: str,
-    model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    model_name: Optional[str] = None,
     epochs: int = 3,
     batch_size: int = 16,
     lr: float = 2e-5,
@@ -380,6 +386,7 @@ def train_cross_encoder(
     Target labels: grade / 2.0 (grade 2 -> 1.0, grade 1 -> 0.5, grade 0 -> 0.0).
     Early stopping selects checkpoint with lowest validation loss.
     """
+    resolved_model_name = model_name or model_id("ce_reranker_base")
     import torch
     from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
 
@@ -418,8 +425,8 @@ def train_cross_encoder(
         f"Validation set: {len(val_raw)} queries, {len(val_pairs)} pairs\n"
     )
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=1)
+    tokenizer = AutoTokenizer.from_pretrained(resolved_model_name)
+    model = AutoModelForSequenceClassification.from_pretrained(resolved_model_name, num_labels=1)
     model.train()
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
@@ -531,7 +538,7 @@ def train_cross_encoder(
 
     total_training_time = time.time() - training_start
     manifest = {
-        "model_name": model_name,
+        "model_name": resolved_model_name,
         "best_epoch": best_epoch,
         "best_val_loss": best_val_loss,
         "epochs": epochs,
@@ -562,7 +569,7 @@ def parse_args():
     train_parser.add_argument("--docs-file", required=True, help="Path to docs.json")
     train_parser.add_argument(
         "--model-name",
-        default="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        default=model_id("ce_reranker_base"),
         help="Base cross-encoder model name or HuggingFace ID",
     )
     train_parser.add_argument("--output-dir", required=True, help="Directory to save fine-tuned model")

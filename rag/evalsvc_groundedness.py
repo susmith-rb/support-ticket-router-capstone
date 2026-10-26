@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
 """evalsvc_groundedness.py — Gen AI Evaluation Service pointwise groundedness with an explicit autorater.
 
-The built-in `groundedness` metric uses a default autorater (gemini-2.5-flash) that isn't available in
-this project and doesn't accept autoraterConfig, so this uses a PointwiseMetric with a groundedness
-rubric (1-5) and autorater gemini-3.8-flash.
+Uses a PointwiseMetric with a groundedness rubric (1-5) and an explicit autorater configured
+via config/models.yaml (role: evalsvc_autorater).
 
   python evalsvc_groundedness.py clean_eval_dir docs_dir [--limit N]
 """
 import argparse
 import concurrent.futures as cf
 import json
+import pathlib
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
+
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from config.models import model_id  # noqa: E402
 
 P = "susmith-fde-ticket-router"
 
@@ -41,15 +48,16 @@ def get_token():
     return subprocess.check_output(["gcloud", "auth", "application-default", "print-access-token"], text=True).strip()
 
 
-def build_request_body(prediction, context, model="gemini-3.8-flash", project=P, loc="global"):
+def build_request_body(prediction, context, model=None, project=P, loc="global"):
     """Construct evaluateInstances body for pointwise groundedness."""
+    resolved_model = model or model_id("evalsvc_autorater")
     return {
         "pointwiseMetricInput": {
             "metricSpec": {"metricPromptTemplate": TEMPLATE},
             "instance": {"jsonInstance": json.dumps({"prediction": prediction, "context": context})},
         },
         "autoraterConfig": {
-            "autoraterModel": f"projects/{project}/locations/{loc}/publishers/google/models/{model}"
+            "autoraterModel": f"projects/{project}/locations/{loc}/publishers/google/models/{resolved_model}"
         },
     }
 
@@ -99,7 +107,7 @@ def main():
     ap.add_argument("w")
     ap.add_argument("docs")
     ap.add_argument("--limit", type=int, default=0)
-    ap.add_argument("--model", default="gemini-3.8-flash")
+    ap.add_argument("--model", default=model_id("evalsvc_autorater"))
     ap.add_argument("--loc", default="global")
     a = ap.parse_args()
 

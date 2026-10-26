@@ -7,7 +7,7 @@ Pipeline:
        -> faq-order-status-late-or-not-arrived-order
      - missing-delivered / stolen -> faq-order-status-missing-or-stolen-delivered-package
   2. Splits/re-clusters the `other` intent family into coherent sub-themes (using an injectable
-     LLM clusterer with Gemini 3.1 Pro preview fallback) and drops pure praise/noise.
+     LLM clusterer with preview fallback) and drops pure praise/noise.
   3. Builds `themes_v2.json` and a complete `gold_map_v1_v2.json` where every v1 theme either maps
      to a v2 doc id or is listed under "dropped" with an explicit reason.
   4. Validates invariants:
@@ -29,6 +29,12 @@ import json
 import pathlib
 import re
 import sys
+
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from config.models import model_id  # noqa: E402
 
 # Ensure local imports work whether run from repo root or rag/
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -420,7 +426,7 @@ def main():
     if decisions is None and not a.offline and labels is not None and gemini is not None and Tok is not None:
         tok = Tok()
         def _live_cluster(prompt, schema):
-            return gemini(tok, a.project, prompt, schema, model="gemini-3.1-pro-preview")
+            return gemini(tok, a.project, prompt, schema, model=model_id("corpus_author"))
         cluster_fn = _live_cluster
 
     v2_themes, gold_map, usage = regroup(

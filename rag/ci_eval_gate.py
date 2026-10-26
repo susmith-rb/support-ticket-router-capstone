@@ -22,6 +22,12 @@ import sys
 from typing import Any, Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from config.models import model_id  # noqa: E402
+
 try:
     import multi_label_eval
     from search_client import SearchClient, clean_query
@@ -34,10 +40,10 @@ except ImportError:
 def compute_chain_version(
     code_sha: str = "HEAD",
     prompt_version: str = "v1",
-    model_version: str = "gemini-3.8-flash",
+    model_version: Optional[str] = None,
     retriever_index_version: str = "release-3",
     tool_registry_version: str = "v1",
-    judge_model_version: str = "claude-opus-5-5",
+    judge_model_version: Optional[str] = None,
 ) -> str:
     """Compute 12-char chain_version hash per ai-fde-delivery specification.
 
@@ -45,7 +51,9 @@ def compute_chain_version(
         sha256("code_sha|prompt_version|model_version|retriever_index_version|
                 tool_registry_version|judge_model_version")[:12]
     """
-    raw = f"{code_sha}|{prompt_version}|{model_version}|{retriever_index_version}|{tool_registry_version}|{judge_model_version}"
+    m_ver = model_version if model_version is not None else model_id("answer")
+    j_ver = judge_model_version if judge_model_version is not None else model_id("judge")
+    raw = f"{code_sha}|{prompt_version}|{m_ver}|{retriever_index_version}|{tool_registry_version}|{j_ver}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
 
 
@@ -206,6 +214,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--min-mrr", type=float, default=0.75, help="Minimum MRR@10 target")
     parser.add_argument("--max-ndcg-drop", type=float, default=0.02, help="Max allowed drop in nDCG@5 vs baseline")
     parser.add_argument("--out", default="ci_eval_gate_result.json", help="Path to write results JSON")
+    parser.add_argument("--model-version", default=model_id("answer"), help="Model version for chain version hash")
+    parser.add_argument("--judge-model-version", default=model_id("judge"), help="Judge model version for chain version hash")
     parser.add_argument("--enforce-gate", action="store_true", default=True, help="Exit 1 on gate failure")
     parser.add_argument("--no-enforce-gate", action="store_false", dest="enforce_gate")
     parser.add_argument("--dry-run", action="store_true", help="Print expected actions without running")
@@ -293,7 +303,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
 
         verdict = "PASS" if passed else "FAIL"
-        chain_version = compute_chain_version()
+        chain_version = compute_chain_version(
+            model_version=args.model_version,
+            judge_model_version=args.judge_model_version,
+        )
 
         print(f"\nChain Version: {chain_version}")
         print(f"Evaluated Queries: {metrics.get('n_evaluated', 0)}")

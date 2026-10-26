@@ -83,6 +83,68 @@ The Argolis project operates under strict sandbox quota and billing allocations.
 - **Status**: done
 - **Owner**: billing-and-models
 
+### REQ-BILL-MODELS-001: Centralized Model Configuration Registry
+- **Statement**: All model endpoints, versions, locations, and default generation parameters (such as thinking budgets) MUST be centralized in `config/models.yaml` and loaded exclusively via `config.models.get(role)` or `config.models.model_id(role)`. The loader MUST support hierarchical configuration precedence: environment variable `MODEL_<ROLE_UPPER>` > environment-specific override block `envs[ENV]` > default role mapping, and MUST fail loudly (`KeyError`) on any unknown role lookup.
+- **Rationale**: Eliminates brittle hard-coded model identifiers scattered across Python scripts, shell scripts, and evaluation pipelines, satisfying AGENTS.md Non-negotiable 2 ("model IDs live in config, never in code").
+- **Acceptance**: `tests/test_no_hardcoded_models.py::test_model_id_resolves_all_standard_roles`
+- **Status**: done
+- **Owner**: billing-and-models
+
+### REQ-BILL-MODELS-002: Automated Hard-Coded Model Guard
+- **Statement**: The automated test suite MUST maintain a continuous verification guard (`tests/test_no_hardcoded_models.py`) that scans all executable code files (`*.py`, `*.sh`, `*.yaml`) outside allowed data, test, and config paths (`config/`, `tests/`, `rag/results/`, `rag/labels/`, `rag/corpus_v2/`, `docs/`, `.venv/`) for known model ID literals (e.g. `gemini-3.8-flash`, `claude-opus-5-5`, `semantic-ranker-512@latest`, etc.) and fails with exact `file:line` locations upon detecting any regression.
+- **Rationale**: Prevents accidental re-introduction of hard-coded model strings during rapid iteration or agent multi-worker workflows.
+- **Acceptance**: `tests/test_no_hardcoded_models.py::test_no_hardcoded_model_literals_in_repo`
+- **Status**: done
+- **Owner**: billing-and-models
+
+### REQ-BILL-MODELS-003: Model Change & Upgrade Runbook
+- **Statement**: Upgrading or swapping an active model (e.g. promoting a new Flash generation, updating an autorater, or testing an experimental ranking model) MUST adhere to a documented operational procedure: (1) update `config/models.yaml` (or set `MODEL_<ROLE>` for canary / environment overrides), (2) verify loader resolution via `python -m config.models <role>`, (3) run `tests/test_no_hardcoded_models.py` and regression test suites, (4) verify token usage and cost impact using `usage_probe.py`, and (5) record empirical quality deltas in evaluation reports before production deployment.
+- **Rationale**: Standardizes model migration across multi-agent pipelines, avoiding unexpected breaking changes, cost blowups, or 404 endpoint denials across GCP locations.
+- **Acceptance**: `tests/test_no_hardcoded_models.py::test_fallback_yaml_parser_accurately_parses_models_yaml`
+- **Status**: done
+- **Owner**: billing-and-models
+
+---
+
+## 4. Model Change & Upgrade Runbook
+
+When upgrading an existing model version or testing an alternative architecture:
+
+1. **Identify the Logical Role**:
+   Check `config/models.yaml` for the relevant logical role (e.g. `answer`, `judge`, `teacher`, `evalsvc_autorater`, `ranking_api_model`).
+
+2. **Canary or Local Testing via Environment Variables**:
+   Test the change non-destructively in a local session without editing committed files:
+   ```bash
+   MODEL_ANSWER=gemini-next-flash python rag/clean_eval.py ...
+   ```
+   Or use environment overrides in `config/models.yaml` (`envs.dev`, `envs.prod`).
+
+3. **Verify Configuration Resolution**:
+   Run the CLI tool to verify resolution:
+   ```bash
+   python -m config.models answer
+   python -m config.models --list
+   ```
+
+4. **Verify Endpoint Availability & Quota**:
+   Before running large batches, verify that the project and location have access to the model:
+   ```bash
+   PROJECT=susmith-fde-ticket-router python training/router_s1/pipeline/usage_probe.py
+   ```
+
+5. **Run the Hard-Coded Model Guard**:
+   Verify no literal model strings leaked into source code:
+   ```bash
+   .venv/bin/python -m pytest tests/test_no_hardcoded_models.py
+   ```
+
+6. **Execute Golden Evaluation Gate**:
+   Verify retrieval and groundedness metrics meet minimum quality thresholds:
+   ```bash
+   python rag/ci_eval_gate.py --queries scratch/rag/eval/dev.jsonl ...
+   ```
+
 ---
 
 ## 4. Open Questions / Deltas

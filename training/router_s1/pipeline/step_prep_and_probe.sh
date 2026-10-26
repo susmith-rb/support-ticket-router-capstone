@@ -13,7 +13,8 @@ mkdir -p data/raw && [ -f data/raw/twcs/twcs.csv ] || cp -r ~/laya-work/raw/twcs
 gsutil -m -q cp data/processed/* "$BUCKET/data/processed/"
 echo "== teacher probe (5 msgs)"
 cd pipeline
-for M in gemini-3.1-pro gemini-3.1-pro-preview; do
+PROBE_MODELS="${PROBE_MODELS:-$(python3 -m config.models probe_model 2>/dev/null || echo 'probe_model') $(python3 -m config.models teacher 2>/dev/null || echo 'teacher')}"
+for M in $PROBE_MODELS; do
   for L in global us-central1; do
     rm -f /tmp/probe.jsonl
     if timeout 300 ../.venv/bin/python label_teacher.py --inp ../data/processed/inbound_first_turn.parquet --out /tmp/probe.jsonl \

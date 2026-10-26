@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""label_gpt_oss.py — label the golden-set messages with OpenAI gpt-oss-120b on Vertex AI (MaaS).
+"""label_gpt_oss.py — label the golden-set messages with cross-family model on Vertex AI (MaaS).
 
 Uses the Vertex OpenAI-compatible chat-completions endpoint with the caller's gcloud token, so
 no OpenAI API key is involved and the data stays inside the GCP project. Same rubric as the
@@ -8,8 +8,15 @@ No third-party packages needed (urllib only).
 
   python label_gpt_oss.py golden_sheet_rows.json out.jsonl --project P [--region us-central1] [--probe]
 """
-import argparse, collections, concurrent.futures as cf, json, re, subprocess, sys, time, urllib.request
+import argparse, collections, concurrent.futures as cf, json, pathlib, re, subprocess, sys, time, urllib.request
 sys.path.insert(0, __import__("os").path.dirname(__file__))
+
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from config.models import model_id
+
 from router_schema import QUESTIONS, SENTIMENTS, INTENTS, URGENCY_LEVELS
 
 def rubric():
@@ -58,7 +65,7 @@ def call(url, tok, model, text, seed):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("rows"); ap.add_argument("out"); ap.add_argument("--project", required=True)
-    ap.add_argument("--region", default="us-central1"); ap.add_argument("--model", default="openai/gpt-oss-120b-maas")
+    ap.add_argument("--region", default="us-central1"); ap.add_argument("--model", default=model_id("cross_family_gpt_oss"))
     ap.add_argument("--samples", type=int, default=3); ap.add_argument("--workers", type=int, default=12)
     ap.add_argument("--probe", action="store_true")
     a = ap.parse_args()

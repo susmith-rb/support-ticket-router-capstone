@@ -23,6 +23,11 @@ import urllib.error
 import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from config.models import model_id  # noqa: E402
 from de_endpoint import api_base, data_store_name, search_url  # noqa: E402
 
 DEFAULT_PROJECT = "susmith-fde-ticket-router"
@@ -256,7 +261,7 @@ class SearchClient:
         query: str,
         records: List[Dict[str, Any]],
         top_n: int = 5,
-        model: str = "semantic-ranker-512@latest",
+        model: Optional[str] = None,
         sleep_sec: Optional[float] = None,
         token: Optional[str] = None,
     ) -> tuple[List[Dict[str, Any]], float]:
@@ -268,10 +273,11 @@ class SearchClient:
         tok = token or self.get_token()
         throttle = self.sleep_sec if sleep_sec is None else sleep_sec
         rank_url = f"{api_base(self.location)}projects/{self.project}/locations/{self.location}/rankingConfigs/default_ranking_config:rank"
+        resolved_model = model or model_id("ranking_api_model")
 
         body = {
             "rankingConfig": f"projects/{self.project}/locations/{self.location}/rankingConfigs/default_ranking_config",
-            "model": model,
+            "model": resolved_model,
             "query": query,
             "records": records,
             "topN": top_n,
@@ -296,7 +302,7 @@ class SearchClient:
         boost_spec: Optional[Dict[str, Any]] = None,
         intent_boost: Optional[float] = None,
         rerank: bool = False,
-        rerank_model: str = "semantic-ranker-512@latest",
+        rerank_model: Optional[str] = None,
         rerank_top_n: int = 5,
         rerank_margin: Optional[float] = None,
         blend_margin: Optional[float] = None,

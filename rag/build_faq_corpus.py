@@ -2,7 +2,7 @@
 """build_faq_corpus.py — synthesize the citable `faq-articles` corpus for Agent Search.
 
 Pipeline (all PII-redacted inputs):
-  1. Cluster the teacher's free-text `topic` per intent family into FAQ themes (Gemini 3.1 Pro),
+  1. Cluster the teacher's free-text `topic` per intent family into FAQ themes,
      or load an existing themes file via `--themes`.
   2. For each theme, write ONE FAQ article for the simulated retailer "Global Retail Hub":
      title, 6-10 question paraphrases, answer, constraints, when-to-escalate.
@@ -31,6 +31,12 @@ import sys
 import time
 import urllib.error
 import urllib.request
+
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from config.models import model_id  # noqa: E402
 
 POLICY_VERSION = "policy-v1"  # bump when any fact below changes (TDD §6.6.2); publish_faq.py lint checks articles against it
 SIMULATED_POLICY = """Global Retail Hub (simulated retailer) — canonical policy facts. Use ONLY these numbers.
@@ -86,8 +92,9 @@ def doc_id_for_theme(theme_dict_or_intent, theme_id=None):
     return re.sub(r"[^a-z0-9-]", "-", raw)[:120]
 
 
-def gemini(tok, project, prompt, schema, model="gemini-3.1-pro-preview", thinking="LOW"):
-    url = f"https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/{model}:generateContent"
+def gemini(tok, project, prompt, schema, model=None, thinking="LOW"):
+    resolved_model = model or model_id("corpus_author")
+    url = f"https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/{resolved_model}:generateContent"
     body = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
@@ -357,7 +364,7 @@ def build_corpus(
                         "policy_version": POLICY_VERSION,
                         "reviewed_by": "",
                         "reviewed_at": "",
-                        "authored_by": "jetski-agent:gemini-3.8-flash-high",
+                        "authored_by": f"jetski-agent:{model_id('agent_authorship_tag')}",
                         "n_source_messages": len(th.get("thread_ids", [])),
                         "n_example_threads": len(ex),
                         "simulated_policy": True,

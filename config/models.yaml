@@ -1,0 +1,113 @@
+# Central Model Configuration Registry
+# REQ-BILL-MODELS-001: Centralized Model Configuration Registry
+# Maps logical roles to model ID, location, thinking level, and operational notes.
+
+models:
+  # RAG & Generation
+  answer:
+    id: "gemini-3.8-flash"
+    location: "global"
+    notes: "FaqResolverAgent live answer synthesis and rag evaluation"
+
+  judge:
+    id: "claude-opus-5-5"
+    location: "global"
+    notes: "Offline evaluation claim verification / LLM judge"
+
+  question_gen:
+    id: "claude-sonnet-5-5"
+    location: "global"
+    notes: "Evaluation question generation"
+
+  query_rewrite:
+    id: "gemini-3.8-flash"
+    location: "global"
+    notes: "RAG query expansion and rewriting"
+
+  # Routing & Fallbacks
+  router_tier2:
+    id: "gemini-3.8-flash"
+    location: "global"
+    notes: "Live Tier-2 fallback router when Tier-1 is uncertain"
+
+  tier3_multihop:
+    id: "gemini-3.1-pro"
+    location: "global"
+    notes: "Complex multi-hop reasoning"
+
+  emergency:
+    id: "gemini-3.1-flash-lite"
+    location: "global"
+    notes: "Emergency low-quota fallback"
+
+  # Evaluation Services & AutoRaters
+  evalsvc_autorater:
+    id: "gemini-3.8-flash"
+    location: "global"
+    notes: "Vertex AI Evaluation Service Groundedness AutoRater"
+
+  evalsvc_autorater_fallback:
+    id: "gemini-2.5-flash"
+    location: "global"
+    notes: "Fallback autorater for Vertex AI Evaluation Service"
+
+  # FAQ Corpus Authoring & Provenance
+  corpus_author:
+    id: "gemini-3.1-pro-preview"
+    location: "global"
+    thinking: "LOW"
+    notes: "FAQ corpus generation and synthesis"
+
+  agent_authorship_tag:
+    id: "gemini-3.8-flash-high"
+    notes: "Provenance tag for agent-generated FAQ corpus articles"
+
+  # Teacher & Training
+  teacher:
+    id: "gemini-3.1-pro-preview"
+    location: "global"
+    thinking: "LOW"
+    notes: "Teacher model for Router S1 dataset labeling"
+
+  probe_model:
+    id: "gemini-3.1-pro"
+    location: "global"
+    notes: "Usage probing and token distribution measurement"
+
+  cross_family_claude:
+    id: "claude-opus-5-5"
+    location: "global"
+    notes: "Cross-family evaluation model"
+
+  cross_family_gpt_oss:
+    id: "openai/gpt-oss-120b-maas"
+    location: "us-central1"
+    notes: "Cross-family evaluation model on Vertex Model Garden"
+
+  # Rerankers & Search
+  ranking_api_model:
+    id: "semantic-ranker-512@latest"
+    notes: "Discovery Engine Ranking API model (note: @latest is experiment-only, must pin for prod)"
+
+  ce_reranker_base:
+    id: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    notes: "Local Cross-Encoder reranker base model"
+
+  laya_router:
+    id: "router-s1-v2"
+    registry: "router-s1"
+    version: "v2"
+    checkpoint_uri: "gs://susmith-fde-ticket-router-laya/checkpoints/router-s1/v2"
+    notes: "Laya Tier-1 intent and sentiment router checkpoint"
+
+  laya_reranker:
+    id: "rerank-v2"
+    version: "v2"
+    checkpoint_uri: "gs://susmith-fde-ticket-router-laya/rerank/v2/ckpt/"
+    notes: "Laya choice reranker v2 checkpoint"
+
+# Environment overrides (dev / stg / prod)
+envs:
+  dev: {}
+  stg: {}
+  prod: {}

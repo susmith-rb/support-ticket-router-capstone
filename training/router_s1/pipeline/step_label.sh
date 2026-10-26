@@ -7,7 +7,7 @@ gsutil -m -q rsync -r "$BUCKET/pipeline" ~/ticket-router-laya
 cd ~/ticket-router-laya/pipeline
 mkdir -p ../data/labels ../logs
 nohup bash -c "../.venv/bin/python label_teacher.py --inp ../data/processed/inbound_first_turn.parquet \
-   --out ../data/labels/labels.jsonl --n $N --samples 3 --model gemini-3.1-pro-preview --location global --concurrency 32 \
+   --out ../data/labels/labels.jsonl --n $N --samples 3 --concurrency 32 \
    && gsutil -q cp ../data/labels/labels.jsonl $BUCKET/data/labels/labels.jsonl && echo LABEL-DONE" \
    > ../logs/label.log 2>&1 &
 sleep 60; tail -5 ../logs/label.log

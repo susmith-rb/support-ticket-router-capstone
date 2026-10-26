@@ -4,10 +4,16 @@
 Reads  data/processed/inbound_first_turn.parquet (from prepare_twcs.py)
 Writes data/labels/labels.jsonl (append + resume): one record per message with vote shares.
 
-  PROJECT=<id> python label_teacher.py --n 2000 --samples 3 --model gemini-3.1-pro-preview --location global
+  PROJECT=<id> python label_teacher.py --n 2000 --samples 3
 """
-import argparse, asyncio, json, os, pathlib, random, time
+import argparse, asyncio, json, os, pathlib, random, sys, time
 from router_schema import QUESTIONS, SENTIMENTS, INTENTS, URGENCY_LEVELS
+
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from config.models import get, model_id
 
 SCHEMA = {
     "type": "object",
@@ -81,9 +87,10 @@ async def main():
     ap.add_argument("--out", default="data/labels/labels.jsonl")
     ap.add_argument("--n", type=int, default=2000)
     ap.add_argument("--samples", type=int, default=3)
-    ap.add_argument("--model", default="gemini-3.1-pro-preview")
-    ap.add_argument("--location", default=os.environ.get("LOCATION", "global"))
-    ap.add_argument("--thinking", default="low", help="low|high|'' (empty = model default)")
+    teacher_cfg = get("teacher")
+    ap.add_argument("--model", default=model_id("teacher"))
+    ap.add_argument("--location", default=os.environ.get("LOCATION", teacher_cfg.get("location", "global")))
+    ap.add_argument("--thinking", default=str(teacher_cfg.get("thinking", "low")).lower(), help="low|high|'' (empty = model default)")
     ap.add_argument("--concurrency", type=int, default=32)
     ap.add_argument("--seed", type=int, default=7)
     a = ap.parse_args()

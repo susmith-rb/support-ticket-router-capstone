@@ -5,11 +5,18 @@ Anthropic Messages API via Vertex `:rawPredict`, caller's gcloud token, extended
 high budget. Same rubric as the Gemini teacher (router_schema.py). Default 1 sample per message
 (thinking forces temperature 1; use --samples 3 for votes). urllib only.
 
-  python label_claude.py golden_sheet_rows.json out.jsonl --project P --model claude-opus-5-5 \
+  python label_claude.py golden_sheet_rows.json out.jsonl --project P \
       [--region global] [--thinking 8000] [--samples 1] [--limit 5]
 """
-import argparse, collections, concurrent.futures as cf, json, re, subprocess, sys, time, urllib.error, urllib.request
+import argparse, collections, concurrent.futures as cf, json, pathlib, re, subprocess, sys, time, urllib.error, urllib.request
 sys.path.insert(0, __import__("os").path.dirname(__file__))
+
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from config.models import model_id
+
 from label_gpt_oss import PROMPT, rubric
 from router_schema import SENTIMENTS, INTENTS, URGENCY_LEVELS
 
@@ -54,7 +61,7 @@ class Tok:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("rows"); ap.add_argument("out"); ap.add_argument("--project", required=True)
-    ap.add_argument("--model", required=True); ap.add_argument("--region", default="global")
+    ap.add_argument("--model", default=model_id("cross_family_claude")); ap.add_argument("--region", default="global")
     ap.add_argument("--thinking", type=int, default=8000); ap.add_argument("--samples", type=int, default=1)
     ap.add_argument("--effort", default="high", help="adaptive-thinking effort for 5.5-gen models; '' to use --thinking budget")
     ap.add_argument("--workers", type=int, default=8); ap.add_argument("--limit", type=int, default=0)

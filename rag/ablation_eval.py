@@ -10,7 +10,7 @@ Supported Ablation Grid:
 2. thresh_low_clean: threshold=LOW, clean=True
 3. thresh_lowest_noclean: threshold=LOWEST, clean=False
 4. rank_expr_semantic: rankingExpression="semantic_similarity_score" (marked unsupported)
-5. managed_rerank: pageSize=20 + Ranking API (semantic-ranker-512@latest) -> top 5
+5. managed_rerank: pageSize=20 + Ranking API -> top 5
 6. intent_hard_oracle: Hard filter intent_family: ANY("<oracle>") with unconstrained fallback
 7. intent_hard_noisy: Hard filter with 14% noisy intent corruption with fallback
 8. intent_soft_oracle_0.2: Soft boost 0.2 with oracle intent
@@ -32,8 +32,14 @@ import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-import eval_metrics
-from search_client import (
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from config.models import model_id  # noqa: E402
+
+import eval_metrics  # noqa: E402
+from search_client import (  # noqa: E402
     DEFAULT_DATA_STORE,
     DEFAULT_ENGINE,
     DEFAULT_LOCATION,
@@ -114,7 +120,7 @@ class AblationConfig:
     intent_mode: str = "off"  # "off", "oracle", "noisy"
     intent_boost: Optional[float] = None
     rerank: bool = False
-    rerank_model: str = "semantic-ranker-512@latest"
+    rerank_model: str = ""
     rerank_top_n: int = 5
     rerank_margin: Optional[float] = None
     use_rich_records: bool = True
@@ -163,12 +169,12 @@ def get_ablation_configs(config_names: Optional[Sequence[str]] = None) -> List[A
         ),
         AblationConfig(
             name="managed_rerank",
-            description="Managed Rerank (pageSize=20 + semantic-ranker-512@latest -> top 5)",
+            description="Managed Rerank (pageSize=20 + Ranking API -> top 5)",
             threshold="LOWEST",
             clean=True,
             page_size=20,
             rerank=True,
-            rerank_model="semantic-ranker-512@latest",
+            rerank_model=model_id("ranking_api_model"),
             rerank_top_n=5,
         ),
         AblationConfig(
@@ -355,7 +361,7 @@ def get_ablation_configs(config_names: Optional[Sequence[str]] = None) -> List[A
         # Phase D: Query rewrite alone
         AblationConfig(
             name="rewrite_only",
-            description="Query Rewrite Only (gemini-3.8-flash)",
+            description="Query Rewrite Only",
             threshold="LOWEST",
             clean=True,
             page_size=20,
@@ -746,7 +752,8 @@ def evaluate_single_config(
         if cfg.rerank and base_res.raw_results:
             top_candidates = base_res.raw_results[:cfg.rerank_top_n]
             cand_ids = tuple(r["document"]["id"] for r in top_candidates if "document" in r and "id" in r["document"])
-            rank_key = (effective_q, cand_ids, cfg.rerank_model, cfg.use_rich_records, cfg.rerank_top_n)
+            effective_rerank_model = cfg.rerank_model or model_id("ranking_api_model")
+            rank_key = (effective_q, cand_ids, effective_rerank_model, cfg.use_rich_records, cfg.rerank_top_n)
 
             if rank_key in rank_cache:
                 reranked_records, r_lat = rank_cache[rank_key]
@@ -773,14 +780,20 @@ def evaluate_single_config(
                         content = snippet_text or title
                         records.append({"id": d_id, "title": title, "content": content})
 
-                can_rank = hasattr(client, "rank")
+                can_rank = False
+                try:
+                    _ = client.rank
+                    can_rank = True
+                except AttributeError:
+                    can_rank = False
+
                 if records and can_rank:
                     try:
                         reranked_records, r_lat = client.rank(
                             query=clean_query(effective_q) if cfg.clean else effective_q,
                             records=records,
                             top_n=cfg.rerank_top_n,
-                            model=cfg.rerank_model,
+                            model=effective_rerank_model,
                             token=tok,
                         )
                     except Exception:
