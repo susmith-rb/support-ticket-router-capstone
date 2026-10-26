@@ -16,7 +16,9 @@ measured separately). Variant "tdd": intent=other also goes to Tier 2.
 
   python simulate_system.py --val runs/v2/pred_val.jsonl --test runs/v2/pred_test.jsonl --out runs/v2/system_sim.json
 """
-import argparse, json, re
+import argparse
+import json
+import re
 
 try:
     from langdetect import detect, DetectorFactory

@@ -1,4 +1,4 @@
-from build_dataset import argmax
+from training.router_s1.pipeline.build_dataset import argmax
 
 
 # REQ-ROUTER-S1-004

@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 import pytest
 
-from rag.rerank_ce import (
+from experiments.rerank_ce import (
     compute_rank_prior,
     fuse_scores,
     grade_to_label,

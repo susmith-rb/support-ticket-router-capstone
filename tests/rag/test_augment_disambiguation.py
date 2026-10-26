@@ -1,14 +1,10 @@
 import json
 import pathlib
-import sys
-
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent / "rag"))
-
-from augment_paraphrases import (
+from corpus.augment_paraphrases import (
     apply_disambiguation_to_body,
     verify_no_leakage,
 )
-from publish_faq import lint
+from corpus.publish_faq import lint
 
 
 def test_apply_disambiguation_to_body_idempotent():

@@ -8,17 +8,18 @@ high budget. Same rubric as the Gemini teacher (router_schema.py). Default 1 sam
   python label_claude.py golden_sheet_rows.json out.jsonl --project P \
       [--region global] [--thinking 8000] [--samples 1] [--limit 5]
 """
-import argparse, collections, concurrent.futures as cf, json, pathlib, re, subprocess, sys, time, urllib.error, urllib.request
-sys.path.insert(0, __import__("os").path.dirname(__file__))
-
-_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from config.models import model_id
-
-from label_gpt_oss import PROMPT, rubric
-from router_schema import SENTIMENTS, INTENTS, URGENCY_LEVELS
+import argparse
+import collections
+import concurrent.futures as cf
+import json
+import re
+import subprocess
+import time
+import urllib.error
+import urllib.request
+from ticket_router.config.models import model_id
+from training.router_s1.pipeline.label_gpt_oss import PROMPT, rubric
+from training.router_s1.pipeline.router_schema import INTENTS, SENTIMENTS, URGENCY_LEVELS
 
 def token():
     return subprocess.check_output(["gcloud", "auth", "print-access-token"], text=True).strip()

@@ -13,7 +13,11 @@ distribution (weights = stratum share in test / stratum share in sample; stored 
 
   python make_golden_sample.py labels.jsonl test.jsonl pred_test.jsonl out_dir [--n 300]
 """
-import argparse, collections, json, pathlib, random
+import argparse
+import collections
+import json
+import pathlib
+import random
 
 
 def main():
@@ -29,7 +33,8 @@ def main():
     rows = []
     for t, p in zip(test, pred):
         vs = [v for v in votes[t["id"]] if "error" not in v]
-        maj = lambda q: collections.Counter(str(v[q]) for v in vs).most_common(1)[0][0]
+        def maj(q):
+            return collections.Counter(str(v[q]) for v in vs).most_common(1)[0][0]
         split = len({str(v["escalate"]) for v in vs}) > 1 or len({v["sentiment"] for v in vs}) > 1
         strict = maj("sentiment") == "angry" or maj("urgency") == "3"
         stratum = "split" if split else ("strict" if strict else "rest")

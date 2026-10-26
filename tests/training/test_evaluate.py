@@ -1,5 +1,5 @@
 import pytest
-from evaluate import ece, macro_f1, probs, sweep
+from training.router_s1.pipeline.evaluate import ece, macro_f1, probs, sweep
 
 
 # REQ-ROUTER-S1-005

@@ -7,10 +7,9 @@ select = ["E", "F"]
 ignore = [
     "E501",  # line too long (handled flexibly in data/test fixtures)
     "E741",  # ambiguous variable name (e.g. l for line in list comprehensions)
+    "E701",  # multiple statements on one line (colon)
+    "E702",  # multiple statements on one line (semicolon)
 ]
 
 [lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"tests/rag/test_build_faq_corpus.py" = ["E402"]  # sys.path mutation required prior to local rag imports
-"tests/rag/test_regroup_themes.py" = ["E402"]  # sys.path mutation required prior to local rag imports
-

@@ -2,20 +2,11 @@
 
 import json
 import pathlib
-import sys
 import pytest
 
-# Ensure repo root and rag directory are on sys.path
-REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-RAG_DIR = REPO_ROOT / "rag"
-if str(RAG_DIR) not in sys.path:
-    sys.path.insert(0, str(RAG_DIR))
-
-from regroup_themes import (
-    ORDER_STATUS_MERGES,
+from corpus.regroup_themes import (
     DEFAULT_DROPPED,
+    ORDER_STATUS_MERGES,
     apply_merges,
     build_gold_map,
     cluster_other_topics,
@@ -24,6 +15,8 @@ from regroup_themes import (
     regroup,
     validate_v2,
 )
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
 def _make_mock_v1_themes():

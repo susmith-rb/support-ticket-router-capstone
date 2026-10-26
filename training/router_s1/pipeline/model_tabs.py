@@ -3,7 +3,8 @@
 
   python model_tabs.py golden_key.jsonl golden_sheet_rows.json sonnet.jsonl opus.jsonl out_requests.json
 """
-import json, sys
+import json
+import sys
 from collections import Counter
 
 URG = {"0": "0 - can wait days", "1": "1 - within a day", "2": "2 - within hours", "3": "3 - immediate"}

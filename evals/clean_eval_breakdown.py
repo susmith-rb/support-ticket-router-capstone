@@ -2,17 +2,12 @@
 """clean_eval_breakdown.py — abstention vs retrieval rank, unsupported claims, and an Eval Service retry with an explicit autorater."""
 import json
 import os
-import pathlib
 import sys
-import subprocess
 import urllib.request
 import urllib.error
 
-_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from config.models import model_id  # noqa: E402
+from ticket_router.common.auth import get_access_token
+from ticket_router.config.models import model_id
 
 
 def esc(x):
@@ -78,7 +73,7 @@ def main(argv=None):
         # Eval Service retry with explicit autorater on 3 answers
         docs_dir = args[1]
         P = "susmith-fde-ticket-router"
-        tok = subprocess.check_output(["gcloud", "auth", "application-default", "print-access-token"], text=True).strip()
+        tok = get_access_token()
         for model in (model_id("answer"), model_id("teacher")):
             for loc in ("global", "us-central1"):
                 host = "aiplatform.googleapis.com" if loc == "global" else f"{loc}-aiplatform.googleapis.com"

@@ -10,7 +10,7 @@ Validates compliance with:
 import json
 from pathlib import Path
 import re
-from rag.ci_eval_gate import compute_chain_version, execute_gate_check, main
+from evals.ci_eval_gate import compute_chain_version, execute_gate_check, main
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CICD_DIR = REPO_ROOT / "cicd"
@@ -39,6 +39,7 @@ def test_ci_pipeline_contract():
     assert "id: 'terraform-fmt-check'" in raw_content
     assert "id: 'terraform-validate'" in raw_content
     assert "id: 'terraform-tflint'" in raw_content
+    assert "id: 'fetch-eval-dataset'" in raw_content
     assert "id: 'golden-eval-gate'" in raw_content
 
     # Change detection and evaluation substitution
@@ -56,12 +57,12 @@ def test_ci_pipeline_contract():
     assert 'gsutil cp /workspace/ci_state_new.json "gs://${_CORPUS_BUCKET}/ci/state.json"' in raw_content
 
     # Step commands and tools
-    assert "ruff check rag/ tests/" in raw_content
+    assert "ruff check ." in raw_content
     assert "python -m pytest -v" in raw_content
     assert "py_compile" in raw_content
-    assert "publish_faq.py --work rag/corpus_v2 --lint-only" in raw_content
+    assert "corpus.publish_faq --work rag/corpus_v2 --lint-only" in raw_content
     assert "terraform fmt -check" in raw_content
-    assert "ci_eval_gate.py" in raw_content
+    assert "evals.ci_eval_gate" in raw_content
     assert "--retrieval-config intent_soft_noisy_0.2" in raw_content
     assert "--min-recall 0.90" in raw_content
     assert "--min-mrr 0.75" in raw_content
@@ -84,9 +85,9 @@ def test_reindex_pipeline_contract():
     assert "id: 'run-retrieval-eval'" in raw
     assert "id: 'enforce-regression-gate'" in raw
 
-    assert "publish_faq.py --work rag/corpus_v2 --lint-only" in raw
-    assert "publish_faq.py" in raw
-    assert "retrieval_eval.py" in raw
+    assert "corpus.publish_faq --work rag/corpus_v2 --lint-only" in raw
+    assert "publish_faq" in raw
+    assert "retrieval_eval" in raw
     assert "GATE_THRESHOLD = -0.02" in raw or "-0.02" in raw
     assert "rollback" in raw.lower()
 
@@ -101,7 +102,7 @@ def test_nightly_pipeline_contract():
     assert "id: 'run-retrieval-health-eval'" in raw
     assert "id: 'archive-evaluation-results'" in raw
 
-    assert "ci_eval_gate.py" in raw
+    assert "ci_eval_gate" in raw
     assert "--retrieval-config intent_soft_noisy_0.2" in raw
     assert "eval/nightly/" in raw
 
@@ -227,6 +228,71 @@ def test_no_secrets_in_cicd_yamls():
 
 
 # REQ-CICD-002
+# REQ-CICD-009
+def test_no_pythonpath_hacks_in_cicd_yamls():
+    """CI/CD pipelines must rely on standard packaging and never use PYTHONPATH hacks."""
+    for yaml_path in sorted(CICD_DIR.glob("*.yaml")):
+        content = yaml_path.read_text(encoding="utf-8")
+        assert "PYTHONPATH" not in content, (
+            f"Found forbidden PYTHONPATH hack in {yaml_path.name}"
+        )
+
+
+# REQ-CICD-002
+# REQ-CICD-009
+def test_no_forbidden_pip_patterns_in_cicd_yamls():
+    """CI/CD pipelines must avoid --break-system-packages and fragile 2>/dev/null or || fallback patterns around pip."""
+    for yaml_path in sorted(CICD_DIR.glob("*.yaml")):
+        content = yaml_path.read_text(encoding="utf-8")
+        assert "--break-system-packages" not in content, (
+            f"Found forbidden --break-system-packages in {yaml_path.name}"
+        )
+        for line in content.splitlines():
+            if "pip" in line:
+                assert "2>/dev/null" not in line, (
+                    f"Found fragile 2>/dev/null on pip line in {yaml_path.name}: {line}"
+                )
+                assert "||" not in line, (
+                    f"Found fragile fallback || on pip line in {yaml_path.name}: {line}"
+                )
+
+
+# REQ-CICD-002
+# REQ-CICD-009
+def test_cicd_package_execution_has_prior_pip_install():
+    """Any CI/CD step running evals or corpus modules must use python:3.11-slim or the apt+venv bootstrap, with pip install."""
+    for yaml_path in sorted(CICD_DIR.glob("*.yaml")):
+        content = yaml_path.read_text(encoding="utf-8")
+        steps = content.split("\n  - name:")
+        for step in steps[1:]:
+            has_module_run = (
+                "evals." in step
+                or "corpus." in step
+            )
+            if has_module_run:
+                is_python_image = "'python:3.11-slim'" in step or '"python:3.11-slim"' in step
+                has_apt_venv_bootstrap = (
+                    "apt-get install" in step
+                    and "python3-venv" in step
+                    and "python3 -m venv" in step
+                )
+                assert is_python_image or has_apt_venv_bootstrap, (
+                    f"Step in {yaml_path.name} running package code must use python:3.11-slim or apt+venv bootstrap: {step[:250]}"
+                )
+
+                pip_idx = step.find("pip install")
+                module_idx = min(
+                    idx for idx in [step.find("evals."), step.find("corpus.")] if idx != -1
+                )
+                assert pip_idx != -1, (
+                    f"Step in {yaml_path.name} executes module without pip install: {step[:200]}"
+                )
+                assert pip_idx < module_idx, (
+                    f"Step in {yaml_path.name} executes module before pip install: {step[:200]}"
+                )
+
+
+# REQ-CICD-002
 # REQ-CICD-004
 def test_ci_eval_gate_logic(tmp_path):
     """Verify ci_eval_gate.py computes chain_version, checks thresholds, and enforces gates."""
@@ -290,8 +356,8 @@ def test_ci_eval_gate_logic(tmp_path):
 # REQ-CICD-004
 def test_ci_eval_gate_live_search_branch(monkeypatch, tmp_path):
     """Verify live SearchClient integration uses real dev.jsonl schema (qid/query) and cleans text."""
-    from rag.search_client import SearchResult
-    import rag.ci_eval_gate as eval_gate_module
+    from ticket_router.retrieval.search_client import SearchResult, clean_query
+    import evals.ci_eval_gate as eval_gate_module
 
     received_queries = []
 
@@ -300,7 +366,6 @@ def test_ci_eval_gate_live_search_branch(monkeypatch, tmp_path):
             self.project = project
 
         def search(self, query=None, query_text=None, threshold="LOWEST", page_size=10, clean=False, **kwargs):
-            from rag.search_client import clean_query
             text = query if query is not None else query_text
             if clean and text:
                 text = clean_query(text)
@@ -381,8 +446,8 @@ def test_ci_eval_gate_live_search_branch(monkeypatch, tmp_path):
 # REQ-CICD-004
 def test_ci_eval_gate_empty_query_fails_exit_2(monkeypatch, tmp_path):
     """Empty query strings in queries file must produce counted warning and fail with exit code 2."""
-    from rag.search_client import SearchResult
-    import rag.ci_eval_gate as eval_gate_module
+    from ticket_router.retrieval.search_client import SearchResult
+    import evals.ci_eval_gate as eval_gate_module
 
     class FakeSearchClient:
         def __init__(self, project=None, engine=None, location=None):
@@ -499,8 +564,8 @@ def test_ci_eval_gate_multi_label_scoring_regression(monkeypatch, tmp_path):
     1. Through main() with --system-run and --labels-c
     2. Through main() with live search branch (Fake SearchClient) and --labels-c
     """
-    from rag.search_client import SearchResult
-    import rag.ci_eval_gate as eval_gate_module
+    from ticket_router.retrieval.search_client import SearchResult
+    import evals.ci_eval_gate as eval_gate_module
 
     # Real schemas: dev queries, C2 labels, system top-10
     dev_rows = [
@@ -620,9 +685,9 @@ def test_ci_eval_gate_multi_label_scoring_regression(monkeypatch, tmp_path):
 # REQ-CICD-004
 def test_ci_eval_gate_search_kwargs_match_ablation_eval(monkeypatch, tmp_path):
     """Verify SearchClient.search kwargs produced by the gate for intent_soft_noisy_0.2 equal those from ablation_eval."""
-    import rag.ablation_eval as ae
-    import rag.ci_eval_gate as eval_gate_module
-    from rag.search_client import SearchResult
+    import evals.ablation_eval as ae
+    import evals.ci_eval_gate as eval_gate_module
+    from ticket_router.retrieval.search_client import SearchResult
 
     dev_rows = [
         {

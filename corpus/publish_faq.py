@@ -31,15 +31,20 @@ import time
 import urllib.error
 import urllib.request
 
-sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from build_faq_corpus import POLICY_VERSION, SIMULATED_POLICY  # noqa: E402
-from de_endpoint import api_base, data_store_name, documents_import_url, search_url  # noqa: E402
+from corpus.build_faq_corpus import POLICY_VERSION, SIMULATED_POLICY
+from ticket_router.common.auth import get_access_token
+from ticket_router.retrieval.de_endpoint import (
+    api_base,
+    data_store_name,
+    documents_import_url,
+    search_url,
+)
 
 BUCKET = "gs://susmith-fde-ticket-router-laya"
 
 
 def tok():
-    return subprocess.check_output(["gcloud", "auth", "application-default", "print-access-token"], text=True).strip()
+    return get_access_token()
 
 
 def call(method, url, project, body=None):

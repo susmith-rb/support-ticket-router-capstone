@@ -18,26 +18,20 @@ import math
 import pathlib
 import random
 import re
-import subprocess
-import sys
 import time
 from typing import Any, Dict, List
 import urllib.error
 import urllib.request
 
-sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from de_endpoint import search_url, data_store_name  # noqa: E402
-from search_client import (  # noqa: E402
+from evals import eval_metrics
+from ticket_router.common.auth import get_access_token
+from ticket_router.retrieval.de_endpoint import data_store_name, search_url
+from ticket_router.retrieval.search_client import (
     SearchClient,
     SearchResult,
-    clean_query as client_clean_query,
     VALID_INTENT_FAMILIES,
+    clean_query as client_clean_query,
 )
-
-try:
-    import eval_metrics
-except ImportError:
-    eval_metrics = None
 
 
 def clean(q: str) -> str:
@@ -253,7 +247,7 @@ def main():
     if a.filter_status and a.filter_status.lower() not in ("off", "none", "all", ""):
         allowed_statuses = [s.strip() for s in a.filter_status.split(",") if s.strip()]
 
-    tok = subprocess.check_output(["gcloud", "auth", "application-default", "print-access-token"], text=True).strip()
+    tok = get_access_token()
     url = search_url(a.project, a.engine, location=a.location)
     ds = data_store_name(a.project, "faq-articles", location=a.location)
 

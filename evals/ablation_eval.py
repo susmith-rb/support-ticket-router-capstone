@@ -31,15 +31,9 @@ import sys
 import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-sys.path.insert(0, str(pathlib.Path(__file__).parent))
-_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from config.models import model_id  # noqa: E402
-
-import eval_metrics  # noqa: E402
-from search_client import (  # noqa: E402
+from evals import eval_metrics
+from ticket_router.config.models import model_id
+from ticket_router.retrieval.search_client import (
     DEFAULT_DATA_STORE,
     DEFAULT_ENGINE,
     DEFAULT_LOCATION,

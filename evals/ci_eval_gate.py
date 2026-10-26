@@ -21,28 +21,20 @@ import pathlib
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 
-sys.path.insert(0, str(pathlib.Path(__file__).parent))
-_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from config.models import model_id  # noqa: E402
+from ticket_router.config.models import model_id
 
 try:
-    import multi_label_eval
-    from search_client import SearchClient, clean_query
+    from evals import multi_label_eval
+    from ticket_router.retrieval.search_client import SearchClient, clean_query
 except ImportError:
     multi_label_eval = None
     SearchClient = None
     clean_query = None
 
 try:
-    import ablation_eval
+    from evals import ablation_eval
 except ImportError:
-    try:
-        from rag import ablation_eval
-    except ImportError:
-        ablation_eval = None
+    ablation_eval = None
 
 
 def compute_chain_version(

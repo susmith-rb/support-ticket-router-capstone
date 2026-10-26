@@ -56,13 +56,17 @@ def test_detect_changes_terraform_and_corpus():
 
 # REQ-CICD-009
 def test_detect_changes_retrieval_paths():
-    """Retrieval paths (corpus_v2, top-level rag/*.py, agent-search module) set RETRIEVAL_CHANGED."""
+    """Retrieval paths (corpus_v2, top-level rag/*.py, agent-search module, evals, corpus, src retrieval) set RETRIEVAL_CHANGED."""
     test_cases = [
         ["rag/ci_eval_gate.py"],
         ["rag/search_client.py"],
         ["rag/publish_faq.py"],
         ["rag/corpus_v2/faq_data.jsonl"],
         ["deploy/terraform/single-project/modules/agent-search/main.tf"],
+        ["evals/ci_eval_gate.py"],
+        ["src/ticket_router/retrieval/search_client.py"],
+        ["corpus/publish_faq.py"],
+        ["experiments/rerank_laya.py"],
     ]
     for paths in test_cases:
         flags = detect_changes(paths)

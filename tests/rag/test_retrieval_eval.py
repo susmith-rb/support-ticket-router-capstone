@@ -1,6 +1,6 @@
 import json
 import pytest
-from retrieval_eval import clean, compute_rank, compute_recall_at_k, compute_mrr, main
+from evals.retrieval_eval import clean, compute_mrr, compute_rank, compute_recall_at_k, main
 
 
 # REQ-RAG-RETR-001
@@ -109,12 +109,12 @@ def test_retrieval_eval_main_runs_with_and_without_gold_map(tmp_path, monkeypatc
     }]))
     gold_map_file.write_text(json.dumps({"faq-order-status-late-delivery": "faq-order-status-v2"}))
 
-    monkeypatch.setattr("subprocess.check_output", lambda *a, **kw: "dummy-tok\n")
-    monkeypatch.setattr("retrieval_eval.search", lambda *a, **kw: ["faq-order-status-v2", "faq-other"])
+    monkeypatch.setattr("evals.retrieval_eval.get_access_token", lambda: "dummy-tok")
+    monkeypatch.setattr("evals.retrieval_eval.search", lambda *a, **kw: ["faq-order-status-v2", "faq-other"])
 
     # 1. Run without --gold-map
     monkeypatch.setattr("sys.argv", [
-        "retrieval_eval.py",
+        "evals.retrieval_eval.py",
         "--themes", str(themes_file),
         "--threads", str(threads_file),
         "--import", str(import_file),
@@ -129,7 +129,7 @@ def test_retrieval_eval_main_runs_with_and_without_gold_map(tmp_path, monkeypatc
 
     # 2. Run with --gold-map
     monkeypatch.setattr("sys.argv", [
-        "retrieval_eval.py",
+        "evals.retrieval_eval.py",
         "--themes", str(themes_file),
         "--threads", str(threads_file),
         "--import", str(import_file),
@@ -172,10 +172,10 @@ def test_retrieval_eval_location_default_global(tmp_path, monkeypatch):
         captured["ds"] = ds
         return ["faq-order-status-late-delivery"]
 
-    monkeypatch.setattr("subprocess.check_output", lambda *a, **kw: "dummy-tok\n")
-    monkeypatch.setattr("retrieval_eval.search", mock_search)
+    monkeypatch.setattr("evals.retrieval_eval.get_access_token", lambda: "dummy-tok")
+    monkeypatch.setattr("evals.retrieval_eval.search", mock_search)
     monkeypatch.setattr("sys.argv", [
-        "retrieval_eval.py",
+        "evals.retrieval_eval.py",
         "--themes", str(themes_file),
         "--threads", str(threads_file),
         "--import", str(import_file),
@@ -226,10 +226,10 @@ def test_retrieval_eval_location_us(tmp_path, monkeypatch):
         captured["ds"] = ds
         return ["faq-order-status-late-delivery"]
 
-    monkeypatch.setattr("subprocess.check_output", lambda *a, **kw: "dummy-tok\n")
-    monkeypatch.setattr("retrieval_eval.search", mock_search)
+    monkeypatch.setattr("evals.retrieval_eval.get_access_token", lambda: "dummy-tok")
+    monkeypatch.setattr("evals.retrieval_eval.search", mock_search)
     monkeypatch.setattr("sys.argv", [
-        "retrieval_eval.py",
+        "evals.retrieval_eval.py",
         "--themes", str(themes_file),
         "--threads", str(threads_file),
         "--import", str(import_file),
@@ -274,10 +274,10 @@ def test_retrieval_eval_queries_file_and_status_filter(tmp_path, monkeypatch):
         captured_kwargs.append(kwargs)
         return ["faq-order-status-late-delivery"]
 
-    monkeypatch.setattr("subprocess.check_output", lambda *a, **kw: "dummy-tok\n")
-    monkeypatch.setattr("retrieval_eval.search", mock_search)
+    monkeypatch.setattr("evals.retrieval_eval.get_access_token", lambda: "dummy-tok")
+    monkeypatch.setattr("evals.retrieval_eval.search", mock_search)
     monkeypatch.setattr("sys.argv", [
-        "retrieval_eval.py",
+        "evals.retrieval_eval.py",
         "--queries", str(queries_file),
         "--filter-status", "active,draft",
         "--out", str(out_file),
@@ -314,10 +314,10 @@ def test_retrieval_eval_intent_filter_oracle(tmp_path, monkeypatch):
         captured_kwargs.append(kwargs)
         return ["faq-returns-refunds-process"]
 
-    monkeypatch.setattr("subprocess.check_output", lambda *a, **kw: "dummy-tok\n")
-    monkeypatch.setattr("retrieval_eval.search", mock_search)
+    monkeypatch.setattr("evals.retrieval_eval.get_access_token", lambda: "dummy-tok")
+    monkeypatch.setattr("evals.retrieval_eval.search", mock_search)
     monkeypatch.setattr("sys.argv", [
-        "retrieval_eval.py",
+        "evals.retrieval_eval.py",
         "--queries", str(queries_file),
         "--intent-filter", "oracle",
         "--out", str(out_file),

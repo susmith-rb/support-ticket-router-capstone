@@ -8,7 +8,11 @@ Outputs (all PII-redacted):
 Usage: python prepare_twcs.py --csv twcs.csv --brand AmazonHelp --out out/
 Run on the Workbench VM or Cloud Shell (twcs.csv from kaggle datasets download -d thoughtvector/customer-support-on-twitter).
 """
-import argparse, json, re, hashlib, pathlib
+import argparse
+import json
+import re
+import hashlib
+import pathlib
 
 ORDER = re.compile(r"(?i)\b(?:order|ord)\.?\s*(?:no\.?|number|#|id)?\s*[:\-#]?\s*(\d{3}-\d{7}-\d{7}|\d{5,12})\b|\b\d{3}-\d{7}-\d{7}\b")
 CARD = re.compile(r"\b(?:\d[ -]?){12,18}\d\b")

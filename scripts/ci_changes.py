@@ -39,6 +39,17 @@ def is_retrieval_file(path: str) -> bool:
         or norm == "deploy/terraform/single-project/modules/agent-search"
     ):
         return True
+    if (
+        norm.startswith("src/ticket_router/retrieval/")
+        or norm == "src/ticket_router/retrieval"
+    ):
+        return True
+    if norm.startswith("evals/") or norm == "evals":
+        return True
+    if norm.startswith("corpus/") or norm == "corpus":
+        return True
+    if norm.startswith("experiments/") or norm == "experiments":
+        return True
     parts = norm.split("/")
     if len(parts) == 2 and parts[0] == "rag" and parts[1].endswith(".py"):
         return True

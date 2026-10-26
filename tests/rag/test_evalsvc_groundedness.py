@@ -1,7 +1,7 @@
 import io
 import json
 import urllib.error
-from evalsvc_groundedness import build_request_body, evaluate_single_instance, aggregate_scores
+from evals.evalsvc_groundedness import aggregate_scores, build_request_body, evaluate_single_instance
 
 
 # REQ-RAG-RETR-007

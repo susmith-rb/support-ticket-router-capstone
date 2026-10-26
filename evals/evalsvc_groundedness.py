@@ -9,18 +9,12 @@ via config/models.yaml (role: evalsvc_autorater).
 import argparse
 import concurrent.futures as cf
 import json
-import pathlib
-import subprocess
-import sys
 import time
 import urllib.error
 import urllib.request
 
-_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from config.models import model_id  # noqa: E402
+from ticket_router.common.auth import get_access_token
+from ticket_router.config.models import model_id
 
 P = "susmith-fde-ticket-router"
 
@@ -45,7 +39,7 @@ STEP 1: List the factual claims in the response. STEP 2: Check each against the 
 
 
 def get_token():
-    return subprocess.check_output(["gcloud", "auth", "application-default", "print-access-token"], text=True).strip()
+    return get_access_token()
 
 
 def build_request_body(prediction, context, model=None, project=P, loc="global"):

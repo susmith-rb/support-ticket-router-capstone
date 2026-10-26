@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """strict_recall.py — recall for the TDD's strict definition (gold sentiment=angry OR urgency=immediate),
 with Tier-0 rule sets of different cost, on val (choose tau_low) and test (report)."""
-import json, sys
-sys.path.insert(0, __import__("os").path.dirname(__file__))
-from simulate_system import load
+import sys
+
+from training.router_s1.pipeline.simulate_system import load
 
 
 def strict(r):

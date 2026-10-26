@@ -15,20 +15,14 @@ from datetime import datetime, timezone
 import json
 import pathlib
 import re
-import subprocess
-import sys
 import time
 from typing import Any, Dict, List, Optional, Sequence, Union
 import urllib.error
 import urllib.request
 
-sys.path.insert(0, str(pathlib.Path(__file__).parent))
-_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from config.models import model_id  # noqa: E402
-from de_endpoint import api_base, data_store_name, search_url  # noqa: E402
+from ticket_router.common.auth import get_access_token
+from ticket_router.config.models import model_id
+from ticket_router.retrieval.de_endpoint import api_base, data_store_name, search_url
 
 DEFAULT_PROJECT = "susmith-fde-ticket-router"
 DEFAULT_ENGINE = "support-kb-search"
@@ -214,9 +208,7 @@ class SearchClient:
     def get_token(self) -> str:
         if self._token:
             return self._token
-        self._token = subprocess.check_output(
-            ["gcloud", "auth", "application-default", "print-access-token"], text=True
-        ).strip()
+        self._token = get_access_token()
         return self._token
 
     def _execute_http(

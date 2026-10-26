@@ -4,7 +4,10 @@ and an 'All model outputs' comparison tab (Gemini teacher, Laya v2, Claude Sonne
 
   python review_tabs.py golden_key.jsonl golden_sheet_rows.json sonnet.jsonl opus.jsonl disagree.json out_requests.json out_dir
 """
-import csv, json, random, sys
+import csv
+import json
+import random
+import sys
 
 Q = ("escalate", "sentiment", "urgency", "intent")
 URG = {"0": "0 - can wait days", "1": "1 - within a day", "2": "2 - within hours", "3": "3 - immediate"}

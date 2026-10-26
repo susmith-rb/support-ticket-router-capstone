@@ -14,7 +14,8 @@ steps:
       - '-c'
       - |
         set -euo pipefail
-        python rag/publish_faq.py --work rag/corpus_v2 --lint-only
+        pip install --no-cache-dir -e .[runtime]
+        python -m corpus.publish_faq --work rag/corpus_v2 --lint-only
 
   # ---------------------------------------------------------------------------
   # Step 2: Publish new FAQ release to Discovery Engine
@@ -26,7 +27,10 @@ steps:
       - '-c'
       - |
         set -euo pipefail
-        python3 rag/publish_faq.py \
+        apt-get update -qq && apt-get install -y -qq --no-install-recommends python3-venv python3-pip >/dev/null
+        python3 -m venv /workspace/.venv-rt
+        /workspace/.venv-rt/bin/pip install --no-cache-dir -q -e .[runtime]
+        /workspace/.venv-rt/bin/python -m corpus.publish_faq \
           --work rag/corpus_v2 \
           --project "${PROJECT_ID}" \
           --location "${_LOCATION}"
@@ -47,7 +51,7 @@ steps:
   # ---------------------------------------------------------------------------
   # Step 4: Execute retrieval evaluation with production configuration
   # ---------------------------------------------------------------------------
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+  - name: 'python:3.11-slim'
     id: 'run-retrieval-eval'
     entrypoint: 'bash'
     args:
@@ -59,7 +63,8 @@ steps:
           GOLD_MAP_ARG="--gold-map /workspace/eval/gold_map.json"
         fi
 
-        python3 rag/retrieval_eval.py \
+        pip install --no-cache-dir -e .[runtime]
+        python -m evals.retrieval_eval \
           --queries /workspace/eval/dev.jsonl \
           $${GOLD_MAP_ARG} \
           --threshold LOWEST \

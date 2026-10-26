@@ -2,24 +2,15 @@
 
 import hashlib
 import json
-import pathlib
-import sys
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-RAG_DIR = REPO_ROOT / "rag"
-if str(RAG_DIR) not in sys.path:
-    sys.path.insert(0, str(RAG_DIR))
-
-from build_faq_corpus import (
+from corpus.build_faq_corpus import (
     POLICY_VERSION,
     build_article_body,
     build_corpus,
     doc_id_for_theme,
     synthesize_article,
 )
-from publish_faq import lint
+from corpus.publish_faq import lint
 
 
 def _make_dummy_threads_file(tmp_path):

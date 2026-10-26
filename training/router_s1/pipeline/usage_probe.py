@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """usage_probe.py — measure real token usage per teacher call (input / output / thinking)."""
-import json, os, pathlib, sys
+import json
+import os
+import sys
 
-_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from config.models import get, model_id
+from ticket_router.config.models import get, model_id
 
 
 def main(argv=None):
@@ -18,8 +16,7 @@ def main(argv=None):
     import pandas as pd
     from google import genai
     from google.genai import types
-    sys.path.insert(0, os.path.dirname(__file__))
-    from label_teacher import PROMPT, SCHEMA, rubric
+    from training.router_s1.pipeline.label_teacher import PROMPT, SCHEMA, rubric
 
     teacher_cfg = get("teacher")
     loc = os.environ.get("LOCATION", teacher_cfg.get("location", "global"))

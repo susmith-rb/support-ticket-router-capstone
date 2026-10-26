@@ -8,10 +8,10 @@ Tests cover:
 
 from datetime import datetime, timezone
 import json
-from search_client import (
+from ticket_router.retrieval.search_client import (
+    SearchClient,
     build_filter,
     clean_query,
-    SearchClient,
     load_rich_faq_records,
 )
 

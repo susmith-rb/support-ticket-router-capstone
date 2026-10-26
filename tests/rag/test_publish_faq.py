@@ -1,7 +1,7 @@
 import hashlib
 import json
 import pytest
-from publish_faq import (
+from corpus.publish_faq import (
     sha,
     answer_only,
     lint,
@@ -401,7 +401,7 @@ def test_check_manifest_invariants_skips_retired():
 # REQ-RAG-CORPUS-010
 def test_publish_faq_location_default_global(tmp_path, monkeypatch):
     import subprocess
-    from publish_faq import main
+    from corpus.publish_faq import main
 
     docs_dir = tmp_path / "docs"
     docs_dir.mkdir()
@@ -419,8 +419,8 @@ def test_publish_faq_location_default_global(tmp_path, monkeypatch):
             return {"name": "op123", "done": True}
         return {}
 
-    monkeypatch.setattr("publish_faq.call", mock_call)
-    monkeypatch.setattr("subprocess.check_output", lambda *a, **kw: "dummy-tok\n")
+    monkeypatch.setattr("corpus.publish_faq.call", mock_call)
+    monkeypatch.setattr("corpus.publish_faq.get_access_token", lambda: "dummy-tok")
     monkeypatch.setattr("subprocess.run", lambda *a, **kw: subprocess.CompletedProcess(a, 0))
     monkeypatch.setattr("sys.argv", [
         "publish_faq.py",
@@ -452,7 +452,7 @@ def test_publish_faq_location_default_global(tmp_path, monkeypatch):
 # REQ-RAG-CORPUS-010
 def test_publish_faq_location_us(tmp_path, monkeypatch):
     import subprocess
-    from publish_faq import main
+    from corpus.publish_faq import main
 
     docs_dir = tmp_path / "docs"
     docs_dir.mkdir()
@@ -470,8 +470,8 @@ def test_publish_faq_location_us(tmp_path, monkeypatch):
             return {"name": "op456", "done": True}
         return {}
 
-    monkeypatch.setattr("publish_faq.call", mock_call)
-    monkeypatch.setattr("subprocess.check_output", lambda *a, **kw: "dummy-tok\n")
+    monkeypatch.setattr("corpus.publish_faq.call", mock_call)
+    monkeypatch.setattr("corpus.publish_faq.get_access_token", lambda: "dummy-tok")
     monkeypatch.setattr("subprocess.run", lambda *a, **kw: subprocess.CompletedProcess(a, 0))
     monkeypatch.setattr("sys.argv", [
         "publish_faq.py",

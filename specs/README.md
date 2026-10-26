@@ -41,11 +41,13 @@ Every requirement block in `specs/<area>.md` follows this exact structure:
 
 | Area | Spec File | Description | REQ Prefix |
 |---|---|---|---|
+| **Platform & Packaging** | [`specs/platform.md`](platform.md) | Standard Python package layout, zero `sys.path` mutations, runtime ADC authentication, and offline vs runtime isolation. | `REQ-PLAT-` |
 | **RAG Corpus** | [`specs/rag-corpus.md`](rag-corpus.md) | FAQ synthesis, policy single-sourcing, linting, agent provenance, theme regrouping, knowledge lifecycle, versioning, and atomic rollback. | `REQ-RAG-CORPUS-` |
 | **RAG Retrieval** | [`specs/rag-retrieval.md`](rag-retrieval.md) | Agent Search query cleaning, threshold configuration, multi-tier evaluation methodology, citation verification, regression gates, and performance targets. | `REQ-RAG-RETR-` |
 | **Infra & Search** | [`specs/infra-agent-search.md`](infra-agent-search.md) | Terraform modular architecture, VM-only execution, remote state bucket, location placement, content configs, IAM policies, and soft-delete handling. | `REQ-INFRA-SEARCH-` |
 | **Router S1** | [`specs/router-s1.md`](router-s1.md) | System-1 typed-decision taxonomy, PII redaction, teacher labeling, dataset stratification, model calibration, threshold sweeping, and routing invariants. | `REQ-ROUTER-S1-` |
 | **Billing & Models** | [`specs/billing-and-models.md`](billing-and-models.md) | Guardrails restricting offline LLM workloads to Jetski agents, allowed runtime Argolis API calls, and token-based cost accounting rules. | `REQ-BILLING-` |
+| **Model Serving** | [`specs/model-serving.md`](model-serving.md) | Model serving container, Vertex AI Endpoint resource, Artifact Registry packaging, and Cloud Build serving deployment pipeline. | `REQ-SERVING-` |
 
 ---
 

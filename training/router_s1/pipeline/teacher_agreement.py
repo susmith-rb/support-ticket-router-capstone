@@ -10,7 +10,9 @@ Reports, per question:
 
   python teacher_agreement.py labels.jsonl test.jsonl pred_test.jsonl
 """
-import itertools, json, sys
+import itertools
+import json
+import sys
 from collections import Counter
 
 Q = ("escalate", "sentiment", "urgency", "intent")

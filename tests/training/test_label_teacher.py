@@ -1,5 +1,5 @@
 import pytest
-from label_teacher import to_gold
+from training.router_s1.pipeline.label_teacher import to_gold
 
 
 # REQ-ROUTER-S1-003

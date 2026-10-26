@@ -10,16 +10,13 @@ citations (LLM add-on), and top-3 similar `resolved-threads` (secondary evidence
 """
 import argparse
 import json
-import pathlib
 import re
-import subprocess
-import sys
 import urllib.error
 import urllib.request
 
-sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from de_endpoint import search_url, data_store_name  # noqa: E402
-from search_client import build_filter  # noqa: E402
+from ticket_router.common.auth import get_access_token
+from ticket_router.retrieval.de_endpoint import data_store_name, search_url
+from ticket_router.retrieval.search_client import build_filter
 
 
 def main():
@@ -32,7 +29,7 @@ def main():
     ap.add_argument("queries", nargs="+")
     a = ap.parse_args()
 
-    tok = subprocess.check_output(["gcloud", "auth", "application-default", "print-access-token"], text=True).strip()
+    tok = get_access_token()
     url = search_url(a.project, a.engine, location=a.location)
     faq_ds = data_store_name(a.project, "faq-articles", location=a.location)
     threads_ds = data_store_name(a.project, "resolved-threads", location=a.location)

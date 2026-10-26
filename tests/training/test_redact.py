@@ -1,5 +1,5 @@
 """test_redact.py — redaction must catch PII but keep order IDs as [ORDER] (not [CARD])."""
-from prepare_twcs import redact, luhn_ok
+from training.router_s1.pipeline.prepare_twcs import luhn_ok, redact
 
 CASES = {
     "@AmazonHelp the return delivery against order no.112-1234567-1234567 has not been picked up.": ("[ORDER]", "[CARD]"),

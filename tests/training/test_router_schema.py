@@ -1,4 +1,4 @@
-from router_schema import QUESTIONS, SENTIMENTS, INTENTS, URGENCY_LEVELS
+from training.router_s1.pipeline.router_schema import INTENTS, QUESTIONS, SENTIMENTS, URGENCY_LEVELS
 
 
 # REQ-ROUTER-S1-001

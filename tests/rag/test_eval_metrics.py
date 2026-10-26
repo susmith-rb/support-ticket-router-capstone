@@ -5,7 +5,7 @@
 import math
 import pytest
 
-from eval_metrics import (
+from evals.eval_metrics import (
     compute_metrics_summary,
     compute_rank,
     filter_slice,

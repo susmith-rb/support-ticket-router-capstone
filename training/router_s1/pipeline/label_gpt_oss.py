@@ -8,16 +8,16 @@ No third-party packages needed (urllib only).
 
   python label_gpt_oss.py golden_sheet_rows.json out.jsonl --project P [--region us-central1] [--probe]
 """
-import argparse, collections, concurrent.futures as cf, json, pathlib, re, subprocess, sys, time, urllib.request
-sys.path.insert(0, __import__("os").path.dirname(__file__))
-
-_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from config.models import model_id
-
-from router_schema import QUESTIONS, SENTIMENTS, INTENTS, URGENCY_LEVELS
+import argparse
+import collections
+import concurrent.futures as cf
+import json
+import re
+import subprocess
+import time
+import urllib.request
+from ticket_router.config.models import model_id
+from training.router_s1.pipeline.router_schema import INTENTS, QUESTIONS, SENTIMENTS, URGENCY_LEVELS
 
 def rubric():
     lines = []

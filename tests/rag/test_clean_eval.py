@@ -1,6 +1,6 @@
 import json
 import pytest
-from clean_eval import norm, is_verbatim_citation, main
+from evals.clean_eval import is_verbatim_citation, main, norm
 
 
 # REQ-RAG-RETR-005
@@ -83,8 +83,8 @@ def test_clean_eval_main_runs_with_gold_map_and_reuse_questions(tmp_path, monkey
     out_dir = tmp_path / "out"
 
     # Mock external calls
-    monkeypatch.setattr("clean_eval.search", lambda q: ["faq-order-v2"])
-    monkeypatch.setattr("clean_eval.gemini", lambda model, prompt, schema: (
+    monkeypatch.setattr("evals.clean_eval.search", lambda q: ["faq-order-v2"])
+    monkeypatch.setattr("evals.clean_eval.gemini", lambda model, prompt, schema: (
         {
             "answer": "Orders arrive within 4-6 business days.",
             "citations": [{"doc_id": "faq-order-v2", "quote": "arrive within 4-6 business days"}],
@@ -93,16 +93,16 @@ def test_clean_eval_main_runs_with_gold_map_and_reuse_questions(tmp_path, monkey
         },
         {"promptTokenCount": 50, "candidatesTokenCount": 20, "thoughtsTokenCount": 0}
     ))
-    monkeypatch.setattr("clean_eval.claude", lambda model, prompt, effort="high", max_tokens=8000: (
+    monkeypatch.setattr("evals.clean_eval.claude", lambda model, prompt, effort="high", max_tokens=8000: (
         {"claims": [{"claim": "Orders arrive within 4-6 business days.", "supported": True}], "faithfulness": 5},
         {"input_tokens": 100, "output_tokens": 50}
     ))
-    monkeypatch.setattr("clean_eval.post", lambda url, body, **kw: {
+    monkeypatch.setattr("evals.clean_eval.post", lambda url, body, **kw: {
         "groundednessResult": {"score": 5, "explanation": "grounded"}
     })
 
     monkeypatch.setattr("sys.argv", [
-        "clean_eval.py",
+        "evals.clean_eval.py",
         "--docs", str(docs_dir),
         "--import", str(import_file),
         "--out", str(out_dir),
@@ -145,8 +145,8 @@ def test_clean_eval_skip_judge_flag(tmp_path, monkeypatch):
     out_dir = tmp_path / "out"
 
     # Mock search and gemini answer generator
-    monkeypatch.setattr("clean_eval.search", lambda q: ["faq-order-v2"])
-    monkeypatch.setattr("clean_eval.gemini", lambda model, prompt, schema: (
+    monkeypatch.setattr("evals.clean_eval.search", lambda q: ["faq-order-v2"])
+    monkeypatch.setattr("evals.clean_eval.gemini", lambda model, prompt, schema: (
         {
             "answer": "Orders arrive within 4-6 business days.",
             "citations": [{"doc_id": "faq-order-v2", "quote": "arrive within 4-6 business days"}],
@@ -165,11 +165,11 @@ def test_clean_eval_skip_judge_flag(tmp_path, monkeypatch):
             pytest.fail("evaluateInstances should not be called when --skip-judge is passed")
         return {}
 
-    monkeypatch.setattr("clean_eval.claude", fail_claude)
-    monkeypatch.setattr("clean_eval.post", fail_post)
+    monkeypatch.setattr("evals.clean_eval.claude", fail_claude)
+    monkeypatch.setattr("evals.clean_eval.post", fail_post)
 
     monkeypatch.setattr("sys.argv", [
-        "clean_eval.py",
+        "evals.clean_eval.py",
         "--docs", str(docs_dir),
         "--import", str(import_file),
         "--out", str(out_dir),
@@ -215,13 +215,13 @@ def test_clean_eval_location_default_global(tmp_path, monkeypatch):
             return {"results": [{"document": {"id": "faq-order-v2"}}]}
         return {}
 
-    monkeypatch.setattr("clean_eval.post", mock_post)
-    monkeypatch.setattr("clean_eval.gemini", lambda *a, **kw: (
+    monkeypatch.setattr("evals.clean_eval.post", mock_post)
+    monkeypatch.setattr("evals.clean_eval.gemini", lambda *a, **kw: (
         {"answer": "Within 4-6 days.", "citations": [{"doc_id": "faq-order-v2", "quote": "arrive within 4-6 business days"}], "grounded": True, "escalate": False},
         {"promptTokenCount": 10, "candidatesTokenCount": 10, "thoughtsTokenCount": 0}
     ))
     monkeypatch.setattr("sys.argv", [
-        "clean_eval.py",
+        "evals.clean_eval.py",
         "--docs", str(docs_dir),
         "--import", str(import_file),
         "--out", str(out_dir),
@@ -272,13 +272,13 @@ def test_clean_eval_location_us(tmp_path, monkeypatch):
             return {"results": [{"document": {"id": "faq-order-v2"}}]}
         return {}
 
-    monkeypatch.setattr("clean_eval.post", mock_post)
-    monkeypatch.setattr("clean_eval.gemini", lambda *a, **kw: (
+    monkeypatch.setattr("evals.clean_eval.post", mock_post)
+    monkeypatch.setattr("evals.clean_eval.gemini", lambda *a, **kw: (
         {"answer": "Within 4-6 days.", "citations": [{"doc_id": "faq-order-v2", "quote": "arrive within 4-6 business days"}], "grounded": True, "escalate": False},
         {"promptTokenCount": 10, "candidatesTokenCount": 10, "thoughtsTokenCount": 0}
     ))
     monkeypatch.setattr("sys.argv", [
-        "clean_eval.py",
+        "evals.clean_eval.py",
         "--docs", str(docs_dir),
         "--import", str(import_file),
         "--out", str(out_dir),

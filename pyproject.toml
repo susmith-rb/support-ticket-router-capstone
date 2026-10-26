@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "support-ticket-router-capstone"
+version = "0.1.0"
+description = "Support Ticket Router & Assistant"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.1.0",
+    "pyyaml>=6.0",
+    "google-auth>=2.0.0",
+    "requests>=2.28.0",
+]
+runtime = [
+    "google-auth>=2.0.0",
+    "requests>=2.28.0",
+    "pyyaml>=6.0",
+]
+experiments = [
+    "google-auth>=2.0.0",
+    "requests>=2.28.0",
+    "pyyaml>=6.0",
+]
+
+[tool.setuptools]
+package-dir = { "" = "src", "evals" = "evals", "corpus" = "corpus", "experiments" = "experiments", "training" = "training" }
+packages = [
+    "ticket_router",
+    "ticket_router.config",
+    "ticket_router.common",
+    "ticket_router.retrieval",
+    "evals",
+    "corpus",
+    "experiments",
+    "training",
+    "training.router_s1",
+    "training.router_s1.pipeline",
+]
+
+[tool.setuptools.package-data]
+"ticket_router.config" = ["models.yaml"]

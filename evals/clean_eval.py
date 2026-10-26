@@ -12,7 +12,7 @@ B. Answer groundedness: Gemini Flash answers each question from the top-5 retrie
      - Claude Opus 5.5 atomic-claim judge: % of answer claims supported by the retrieved articles,
        plus a 1-5 faithfulness score (the same family of metric as the baseline deck's "grounding")
 
-All calls use ADC (`gcloud auth application-default print-access-token`) via urllib. Each stage
+All calls use ADC via ticket_router.common.auth.get_access_token via urllib. Each stage
 caches to --out so it can be resumed.
 
   python clean_eval.py --docs faq/docs --import faq/faq_articles_import.jsonl --out clean_eval/ [--per-article 2]
@@ -22,20 +22,13 @@ import concurrent.futures as cf
 import json
 import pathlib
 import re
-import subprocess
-import sys
 import time
 import urllib.error
 import urllib.request
 
-_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from config.models import model_id  # noqa: E402
-
-sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from de_endpoint import search_url, data_store_name  # noqa: E402
+from ticket_router.common.auth import get_access_token
+from ticket_router.config.models import model_id
+from ticket_router.retrieval.de_endpoint import data_store_name, search_url
 
 P = "susmith-fde-ticket-router"
 VERTEX_LOC = "global"
@@ -45,14 +38,8 @@ SEARCH = search_url(P, "support-kb-search", location=DEFAULT_LOCATION)
 
 
 class Tok:
-    def __init__(self):
-        self.t, self.at = None, 0
-
     def __call__(self):
-        if not self.t or time.time() - self.at > 2400:
-            self.t = subprocess.check_output(["gcloud", "auth", "application-default", "print-access-token"], text=True).strip()
-            self.at = time.time()
-        return self.t
+        return get_access_token()
 
 
 tok = Tok()

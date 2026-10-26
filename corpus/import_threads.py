@@ -9,15 +9,13 @@ Usage:
 """
 import argparse
 import json
-import pathlib
-import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
 
-sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from de_endpoint import api_base, documents_import_url  # noqa: E402
+from ticket_router.common.auth import get_access_token
+from ticket_router.retrieval.de_endpoint import api_base, documents_import_url
 
 DEFAULT_BUCKET = "gs://susmith-fde-ticket-router-laya"
 DEFAULT_URI = f"{DEFAULT_BUCKET}/corpus/resolved-threads/v1/resolved_threads_import.jsonl"
@@ -26,9 +24,7 @@ DEFAULT_DATA_STORE = "resolved-threads"
 
 
 def get_token():
-    return subprocess.check_output(
-        ["gcloud", "auth", "application-default", "print-access-token"], text=True
-    ).strip()
+    return get_access_token()
 
 
 def call(method, url, project, token, body=None, timeout=120):

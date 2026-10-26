@@ -37,19 +37,19 @@ steps:
         python -m pip install --no-cache-dir -r requirements-dev.txt
 
         echo "=== Running conservative Ruff linter (select E, F; ignore E501) ==="
-        ruff check rag/ tests/
+        ruff check .
 
         echo "=== Running offline test suite and spec traceability ==="
         python -m pytest -v
 
         echo "=== Verifying Python byte-compilation ==="
-        python -m py_compile rag/*.py
+        python -m py_compile src/ticket_router/*.py src/ticket_router/**/*.py evals/*.py corpus/*.py experiments/*.py
         if [ -d "training/router_s1/pipeline" ]; then
           python -m py_compile training/router_s1/pipeline/*.py
         fi
 
         echo "=== Linting FAQ corpus policy and metadata ==="
-        python rag/publish_faq.py --work rag/corpus_v2 --lint-only
+        python -m corpus.publish_faq --work rag/corpus_v2 --lint-only
 
   # ===========================================================================
   # Step 2: Static Terraform Checks (runs only if deploy/terraform/** changed)
@@ -106,8 +106,32 @@ steps:
   # Step 3: Golden Retrieval Evaluation Gate (blocks build/deploy on regression)
   # ===========================================================================
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
-    id: 'golden-eval-gate'
+    id: 'fetch-eval-dataset'
     waitFor: ['unit-and-resilience-tests']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        if [ -f /workspace/changes.env ]; then . /workspace/changes.env; fi
+        RUN_EVAL="${_RUN_EVAL}"
+        if [ "$${RUN_EVAL}" = "false" ]; then
+          echo "Skipping eval dataset fetch: disabled via _RUN_EVAL=false"
+          exit 0
+        elif [ "$${RUN_EVAL}" = "auto" ]; then
+          if [ "$${RETRIEVAL_CHANGED:-false}" != "true" ]; then
+            echo "Skipping eval dataset fetch: no retrieval-relevant changes"
+            exit 0
+          fi
+        fi
+
+        echo "=== Fetching evaluation dataset and multi-annotator labels from GCS ==="
+        mkdir -p /workspace/eval
+        gsutil -m cp "gs://${_CORPUS_BUCKET}/eval/*" /workspace/eval/
+
+  - name: 'python:3.11-slim'
+    id: 'golden-eval-gate'
+    waitFor: ['fetch-eval-dataset']
     entrypoint: 'bash'
     args:
       - '-c'
@@ -125,9 +149,8 @@ steps:
           fi
         fi
 
-        echo "=== Fetching evaluation dataset and multi-annotator labels from GCS ==="
-        mkdir -p /workspace/eval
-        gsutil -m cp "gs://${_CORPUS_BUCKET}/eval/*" /workspace/eval/
+        echo "=== Installing runtime dependencies ==="
+        pip install --no-cache-dir -e .[runtime]
 
         LABELS_ARG=""
         if [ -f /workspace/eval/labels_c2.jsonl ]; then
@@ -142,7 +165,7 @@ steps:
         fi
 
         echo "=== Executing Golden Evaluation Gate ==="
-        python3 rag/ci_eval_gate.py \
+        python -m evals.ci_eval_gate \
           --queries /workspace/eval/dev.jsonl \
           $${LABELS_ARG} \
           $${BASELINE_ARG} \
@@ -171,8 +194,12 @@ steps:
           echo "Skipping corpus reindex: rag/corpus_v2/ unchanged or not running on main"
           exit 0
         fi
+        echo "=== Installing Python dependencies in virtualenv ==="
+        apt-get update -qq && apt-get install -y -qq --no-install-recommends python3-venv python3-pip >/dev/null
+        python3 -m venv /workspace/.venv-rt
+        /workspace/.venv-rt/bin/pip install --no-cache-dir -q -e .[runtime]
         echo "=== Publishing new corpus release to Discovery Engine ==="
-        python3 rag/publish_faq.py \
+        /workspace/.venv-rt/bin/python -m corpus.publish_faq \
           --work rag/corpus_v2 \
           --project "${PROJECT_ID}" \
           --location "${_LOCATION}"

@@ -21,13 +21,19 @@ The concise Technical Design Doc is in **[docs/TDD.md](docs/TDD.md)**, and the f
 
 | Path | What |
 | --- | --- |
+| `src/ticket_router/` | Core runtime package: model configuration (`config`), auth/common helpers (`common`), and Agent Search retrieval client (`retrieval`) |
+| `evals/` | Offline evaluation suite, metrics computation, and golden CI evaluation gate (`evals/ci_eval_gate.py`) |
+| `corpus/` | FAQ knowledge corpus curation, article synthesis, theme regrouping, and release publishing |
+| `experiments/` | Offline reranker experiments (Cross-Encoder, Laya, fusion, and CPU benchmarking) |
+| `training/router_s1/` | Reproducible Laya Tier-1 fine-tuning pipeline (prepare → teacher labels → dataset → train → evaluate), with its own [runbook](training/router_s1/README.md) |
+| `rag/` | FAQ corpus data releases (`corpus_v2/`), multi-annotator labels (`labels/`), and frozen benchmark runs (`results/`) |
+| `cicd/` | Declarative Cloud Build pipelines (main CI, corpus reindex, nightly drift monitoring, model serving) |
+| `deploy/terraform/` | Terraform modules for project services, Agent Search, Cloud Build, and model serving endpoint |
 | [specs/](specs/) | Component specifications and requirement traceability matrix ([specs/README.md](specs/README.md)) |
 | [docs/TDD.md](docs/TDD.md) | Concise Technical Design Doc (team review version): Executive Summary, Architecture, Components, Security, RAG, Evals/CI/CD, Observability |
 | [docs/TDD_DETAILED.md](docs/TDD_DETAILED.md) | Full 20-section reference TDD: CUJs, architecture, routing design, security, reliability, TCO, eval gates, ADRs, runbooks |
 | [AGENTS.md](AGENTS.md) | Rules for coding agents (Jetski/AGY) working in this repo |
 | [docs/LESSONS.md](docs/LESSONS.md) | Lessons log: agent/harness mistakes and environment gotchas, fed back into `AGENTS.md` |
-| [training/router_s1/](training/router_s1/) | Reproducible Laya Tier-1 fine-tuning pipeline (prepare → teacher labels → dataset → train → evaluate), with its own [runbook](training/router_s1/README.md) |
-| `agents/`, `mcp/`, `deploy/terraform/` | *Planned:* ADK agents (Agent Runtime + Cloud Run fallback), MCP tool servers, Terraform modules (TDD §5, §7, §12.7) |
 
 ## Status
 

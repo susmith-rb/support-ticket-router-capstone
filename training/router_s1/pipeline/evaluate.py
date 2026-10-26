@@ -16,8 +16,11 @@ the checkpoint is servable. Reports:
   python evaluate.py --ckpt convaiinnovations/laya --data ... --out ...              # base `english`
   python evaluate.py --ckpt convaiinnovations/laya --subfolder typed-decisions ...    # base typed-decisions
 """
-import argparse, json, statistics, time
-from router_schema import QUESTIONS, SENTIMENTS, INTENTS
+import argparse
+import json
+import statistics
+import time
+from training.router_s1.pipeline.router_schema import INTENTS, QUESTIONS, SENTIMENTS
 
 TAUS = [round(i / 100, 2) for i in range(1, 100)]
 

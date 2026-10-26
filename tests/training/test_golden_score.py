@@ -1,4 +1,4 @@
-from golden_score import norm, kappa
+from training.router_s1.pipeline.golden_score import kappa, norm
 
 
 # REQ-ROUTER-S1-007

@@ -22,7 +22,7 @@ steps:
   # ---------------------------------------------------------------------------
   # Step 2: Execute live retrieval health and drift evaluation
   # ---------------------------------------------------------------------------
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+  - name: 'python:3.11-slim'
     id: 'run-retrieval-health-eval'
     entrypoint: 'bash'
     args:
@@ -38,7 +38,8 @@ steps:
 
         BASELINE_ARG="--baseline /workspace/baseline/baseline.json"
 
-        python3 rag/ci_eval_gate.py \
+        pip install --no-cache-dir -e .[runtime]
+        python -m evals.ci_eval_gate \
           --queries /workspace/eval/dev.jsonl \
           $${LABELS_ARG} \
           $${BASELINE_ARG} \

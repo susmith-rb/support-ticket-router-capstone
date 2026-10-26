@@ -13,7 +13,7 @@ import sys
 from typing import List, Tuple
 import pytest
 
-from config.models import _parse_yaml_fallback, get, list_roles, model_id
+from ticket_router.config.models import _parse_yaml_fallback, get, list_roles, model_id
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -226,7 +226,7 @@ def test_list_roles_returns_full_map():
 
 def test_fallback_yaml_parser_accurately_parses_models_yaml():
     """REQ-BILL-MODELS-003: _parse_yaml_fallback parses models.yaml cleanly without PyYAML."""
-    config_file = REPO_ROOT / "config" / "models.yaml"
+    config_file = REPO_ROOT / "src" / "ticket_router" / "config" / "models.yaml"
     text = config_file.read_text(encoding="utf-8")
     parsed = _parse_yaml_fallback(text)
 
@@ -240,7 +240,7 @@ def test_fallback_yaml_parser_accurately_parses_models_yaml():
 
 
 def test_cli_invocation_returns_expected_id():
-    """REQ-BILL-MODELS-001: python -m config.models <role> executes as CLI."""
-    cmd = [sys.executable, "-m", "config.models", "answer"]
+    """REQ-BILL-MODELS-001: python -m ticket_router.config.models <role> executes as CLI."""
+    cmd = [sys.executable, "-m", "ticket_router.config.models", "answer"]
     res = subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True, check=True)
     assert res.stdout.strip() == "gemini-3.8-flash"

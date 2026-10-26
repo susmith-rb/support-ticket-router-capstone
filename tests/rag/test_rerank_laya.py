@@ -9,7 +9,7 @@ Validates:
 """
 
 import pytest
-from rag.rerank_laya import (
+from experiments.rerank_laya import (
     QUESTION_ID,
     convert_row_to_laya,
     format_option_text,

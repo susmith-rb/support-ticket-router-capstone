@@ -1,5 +1,5 @@
 import pytest
-from strict_recall import strict, RULESETS, run
+from training.router_s1.pipeline.strict_recall import RULESETS, run, strict
 
 
 # REQ-ROUTER-S1-010

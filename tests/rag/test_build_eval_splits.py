@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import pytest
 
-from build_eval_splits import (
+from corpus.build_eval_splits import (
     assert_disjointness,
     build_dev_split,
     write_jsonl,

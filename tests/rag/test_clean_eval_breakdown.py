@@ -1,4 +1,4 @@
-from clean_eval_breakdown import esc, compute_breakdown
+from evals.clean_eval_breakdown import compute_breakdown, esc
 
 
 # REQ-RAG-RETR-006

@@ -26,17 +26,12 @@ import hashlib
 import json
 import pathlib
 import re
-import subprocess
-import sys
 import time
 import urllib.error
 import urllib.request
 
-_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from config.models import model_id  # noqa: E402
+from ticket_router.common.auth import get_access_token
+from ticket_router.config.models import model_id
 
 POLICY_VERSION = "policy-v1"  # bump when any fact below changes (TDD §6.6.2); publish_faq.py lint checks articles against it
 SIMULATED_POLICY = """Global Retail Hub (simulated retailer) — canonical policy facts. Use ONLY these numbers.
@@ -59,25 +54,16 @@ INTENTS = ["order_status", "shipping_policy", "returns_refunds", "account_paymen
 def get_lint_fn():
     """Lazily import publish_faq.lint to avoid circular import when build_faq_corpus is __main__."""
     try:
-        from publish_faq import lint
+        from corpus.publish_faq import lint
         return lint
     except ImportError:
-        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
         from publish_faq import lint
         return lint
 
 
 class Tok:
-    def __init__(self):
-        self.t, self.at = None, 0
-
     def __call__(self):
-        if not self.t or time.time() - self.at > 2400:
-            self.t = subprocess.check_output(
-                ["gcloud", "auth", "application-default", "print-access-token"], text=True
-            ).strip()
-            self.at = time.time()
-        return self.t
+        return get_access_token()
 
 
 def doc_id_for_theme(theme_dict_or_intent, theme_id=None):

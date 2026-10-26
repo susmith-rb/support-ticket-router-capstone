@@ -14,7 +14,7 @@ Covers:
 import json
 import math
 import pytest
-from multi_label_eval import (
+from evals.multi_label_eval import (
     compute_agreement_stats,
     compute_cohen_kappa,
     compute_graded_dcg,

@@ -12,7 +12,7 @@ Validates:
 from typing import Any, Dict
 import pytest
 
-from rag.laya_cpu_bench import (
+from experiments.laya_cpu_bench import (
     build_choice_question,
     get_cpu_info,
     measure_percentiles,

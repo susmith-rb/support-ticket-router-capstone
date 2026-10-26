@@ -28,24 +28,11 @@ import collections
 import json
 import pathlib
 import re
-import sys
 
-_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from config.models import model_id  # noqa: E402
-
-# Ensure local imports work whether run from repo root or rag/
-REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-RAG_DIR = pathlib.Path(__file__).resolve().parent
-if str(RAG_DIR) not in sys.path:
-    sys.path.insert(0, str(RAG_DIR))
+from ticket_router.config.models import model_id
 
 try:
-    from build_faq_corpus import THEME_SCHEMA, Tok, gemini
+    from corpus.build_faq_corpus import THEME_SCHEMA, Tok, gemini
 except ImportError:
     # Fallback if imported in test environment without full dependencies
     THEME_SCHEMA = {"type": "object", "required": ["themes"]}

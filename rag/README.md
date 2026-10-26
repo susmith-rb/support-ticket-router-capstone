@@ -5,11 +5,11 @@ Builds the retrieval layer the FaqResolverAgent uses (TDD §6). Everything runs 
 
 ```
 labels.jsonl (teacher topic per message) ─┐
-threads.jsonl (81k redacted threads) ─────┼─ build_faq_corpus.py ──▶ themes.json + 53 FAQ articles (.txt) + import JSONL
-                                          └─ build_threads_corpus.py ▶ 81,103 thread documents (JSONL, structData)
-agent_search_setup.sh create | import-threads | import-faq | engine   ──▶ data stores + search app `support-kb-search`
-search_test.py "query" ...    ──▶ top-5 FAQ results (+ summary with citations) and similar threads
-retrieval_eval.py / retrieval_sweep.sh  ──▶ recall@k / MRR on 300 held-out real customer messages
+threads.jsonl (81k redacted threads) ─────┼─ corpus/build_faq_corpus.py ──▶ themes.json + 53 FAQ articles (.txt) + import JSONL
+                                          └─ corpus/build_threads_corpus.py ▶ 81,103 thread documents (JSONL, structData)
+scripts/agent_search_setup.sh create | import-threads | import-faq | engine   ──▶ data stores + search app `support-kb-search`
+evals/search_test.py "query" ...    ──▶ top-5 FAQ results (+ summary with citations) and similar threads
+evals/retrieval_eval.py / scripts/retrieval_sweep.sh  ──▶ recall@k / MRR on 300 held-out real customer messages
 ```
 
 ## What's in Agent Search (project `susmith-fde-ticket-router`, location `global`)
@@ -36,11 +36,11 @@ Articles are versioned documents. `build_faq_corpus.py` now stamps lifecycle met
 policy_version, reviewed_by/at`), and `publish_faq.py` is the only way the index changes:
 
 ```
-python publish_faq.py --work <dir> --lint-only            # numeric policy facts must come from SIMULATED_POLICY
-python publish_faq.py --work <dir> --dry-run              # what would change (added / changed@version / retired)
-python publish_faq.py --work <dir> --activate <id> --reviewed-by <ldap>
-python publish_faq.py --work <dir> --retire <old-id> --supersedes <new-id>
-python publish_faq.py --work <dir>                        # stamp → upload v<N> → FULL import → wait → verify served version
+python -m corpus.publish_faq --work <dir> --lint-only            # numeric policy facts must come from SIMULATED_POLICY
+python -m corpus.publish_faq --work <dir> --dry-run              # what would change (added / changed@version / retired)
+python -m corpus.publish_faq --work <dir> --activate <id> --reviewed-by <ldap>
+python -m corpus.publish_faq --work <dir> --retire <old-id> --supersedes <new-id>
+python -m corpus.publish_faq --work <dir>                        # stamp → upload v<N> → FULL import → wait → verify served version
 ```
 
 Rules the script enforces: an edited article gets `version+1`, loses its review and drops back to `draft`;

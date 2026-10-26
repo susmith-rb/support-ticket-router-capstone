@@ -1,16 +1,12 @@
 import json
 import pathlib
 import pytest
-import sys
-
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent / "rag"))
-
-from augment_paraphrases import (
+from corpus.augment_paraphrases import (
     merge_paraphrases_into_body,
     normalize_text,
     verify_no_leakage,
 )
-from publish_faq import lint
+from corpus.publish_faq import lint
 
 
 def test_normalize_text():

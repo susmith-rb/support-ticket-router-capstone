@@ -17,7 +17,7 @@ from pathlib import Path
 import random
 import pytest
 
-from rag.rerank_data import (
+from experiments.rerank_data import (
     assign_candidate_grades,
     build_candidates_for_query,
     build_docs_catalog,
@@ -143,7 +143,7 @@ def test_graded_mapping_2_1_0():
 
 def test_per_article_balance_cap(tmp_path):
   """Verify per-article cap limits silver items per document."""
-  from rag.rerank_data import load_silver_data
+  from experiments.rerank_data import load_silver_data
 
   docs_catalog = {
       "faq-order-status-late-order": {
@@ -353,7 +353,7 @@ def test_build_candidates_with_hard_negatives():
 
 def test_load_pool_graded_data(tmp_path):
   """Verify load_pool_graded_data filters non-support, non-English, primary=None, and leakage."""
-  from rag.rerank_data import load_pool_graded_data
+  from experiments.rerank_data import load_pool_graded_data
 
   docs_catalog = {
       "faq-returns-refunds-return-pickup-issues": {"title": "Pickup Issues"},

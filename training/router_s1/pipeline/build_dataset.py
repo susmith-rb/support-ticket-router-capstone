@@ -10,8 +10,12 @@ after two humans review it (see README).
 
   python build_dataset.py --labels data/labels/labels.jsonl --out data/dataset/v1
 """
-import argparse, collections, json, pathlib, random
-from router_schema import QUESTIONS
+import argparse
+import collections
+import json
+import pathlib
+import random
+from training.router_s1.pipeline.router_schema import QUESTIONS
 
 def argmax(p): return max(p, key=p.get)
 

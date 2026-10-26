@@ -1,15 +1,15 @@
 import json
-from de_endpoint import (
+from evals import search_test
+from ticket_router.retrieval.de_endpoint import (
     api_base,
+    branch_name,
     collection_name,
     data_store_name,
-    branch_name,
-    engine_name,
-    serving_config_name,
-    search_url,
     documents_import_url,
+    engine_name,
+    search_url,
+    serving_config_name,
 )
-import search_test
 
 
 # REQ-RAG-RETR-004
@@ -203,7 +203,7 @@ def test_search_test_location_us(monkeypatch):
 
 # REQ-RAG-CORPUS-010
 def test_import_threads_trigger_and_poll(monkeypatch):
-    import import_threads
+    import corpus.import_threads as import_threads
 
     calls = []
 
@@ -215,8 +215,8 @@ def test_import_threads_trigger_and_poll(monkeypatch):
             return {"name": "op-123", "done": True, "response": {"successCount": 81103}}
         return {}
 
-    monkeypatch.setattr("import_threads.call", mock_call)
-    monkeypatch.setattr("import_threads.get_token", lambda: "fake-tok")
+    monkeypatch.setattr(import_threads, "call", mock_call)
+    monkeypatch.setattr(import_threads, "get_token", lambda: "fake-tok")
 
     # Test trigger_import with location="us"
     res = import_threads.trigger_import(

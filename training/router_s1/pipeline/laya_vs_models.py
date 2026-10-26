@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-import json, sys
+import json
+import sys
 
 W = {"rest": 429 / 646, "strict": 111 / 646, "split": 106 / 646}
 

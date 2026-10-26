@@ -9,16 +9,16 @@ Tests cover:
 """
 
 import pytest
-from ablation_eval import (
-    AblationConfig,
+from evals.ablation_eval import (
     ALL_CONFIG_NAMES,
+    AblationConfig,
     evaluate_single_config,
     generate_markdown_table,
     generate_noisy_intents,
     get_ablation_configs,
     validate_split_and_config_guard,
 )
-from search_client import SearchResult
+from ticket_router.retrieval.search_client import SearchResult
 
 
 def test_get_ablation_configs_all():

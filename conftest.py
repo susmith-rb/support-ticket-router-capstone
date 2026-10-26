@@ -1,15 +1,4 @@
-import os
-import pathlib
-import sys
 import pytest
-
-REPO_ROOT = pathlib.Path(__file__).resolve().parent
-RAG_DIR = REPO_ROOT / "rag"
-PIPELINE_DIR = REPO_ROOT / "training" / "router_s1" / "pipeline"
-
-for p in (str(REPO_ROOT), str(RAG_DIR), str(PIPELINE_DIR)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
 
 
 @pytest.fixture(autouse=True)

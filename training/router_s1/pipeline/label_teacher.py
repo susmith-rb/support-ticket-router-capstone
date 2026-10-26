@@ -6,14 +6,16 @@ Writes data/labels/labels.jsonl (append + resume): one record per message with v
 
   PROJECT=<id> python label_teacher.py --n 2000 --samples 3
 """
-import argparse, asyncio, json, os, pathlib, random, sys, time
-from router_schema import QUESTIONS, SENTIMENTS, INTENTS, URGENCY_LEVELS
+import argparse
+import asyncio
+import json
+import os
+import pathlib
+import random
+import time
 
-_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from config.models import get, model_id
+from ticket_router.config.models import get, model_id
+from training.router_s1.pipeline.router_schema import INTENTS, QUESTIONS, SENTIMENTS, URGENCY_LEVELS
 
 SCHEMA = {
     "type": "object",
@@ -95,8 +97,9 @@ async def main():
     ap.add_argument("--seed", type=int, default=7)
     a = ap.parse_args()
 
-    import pandas as pd
     from google import genai
+    import pandas as pd
+    df = pd.read_parquet(a.inp)
     client = genai.Client(vertexai=True, project=os.environ["PROJECT"], location=a.location)
     out = pathlib.Path(a.out); out.parent.mkdir(parents=True, exist_ok=True)
     done = set()
