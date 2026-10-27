@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: faq-resolver
+  namespace: faq-resolver
+  labels:
+    app: faq-resolver
+    app.kubernetes.io/name: faq-resolver
+    app.kubernetes.io/part-of: support-ticket-router
+    cost_center: support-ticket-router
+spec:
+  type: ClusterIP
+  selector:
+    app: faq-resolver
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP

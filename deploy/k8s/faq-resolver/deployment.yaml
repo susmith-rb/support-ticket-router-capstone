@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: faq-resolver
+  namespace: faq-resolver
+  labels:
+    app: faq-resolver
+    app.kubernetes.io/name: faq-resolver
+    app.kubernetes.io/part-of: support-ticket-router
+    cost_center: support-ticket-router
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: faq-resolver
+  template:
+    metadata:
+      labels:
+        app: faq-resolver
+        app.kubernetes.io/name: faq-resolver
+        app.kubernetes.io/part-of: support-ticket-router
+    spec:
+      serviceAccountName: ksa-faq
+      containers:
+      - name: faq-resolver
+        image: us-central1-docker.pkg.dev/susmith-fde-ticket-router/router-serving/support-agents:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: PROJECT_ID
+          value: "susmith-fde-ticket-router"
+        - name: LOCATION
+          value: "us-central1"
+        - name: SEARCH_ENGINE_ID
+          value: "support-kb-search"
+        - name: DATA_STORE_ID
+          value: "faq-articles"
+        - name: ROUTER_ENDPOINT_ID
+          value: "router-s1"
+        - name: PORT
+          value: "8000"
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10

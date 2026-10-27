@@ -108,3 +108,74 @@ output "cloud_sql_admin_secret_id" {
   value       = module.cloud_sql.admin_secret_id
 }
 
+# -----------------------------------------------------------------------------
+# Agent Tier Outputs
+# -----------------------------------------------------------------------------
+
+output "pubsub_human_queue_topic" {
+  description = "Name of the human-queue Pub/Sub escalation topic"
+  value       = module.pubsub.topic_name
+}
+
+output "pubsub_human_queue_dlq_topic" {
+  description = "Name of the human-queue dead-letter Pub/Sub topic"
+  value       = module.pubsub.dlq_topic_name
+}
+
+output "pubsub_human_queue_subscription" {
+  description = "Name of the human-queue pull subscription"
+  value       = module.pubsub.subscription_name
+}
+
+output "gke_cluster_name" {
+  description = "Name of the GKE Autopilot cluster for agent workloads"
+  value       = module.gke_autopilot.cluster_name
+}
+
+output "gke_cluster_id" {
+  description = "Resource ID of the GKE Autopilot cluster"
+  value       = module.gke_autopilot.cluster_id
+}
+
+output "gke_cluster_endpoint" {
+  description = "Public control-plane endpoint for the GKE Autopilot cluster"
+  value       = module.gke_autopilot.endpoint
+}
+
+output "sa_triage_email" {
+  description = "Email of the TriageRouter agent service account"
+  value       = module.agents_iam.sa_triage_email
+}
+
+output "sa_faq_email" {
+  description = "Email of the FaqResolver agent service account"
+  value       = module.agents_iam.sa_faq_email
+}
+
+output "cloud_run_ticket_db_mcp_url" {
+  description = "Service URL for ticket-db-mcp Cloud Run service"
+  value       = module.cloud_run_services.ticket_db_mcp_url
+}
+
+output "cloud_run_order_lookup_mcp_url" {
+  description = "Service URL for order-lookup-mcp Cloud Run service"
+  value       = module.cloud_run_services.order_lookup_mcp_url
+}
+
+output "cloud_run_human_queue_url" {
+  description = "Service URL for human-queue Cloud Run service"
+  value       = module.cloud_run_services.human_queue_url
+}
+
+output "vpc_network_name" {
+  description = "Name of the VPC network"
+  value       = module.network.network_name
+}
+
+output "vpc_subnetwork_name" {
+  description = "Name of the VPC subnetwork"
+  value       = module.network.subnetwork_name
+}
+
+
+

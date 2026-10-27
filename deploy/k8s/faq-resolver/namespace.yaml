@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: faq-resolver
+  labels:
+    app.kubernetes.io/part-of: support-ticket-router
+    cost_center: support-ticket-router

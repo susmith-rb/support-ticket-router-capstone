@@ -102,3 +102,47 @@ variable "cloud_sql_deletion_protection" {
   default     = true
 }
 
+variable "cloud_sql_human_iam_users" {
+  description = "List of human IAM user email addresses granted read-only Cloud SQL access"
+  type        = list(string)
+  default     = ["susmith@gcp.altostrat.com"]
+}
+
+variable "agents_image" {
+  description = "Docker image for shared Cloud Run services (ticket-db-mcp, order-lookup-mcp, human-queue). Empty string disables Cloud Run services until image is built."
+  type        = string
+  default     = ""
+}
+
+variable "enable_re_service_agent_bindings" {
+  description = "Gate IAM binding for Reasoning Engine service agent (service-<NUM>@gcp-sa-aiplatform-re.iam.gserviceaccount.com) until after first Agent Engine / Reasoning Engine deploy lazily creates the service identity."
+  type        = bool
+  default     = false
+}
+
+
+variable "gke_cluster_name" {
+  description = "Name of the GKE Autopilot cluster for FaqResolver"
+  type        = string
+  default     = "support-agents"
+}
+
+variable "gke_deletion_protection" {
+  description = "Whether deletion protection is enabled on GKE Autopilot cluster"
+  type        = bool
+  default     = true
+}
+
+variable "cloud_run_min_instances" {
+  description = "Minimum instances for Cloud Run services (0 for minimal cost posture)"
+  type        = number
+  default     = 0
+}
+
+variable "cloud_run_max_instances" {
+  description = "Maximum instances for Cloud Run services"
+  type        = number
+  default     = 3
+}
+
+

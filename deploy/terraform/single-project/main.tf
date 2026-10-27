@@ -28,7 +28,9 @@ module "project_services" {
     "secretmanager.googleapis.com",
     "sqladmin.googleapis.com",
     "run.googleapis.com",
-    "container.googleapis.com"
+    "container.googleapis.com",
+    "pubsub.googleapis.com",
+    "compute.googleapis.com"
   ]
 }
 
@@ -39,6 +41,7 @@ module "cloud_sql" {
   tier                = var.cloud_sql_tier
   availability_type   = var.cloud_sql_availability_type
   deletion_protection = var.cloud_sql_deletion_protection
+  human_iam_users     = var.cloud_sql_human_iam_users
   labels              = var.labels
 
   depends_on = [module.project_services]
@@ -97,3 +100,71 @@ resource "google_storage_bucket_iam_member" "discovery_engine_corpus_reader" {
   role   = "roles/storage.objectViewer"
   member = "serviceAccount:${google_project_service_identity.discovery_engine.email}"
 }
+
+# -----------------------------------------------------------------------------
+# Agent Tier Infrastructure
+# -----------------------------------------------------------------------------
+
+module "pubsub" {
+  source     = "./modules/pubsub"
+  project_id = var.project_id
+  labels     = var.labels
+
+  depends_on = [module.project_services]
+}
+
+module "network" {
+  source     = "./modules/network"
+  project_id = var.project_id
+  region     = var.region
+
+  depends_on = [module.project_services]
+}
+
+module "gke_autopilot" {
+  source                        = "./modules/gke-autopilot"
+  project_id                    = var.project_id
+  region                        = var.region
+  cluster_name                  = var.gke_cluster_name
+  network                       = module.network.network_id
+  subnetwork                    = module.network.subnetwork_id
+  cluster_secondary_range_name  = module.network.pods_secondary_range_name
+  services_secondary_range_name = module.network.services_secondary_range_name
+  deletion_protection           = var.gke_deletion_protection
+  labels                        = var.labels
+
+  depends_on = [module.project_services, module.network]
+}
+
+module "agents_iam" {
+  source                           = "./modules/agents-iam"
+  project_id                       = var.project_id
+  region                           = var.region
+  router_endpoint_id               = module.router_endpoint.endpoint_id
+  sa_queue_email                   = module.cloud_sql.sa_queue_email
+  pubsub_human_queue_topic_name    = module.pubsub.topic_name
+  pubsub_human_queue_sub_name      = module.pubsub.subscription_name
+  corpus_bucket_name               = data.google_storage_bucket.corpus_bucket.name
+  enable_re_service_agent_bindings = var.enable_re_service_agent_bindings
+
+  depends_on = [module.project_services, module.pubsub, module.cloud_sql, module.router_endpoint]
+}
+
+module "cloud_run_services" {
+  source                    = "./modules/cloud-run-services"
+  project_id                = var.project_id
+  region                    = var.region
+  agents_image              = var.agents_image
+  cloud_sql_connection_name = module.cloud_sql.instance_connection_name
+  sa_ticket_mcp_email       = module.cloud_sql.sa_ticket_mcp_email
+  sa_order_mcp_email        = module.cloud_sql.sa_order_mcp_email
+  sa_queue_email            = module.cloud_sql.sa_queue_email
+  sa_triage_email           = module.agents_iam.sa_triage_email
+  sa_faq_email              = module.agents_iam.sa_faq_email
+  min_instance_count        = var.cloud_run_min_instances
+  max_instance_count        = var.cloud_run_max_instances
+  labels                    = var.labels
+
+  depends_on = [module.project_services, module.cloud_sql, module.agents_iam]
+}
+

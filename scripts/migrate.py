@@ -185,11 +185,11 @@ def verify_database(conn) -> Dict[str, Any]:
         cursor.execute("SELECT rolname FROM pg_roles;")
         roles = {row[0] for row in cursor.fetchall()}
         report["roles"] = sorted(roles)
-        expected_roles = {"orders_ro", "ticket_rw", "queue_rw"}
+        expected_roles = {"orders_ro", "ticket_rw", "queue_rw", "analyst_ro"}
         missing_roles = expected_roles - roles
         if missing_roles:
             raise RuntimeError(f"Missing required database role(s): {missing_roles}")
-        logger.info("Required roles verified: orders_ro, ticket_rw, queue_rw")
+        logger.info("Required roles verified: orders_ro, ticket_rw, queue_rw, analyst_ro")
 
         # 3. RLS enabled on orders_mock (pg_class.relrowsecurity)
         cursor.execute("SELECT relrowsecurity FROM pg_class WHERE relname = 'orders_mock';")
@@ -212,10 +212,15 @@ def verify_database(conn) -> Dict[str, Any]:
         FROM pg_auth_members am
         JOIN pg_roles r ON r.oid = am.roleid
         JOIN pg_roles m ON m.oid = am.member
-        WHERE r.rolname IN ('orders_ro', 'ticket_rw', 'queue_rw');
+        WHERE r.rolname IN ('orders_ro', 'ticket_rw', 'queue_rw', 'analyst_ro');
         """
         cursor.execute(query)
-        memberships: Dict[str, List[str]] = {"orders_ro": [], "ticket_rw": [], "queue_rw": []}
+        memberships: Dict[str, List[str]] = {
+            "orders_ro": [],
+            "ticket_rw": [],
+            "queue_rw": [],
+            "analyst_ro": [],
+        }
         for role_name, member_name in cursor.fetchall():
             if role_name in memberships:
                 memberships[role_name].append(member_name)
@@ -239,6 +244,14 @@ def verify_database(conn) -> Dict[str, Any]:
                 elif "queue" in user:
                     if user not in memberships["queue_rw"]:
                         raise RuntimeError(f"IAM user {user} is not granted queue_rw!")
+
+        # Ensure human IAM DB users hold analyst_ro (only if any human IAM users exist)
+        human_iam_users = [r for r in roles if "@" in r and not r.startswith("sa-")]
+        if human_iam_users:
+            logger.info("Detected human IAM database user(s) in pg_roles: %s", human_iam_users)
+            for user in human_iam_users:
+                if user not in memberships["analyst_ro"]:
+                    raise RuntimeError(f"Human IAM user {user} is not granted analyst_ro!")
 
         logger.info("Verification passed: all tables, roles, RLS, and memberships are valid.")
         return report
@@ -294,19 +307,15 @@ def main():
     logger.info("Connecting to Cloud SQL instance: %s (db: %s, user: %s)", instance_connection_name, args.database, args.user)
 
     connector = get_connector()
-
-    def get_conn():
-        return connector.connect(
-            instance_connection_name,
-            "pg8000",
-            user=args.user,
-            password=db_password,
-            db=args.database,
-            enable_iam_auth=is_iam_user,
-            ip_type=IPTypes.PUBLIC,
-        )
-
-    conn = get_conn()
+    conn = connector.connect(
+        instance_connection_name,
+        "pg8000",
+        user=args.user,
+        password=db_password,
+        db=args.database,
+        enable_iam_auth=is_iam_user,
+        ip_type=IPTypes.PUBLIC,
+    )
     try:
         if not args.verify_only:
             logger.info("Applying %d migration file(s)...", len(migration_files))

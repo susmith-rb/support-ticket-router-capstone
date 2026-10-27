@@ -99,9 +99,14 @@ def test_triage_deployment_script():
 
     # Check Reasoning Engine service agent bucket permissions in agents-iam/main.tf
     iam_main_tf = (MOD_DIR / "agents-iam" / "main.tf").read_text(encoding="utf-8")
+    iam_vars_tf = (MOD_DIR / "agents-iam" / "variables.tf").read_text(encoding="utf-8")
+    root_main = (TF_DIR / "main.tf").read_text(encoding="utf-8")
     assert 'resource "google_storage_bucket_iam_member" "re_staging_reader"' in iam_main_tf
     assert 'role   = "roles/storage.objectViewer"' in iam_main_tf
     assert "gcp-sa-aiplatform-re.iam.gserviceaccount.com" in iam_main_tf
+    assert "var.enable_re_service_agent_bindings" in iam_main_tf
+    assert "enable_re_service_agent_bindings" in iam_vars_tf
+    assert "enable_re_service_agent_bindings = var.enable_re_service_agent_bindings" in root_main
 
     # Dry-run execution test
     result = subprocess.run(
@@ -239,6 +244,15 @@ def test_cloud_run_services_iam_and_cost_posture():
     assert 'role     = "roles/run.invoker"' in main_tf
     assert '"allUsers"' not in main_tf
     assert '"allAuthenticatedUsers"' not in main_tf
+
+    # Environment variables match serve.py contract exactly and prohibit fake repos
+    assert '"ALLOW_FAKE_REPOS"' not in main_tf
+    assert 'value = "ticket_db"' in main_tf
+    assert 'value = "order_lookup"' in main_tf
+    assert 'value = "human_queue"' in main_tf
+    assert "value = var.cloud_sql_connection_name" in main_tf
+    assert 'value = "support"' in main_tf
+    assert "DB_IAM_USER" in main_tf
 
     # Outputs
     assert "ticket_db_mcp_url" in outputs_tf

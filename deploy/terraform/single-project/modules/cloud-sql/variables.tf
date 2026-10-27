@@ -50,3 +50,9 @@ variable "labels" {
   type        = map(string)
   default     = {}
 }
+
+variable "human_iam_users" {
+  description = "List of human IAM user email addresses granted read-only Cloud SQL access"
+  type        = list(string)
+  default     = []
+}

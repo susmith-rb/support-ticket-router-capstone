@@ -163,3 +163,39 @@ resource "google_secret_manager_secret_version" "admin_password" {
   secret      = google_secret_manager_secret.admin_password.id
   secret_data = random_password.admin_password.result
 }
+
+# -----------------------------------------------------------------------------
+# Human IAM Database Users and Roles (REQ-STORE-008)
+# -----------------------------------------------------------------------------
+
+resource "google_sql_user" "human_iam_users" {
+  for_each = toset(var.human_iam_users)
+  project  = var.project_id
+  name     = each.value
+  instance = google_sql_database_instance.ticket_store.name
+  type     = "CLOUD_IAM_USER"
+}
+
+locals {
+  human_user_roles = flatten([
+    for user in var.human_iam_users : [
+      for role in [
+        "roles/cloudsql.instanceUser",
+        "roles/cloudsql.client",
+        "roles/cloudsql.studioUser",
+        ] : {
+        key  = "${user}-${role}"
+        user = user
+        role = role
+      }
+    ]
+  ])
+}
+
+resource "google_project_iam_member" "human_iam_roles" {
+  for_each = { for item in local.human_user_roles : item.key => item }
+  project  = var.project_id
+  role     = each.value.role
+  member   = "user:${each.value.user}"
+}
+

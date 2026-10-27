@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ksa-faq
+  namespace: faq-resolver
+  labels:
+    app.kubernetes.io/part-of: support-ticket-router
+    app.kubernetes.io/name: faq-resolver
+  annotations:
+    iam.gke.io/gcp-service-account: sa-faq@susmith-fde-ticket-router.iam.gserviceaccount.com

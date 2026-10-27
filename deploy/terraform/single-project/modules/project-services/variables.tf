@@ -16,6 +16,8 @@ variable "services" {
     "sqladmin.googleapis.com",
     "run.googleapis.com",
     "container.googleapis.com",
-    "secretmanager.googleapis.com"
+    "secretmanager.googleapis.com",
+    "pubsub.googleapis.com",
+    "compute.googleapis.com"
   ]
 }
