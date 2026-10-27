@@ -50,6 +50,7 @@ Every requirement block in `specs/<area>.md` follows this exact structure:
 | **Model Serving** | [`specs/model-serving.md`](model-serving.md) | Model serving container, Vertex AI Endpoint resource, Artifact Registry packaging, and Cloud Build serving deployment pipeline. | `REQ-SERVING-` |
 | **Agent Service** | [`specs/agent-service.md`](agent-service.md) | Multi-agent service topology, TriageRouter policy, FaqResolver RAG ReAct loop, HumanQueue, MCP tool contracts, and resilience. | `REQ-AGENT-` |
 | **Ticket Store** | [`specs/ticket-store.md`](ticket-store.md) | Cloud SQL PostgreSQL 16 persistence, IAM DB auth, RLS, idempotent migrations, seed data, and repository layer. | `REQ-STORE-` |
+| **Customer Identity** | [`specs/customer-identity.md`](customer-identity.md) | Cloud Identity Platform IdP, Firebase JWT verification, relational customer identity schema, fail-closed anonymous handling, trust chain propagation, and threat mitigations. | `REQ-IDENT-` |
 
 ---
 
