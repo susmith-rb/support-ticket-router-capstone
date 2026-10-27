@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from ticket_router.store.interfaces import OrderRepository, TicketRepository
-from ticket_router.store.models import Order, Ticket, TicketCreate, TicketEvent
+from ticket_router.store.models import Order, RedactionMap, Ticket, TicketCreate, TicketEvent
 
 logger = logging.getLogger(__name__)
 
@@ -353,6 +353,86 @@ class PostgresTicketRepo(TicketRepository):
                 resolution_notes=str(row[10]) if row[10] else None,
                 created_at=_parse_datetime(row[11]),
                 updated_at=_parse_datetime(row[12]),
+            )
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_redaction_map(self, ticket_id: UUID | str) -> Optional[RedactionMap]:
+        t_id = str(ticket_id)
+        query = """
+        SELECT map_id, ticket_id, customer_id, encrypted_mappings, key_id, created_at, expires_at
+        FROM redaction_maps
+        WHERE ticket_id = %s;
+        """
+        conn = self._connection_factory()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(query, (t_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            encrypted_data = row[3]
+            if isinstance(encrypted_data, memoryview):
+                encrypted_data = bytes(encrypted_data)
+            elif isinstance(encrypted_data, str):
+                encrypted_data = encrypted_data.encode("utf-8")
+            return RedactionMap(
+                map_id=UUID(str(row[0])),
+                ticket_id=UUID(str(row[1])),
+                customer_id=str(row[2]),
+                encrypted_mappings=encrypted_data,
+                key_id=str(row[4]),
+                created_at=_parse_datetime(row[5]),
+                expires_at=_parse_datetime(row[6]) if row[6] else None,
+            )
+        finally:
+            cursor.close()
+            conn.close()
+
+    def save_redaction_map(self, redaction_map: RedactionMap) -> RedactionMap:
+        query = """
+        INSERT INTO redaction_maps (
+            map_id, ticket_id, customer_id, encrypted_mappings, key_id, created_at, expires_at
+        ) VALUES (
+            %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '30 days'
+        )
+        ON CONFLICT (map_id) DO UPDATE SET
+            encrypted_mappings = EXCLUDED.encrypted_mappings,
+            key_id = EXCLUDED.key_id
+        RETURNING map_id, ticket_id, customer_id, encrypted_mappings, key_id, created_at, expires_at;
+        """
+        conn = self._connection_factory()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                query,
+                (
+                    str(redaction_map.map_id),
+                    str(redaction_map.ticket_id),
+                    redaction_map.customer_id,
+                    redaction_map.encrypted_mappings,
+                    redaction_map.key_id,
+                ),
+            )
+            row = cursor.fetchone()
+            conn.commit()
+            encrypted_data = row[3]
+            if isinstance(encrypted_data, memoryview):
+                encrypted_data = bytes(encrypted_data)
+            elif isinstance(encrypted_data, str):
+                encrypted_data = encrypted_data.encode("utf-8")
+            return RedactionMap(
+                map_id=UUID(str(row[0])),
+                ticket_id=UUID(str(row[1])),
+                customer_id=str(row[2]),
+                encrypted_mappings=encrypted_data,
+                key_id=str(row[4]),
+                created_at=_parse_datetime(row[5]),
+                expires_at=_parse_datetime(row[6]) if row[6] else None,
             )
         except Exception:
             conn.rollback()

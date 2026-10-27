@@ -1,0 +1,31 @@
+# services/cloudbuild.yaml
+# Cloud Build configuration for unified agents container image.
+# Implements REQ-AGENT-001, REQ-AGENT-009, REQ-AGENT-010.
+#
+# Build invocation:
+#   gcloud builds submit \
+#     --project=susmith-fde-ticket-router \
+#     --config=services/cloudbuild.yaml \
+#     --gcs-source-staging-dir=gs://susmith-fde-ticket-router-laya/cloudbuild-src \
+#     --service-account=projects/susmith-fde-ticket-router/serviceAccounts/ticket-router-build@susmith-fde-ticket-router.iam.gserviceaccount.com \
+#     --substitutions=_IMAGE_TAG=us-central1-docker.pkg.dev/susmith-fde-ticket-router/serving/agents:v1 \
+#     .
+
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-f'
+      - 'services/Dockerfile'
+      - '-t'
+      - '$_IMAGE_TAG'
+      - '.'
+
+images:
+  - '$_IMAGE_TAG'
+
+substitutions:
+  _IMAGE_TAG: 'us-central1-docker.pkg.dev/susmith-fde-ticket-router/serving/agents:v1'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

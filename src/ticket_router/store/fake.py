@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from ticket_router.store.interfaces import OrderRepository, TicketRepository
-from ticket_router.store.models import Order, Ticket, TicketCreate, TicketEvent
+from ticket_router.store.models import Order, RedactionMap, Ticket, TicketCreate, TicketEvent
 
 
 class FakeTicketRepo(TicketRepository):
@@ -22,6 +22,7 @@ class FakeTicketRepo(TicketRepository):
         self._lock = threading.Lock()
         self._tickets: Dict[UUID, Ticket] = {}
         self._events: Dict[UUID, List[TicketEvent]] = {}
+        self._redaction_maps: Dict[UUID, RedactionMap] = {}
 
     def _normalize_uuid(self, ticket_id: UUID | str) -> UUID:
         if isinstance(ticket_id, str):
@@ -171,6 +172,16 @@ class FakeTicketRepo(TicketRepository):
                 )
             )
             return ticket
+
+    def get_redaction_map(self, ticket_id: UUID | str) -> Optional[RedactionMap]:
+        t_id = self._normalize_uuid(ticket_id)
+        with self._lock:
+            return self._redaction_maps.get(t_id)
+
+    def save_redaction_map(self, redaction_map: RedactionMap) -> RedactionMap:
+        with self._lock:
+            self._redaction_maps[redaction_map.ticket_id] = redaction_map
+            return redaction_map
 
 
 class FakeOrderRepo(OrderRepository):

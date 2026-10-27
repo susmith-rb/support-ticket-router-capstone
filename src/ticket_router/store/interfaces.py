@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from ticket_router.store.models import Order, Ticket, TicketCreate, TicketEvent
+from ticket_router.store.models import Order, RedactionMap, Ticket, TicketCreate, TicketEvent
 
 
 class TicketRepository(ABC):
@@ -71,6 +71,16 @@ class TicketRepository(ABC):
         citations: Optional[List[Dict[str, Any]]] = None,
     ) -> Optional[Ticket]:
         """Update ticket status, resolution notes, and optional grounded answer."""
+        pass
+
+    @abstractmethod
+    def get_redaction_map(self, ticket_id: UUID | str) -> Optional[RedactionMap]:
+        """Fetch redaction map for a ticket (held by queue_rw role)."""
+        pass
+
+    @abstractmethod
+    def save_redaction_map(self, redaction_map: RedactionMap) -> RedactionMap:
+        """Store or insert customer PII redaction map with 30-day TTL."""
         pass
 
 
