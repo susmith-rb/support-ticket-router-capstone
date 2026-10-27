@@ -1,7 +1,7 @@
 """app.py — HTTP serving entrypoint for FaqResolverAgent on GKE Autopilot.
 
 REQ-AGENT-001, REQ-AGENT-006, REQ-AGENT-007.
-Exposes /healthz (liveness/readiness), /card (A2A discovery), and /a2a / /resolve
+Exposes /health and /healthz (liveness/readiness), /card (A2A discovery), and /a2a / /resolve
 (inquiry processing). Provides native FastAPI app when installed, with a zero-dependency
 ASGI fallback so lightweight containers and test runners without FastAPI can import and run.
 """
@@ -18,46 +18,67 @@ from ticket_router.agents.faq_resolver.a2a import (
 from ticket_router.agents.faq_resolver.agent import FaqResolverAgent, root_agent
 
 try:
-    from fastapi import FastAPI, HTTPException, Request
+    from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 
     _FASTAPI_AVAILABLE = True
 except ImportError:
     _FASTAPI_AVAILABLE = False
 
 
+router = APIRouter()
+
+
+def get_active_agent(request: Request) -> FaqResolverAgent:
+    try:
+        return request.app.state.agent
+    except AttributeError:
+        return root_agent
+
+
+@router.get("/health")
+@router.get("/healthz")
+async def healthz(
+    active_agent: FaqResolverAgent = Depends(get_active_agent),
+) -> Dict[str, Any]:
+    return {
+        "status": "healthy",
+        "agent": "FaqResolverAgent",
+        "model_role": active_agent.model_role,
+        "resolved_model_id": active_agent.resolved_model_id,
+    }
+
+
+@router.get("/card")
+async def get_agent_card() -> Dict[str, Any]:
+    return FAQ_RESOLVER_AGENT_CARD
+
+
+@router.post("/a2a")
+@router.post("/resolve")
+async def resolve_endpoint(
+    request: Request,
+    active_agent: FaqResolverAgent = Depends(get_active_agent),
+) -> Dict[str, Any]:
+    try:
+        payload = await request.json()
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid JSON payload: {e}"
+        ) from e
+
+    return handle_a2a_request(payload, agent=active_agent)
+
+
 def create_fastapi_app(agent: Optional[FaqResolverAgent] = None) -> Any:
     """Build and return a FastAPI application for GKE Autopilot container serving."""
-    active_agent = agent if agent is not None else root_agent
-    app = FastAPI(
+    application = FastAPI(
         title="FaqResolverAgent Service",
         version="1.0.0",
         description="GKE Autopilot microservice for bounded ReAct FAQ resolution with citations.",
     )
-
-    @app.get("/healthz")
-    async def healthz() -> Dict[str, Any]:
-        return {
-            "status": "healthy",
-            "agent": "FaqResolverAgent",
-            "model_role": active_agent.model_role,
-            "resolved_model_id": active_agent.resolved_model_id,
-        }
-
-    @app.get("/card")
-    async def get_agent_card() -> Dict[str, Any]:
-        return FAQ_RESOLVER_AGENT_CARD
-
-    @app.post("/a2a")
-    @app.post("/resolve")
-    async def resolve_endpoint(request: Request) -> Dict[str, Any]:
-        try:
-            payload = await request.json()
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Invalid JSON payload: {e}") from e
-
-        return handle_a2a_request(payload, agent=active_agent)
-
-    return app
+    application.state.agent = agent if agent is not None else root_agent
+    application.include_router(router)
+    return application
 
 
 class AsgiFallbackApp:
@@ -66,7 +87,7 @@ class AsgiFallbackApp:
     def __init__(self, agent: Optional[FaqResolverAgent] = None) -> None:
         self.agent = agent if agent is not None else root_agent
 
-    async def __call__(
+    async def handle_request(
         self,
         scope: Dict[str, Any],
         receive: Callable[[], Any],
@@ -78,7 +99,7 @@ class AsgiFallbackApp:
         path = scope.get("path", "")
         method = scope.get("method", "GET").upper()
 
-        if path == "/healthz" and method == "GET":
+        if path in ("/health", "/healthz") and method == "GET":
             body = json.dumps({
                 "status": "healthy",
                 "agent": "FaqResolverAgent",
@@ -110,7 +131,6 @@ class AsgiFallbackApp:
             return
 
         if path in ("/a2a", "/resolve") and method == "POST":
-            # Receive request body
             body_bytes = b""
             more_body = True
             while more_body:
@@ -157,7 +177,8 @@ def create_app(agent: Optional[FaqResolverAgent] = None) -> Any:
     """Create the appropriate HTTP ASGI application for the environment."""
     if _FASTAPI_AVAILABLE:
         return create_fastapi_app(agent=agent)
-    return AsgiFallbackApp(agent=agent)
+    fallback = AsgiFallbackApp(agent=agent)
+    return fallback.handle_request
 
 
 # Export default app instance for uvicorn

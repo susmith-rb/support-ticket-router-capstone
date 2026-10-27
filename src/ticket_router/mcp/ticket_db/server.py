@@ -75,9 +75,10 @@ def get_ticket_repo(request: Request) -> TicketRepository:
         raise RuntimeError("TicketRepository not configured on app.state")
 
 
+@router.get("/health")
 @router.get("/healthz")
 def healthz() -> Dict[str, str]:
-    """Liveness and readiness probe conforming to Cloud Run conventions."""
+    """Liveness and readiness probe conforming to Cloud Run and Kubernetes conventions."""
     return {"status": "ok"}
 
 

@@ -37,26 +37,40 @@ def test_serve_startup_fails_without_env_and_without_fake(monkeypatch):
 # REQ-AGENT-001
 def test_serve_startup_succeeds_with_allow_fake_repos(monkeypatch):
     """Verify that setting ALLOW_FAKE_REPOS=1 boots lightweight fakes for all services."""
+    from fastapi.testclient import TestClient
+
     monkeypatch.setenv("ALLOW_FAKE_REPOS", "1")
 
     # 1. ticket-db-mcp
     app_ticket = get_app("ticket_db")
     assert app_ticket.title == "ticket-db-mcp"
     assert app_ticket.state.ticket_repo is not None
+    client_ticket = TestClient(app_ticket)
+    assert client_ticket.get("/health").status_code == 200
+    assert client_ticket.get("/healthz").status_code == 200
 
     # 2. order-lookup-mcp
     app_order = get_app("order_lookup")
     assert app_order.title == "order-lookup-mcp"
     assert app_order.state.order_repo is not None
+    client_order = TestClient(app_order)
+    assert client_order.get("/health").status_code == 200
+    assert client_order.get("/healthz").status_code == 200
 
     # 3. human-queue
     app_queue = get_app("human_queue")
     assert app_queue.title == "human-queue"
     assert app_queue.state.agent is not None
+    client_queue = TestClient(app_queue)
+    assert client_queue.get("/health").status_code == 200
+    assert client_queue.get("/healthz").status_code == 200
 
     # 4. faq_resolver
     app_faq = get_app("faq_resolver")
     assert app_faq.title == "FaqResolverAgent Service"
+    client_faq = TestClient(app_faq)
+    assert client_faq.get("/health").status_code == 200
+    assert client_faq.get("/healthz").status_code == 200
 
 
 # REQ-AGENT-001, REQ-STORE-002

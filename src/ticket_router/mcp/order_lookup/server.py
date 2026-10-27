@@ -63,9 +63,10 @@ def get_order_repo(request: Request) -> OrderRepository:
         raise RuntimeError("OrderRepository not configured on app.state")
 
 
+@router.get("/health")
 @router.get("/healthz")
 def healthz() -> Dict[str, str]:
-    """Liveness and readiness probe conforming to Cloud Run conventions."""
+    """Liveness and readiness probe conforming to Cloud Run and Kubernetes conventions."""
     return {"status": "ok"}
 
 

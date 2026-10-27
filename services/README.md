@@ -43,7 +43,8 @@ This fails the build immediately if any packaging, dependency, or syntax regress
 
 ## Runtime Configuration
 
-The container listens on `$PORT` (default `8080`) and exposes `/healthz` for Cloud Run liveness/readiness probes.
+The container listens on `$PORT` (default `8080`) and exposes `/health` and `/healthz` for liveness/readiness probes.
+> **Note on Cloud Run Health Probes**: Cloud Run reserves URL paths ending in `z` (such as `/healthz`, which returns an infrastructure 404 from Google Front End). Always target `/health` on Cloud Run, while `/healthz` remains available for Kubernetes cluster probes.
 
 ### Environment Variables
 

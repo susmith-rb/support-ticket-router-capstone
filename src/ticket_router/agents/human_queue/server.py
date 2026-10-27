@@ -45,6 +45,7 @@ def get_agent(request: Request) -> HumanQueueAgent:
         raise RuntimeError("HumanQueueAgent not configured on app.state")
 
 
+@router.get("/health")
 @router.get("/healthz")
 def healthz() -> Dict[str, str]:
     return {"status": "ok"}

@@ -18,8 +18,33 @@ from ticket_router.store.models import Order, RedactionMap, Ticket, TicketCreate
 logger = logging.getLogger(__name__)
 
 
+def _decode_json(val: Any) -> Any:
+    """Tolerantly decode JSON/JSONB database values across drivers and mocks.
+
+    pg8000 natively decodes JSONB columns into Python dict/list.
+    Other drivers or mock rows may return serialized strings or bytes.
+    """
+    if val is None:
+        return None
+    if isinstance(val, (dict, list)):
+        return val
+    if isinstance(val, (str, bytes, bytearray)):
+        if isinstance(val, (bytes, bytearray)):
+            val = val.decode("utf-8", errors="replace")
+        val_str = val.strip()
+        if not val_str:
+            return None
+        try:
+            return json.loads(val_str)
+        except Exception:
+            return None
+    return val
+
+
 def _parse_datetime(dt_val: Any) -> datetime:
     if isinstance(dt_val, datetime):
+        if dt_val.tzinfo is None:
+            return dt_val.replace(tzinfo=timezone.utc)
         return dt_val
     if isinstance(dt_val, str):
         return datetime.fromisoformat(dt_val.replace("Z", "+00:00"))
@@ -91,12 +116,12 @@ class PostgresTicketRepo(TicketRepository):
                 customer_id=str(row[1]),
                 channel=str(row[2]),
                 body_redacted=str(row[3]),
-                decision=json.loads(row[4]) if row[4] else None,
+                decision=_decode_json(row[4]),
                 status=str(row[5]),
                 assigned_to=str(row[6]) if row[6] else None,
                 assigned_queue=str(row[7]) if row[7] else None,
                 answer_text=str(row[8]) if row[8] else None,
-                citations=json.loads(row[9]) if row[9] else None,
+                citations=_decode_json(row[9]),
                 resolution_notes=str(row[10]) if row[10] else None,
                 created_at=_parse_datetime(row[11]),
                 updated_at=_parse_datetime(row[12]),
@@ -129,12 +154,12 @@ class PostgresTicketRepo(TicketRepository):
                 customer_id=str(row[1]),
                 channel=str(row[2]),
                 body_redacted=str(row[3]),
-                decision=json.loads(row[4]) if row[4] else None,
+                decision=_decode_json(row[4]),
                 status=str(row[5]),
                 assigned_to=str(row[6]) if row[6] else None,
                 assigned_queue=str(row[7]) if row[7] else None,
                 answer_text=str(row[8]) if row[8] else None,
-                citations=json.loads(row[9]) if row[9] else None,
+                citations=_decode_json(row[9]),
                 resolution_notes=str(row[10]) if row[10] else None,
                 created_at=_parse_datetime(row[11]),
                 updated_at=_parse_datetime(row[12]),
@@ -171,12 +196,12 @@ class PostgresTicketRepo(TicketRepository):
                     customer_id=str(row[1]),
                     channel=str(row[2]),
                     body_redacted=str(row[3]),
-                    decision=json.loads(row[4]) if row[4] else None,
+                    decision=_decode_json(row[4]),
                     status=str(row[5]),
                     assigned_to=str(row[6]) if row[6] else None,
                     assigned_queue=str(row[7]) if row[7] else None,
                     answer_text=str(row[8]) if row[8] else None,
-                    citations=json.loads(row[9]) if row[9] else None,
+                    citations=_decode_json(row[9]),
                     resolution_notes=str(row[10]) if row[10] else None,
                     created_at=_parse_datetime(row[11]),
                     updated_at=_parse_datetime(row[12]),
@@ -254,7 +279,7 @@ class PostgresTicketRepo(TicketRepository):
                 ticket_id=UUID(str(row[1])),
                 event_type=str(row[2]),
                 actor=str(row[3]),
-                payload=json.loads(row[4]) if row[4] else None,
+                payload=_decode_json(row[4]),
                 created_at=_parse_datetime(row[5]),
             )
         except Exception:
@@ -283,7 +308,7 @@ class PostgresTicketRepo(TicketRepository):
                     ticket_id=UUID(str(row[1])),
                     event_type=str(row[2]),
                     actor=str(row[3]),
-                    payload=json.loads(row[4]) if row[4] else None,
+                    payload=_decode_json(row[4]),
                     created_at=_parse_datetime(row[5]),
                 )
                 for row in rows
@@ -344,12 +369,12 @@ class PostgresTicketRepo(TicketRepository):
                 customer_id=str(row[1]),
                 channel=str(row[2]),
                 body_redacted=str(row[3]),
-                decision=json.loads(row[4]) if row[4] else None,
+                decision=_decode_json(row[4]),
                 status=str(row[5]),
                 assigned_to=str(row[6]) if row[6] else None,
                 assigned_queue=str(row[7]) if row[7] else None,
                 answer_text=str(row[8]) if row[8] else None,
-                citations=json.loads(row[9]) if row[9] else None,
+                citations=_decode_json(row[9]),
                 resolution_notes=str(row[10]) if row[10] else None,
                 created_at=_parse_datetime(row[11]),
                 updated_at=_parse_datetime(row[12]),
@@ -476,7 +501,7 @@ class PostgresOrderRepo(OrderRepository):
                 order_id=str(row[0]),
                 customer_id=str(row[1]),
                 order_status=str(row[2]),
-                items=json.loads(row[3]) if isinstance(row[3], str) else row[3],
+                items=_decode_json(row[3]) or [],
                 tracking_number=str(row[4]) if row[4] else None,
                 shipping_carrier=str(row[5]) if row[5] else None,
                 total_cents=int(row[6]),
@@ -518,7 +543,7 @@ class PostgresOrderRepo(OrderRepository):
                     order_id=str(row[0]),
                     customer_id=str(row[1]),
                     order_status=str(row[2]),
-                    items=json.loads(row[3]) if isinstance(row[3], str) else row[3],
+                    items=_decode_json(row[3]) or [],
                     tracking_number=str(row[4]) if row[4] else None,
                     shipping_carrier=str(row[5]) if row[5] else None,
                     total_cents=int(row[6]),
