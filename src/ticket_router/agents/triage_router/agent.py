@@ -17,9 +17,11 @@ from typing import Any, Callable, Dict, Optional
 from ticket_router.agents.triage_router.a2a_client import (
     A2AClientProtocol,
     A2AHandoffPayload,
+    HttpA2AClient,
     InMemoryA2AClient,
 )
 from ticket_router.agents.triage_router.mcp_client import (
+    HttpTicketDbMcpClient,
     InMemoryTicketDbMcpClient,
     TicketDbMcpClientProtocol,
     compute_idempotency_key,
@@ -36,6 +38,7 @@ from ticket_router.common.observability import (
     generate_traceparent,
     start_span,
 )
+from ticket_router.common.settings import Settings
 from ticket_router.config.models import model_id
 from ticket_router.models.router_s1_client import RouterPrediction, RouterS1Client
 
@@ -52,11 +55,22 @@ class TriageResult:
     latency_ms: float = 0.0
 
 
-def invoke_tier2_gemini(text: str, target_model: str) -> RouterPrediction:
+def invoke_tier2_gemini(
+    text: str,
+    target_model: str,
+    project: Optional[str] = None,
+    location: Optional[str] = None,
+) -> RouterPrediction:
     """Execute Tier 2 fallback inference using Gemini Flash (REQ-AGENT-002)."""
     try:
         from google import genai  # type: ignore[import-untyped]
-        client = genai.Client()
+        client_kwargs: Dict[str, Any] = {}
+        if project:
+            client_kwargs["project"] = project
+            client_kwargs["vertexai"] = True
+        if location:
+            client_kwargs["location"] = location
+        client = genai.Client(**client_kwargs)
         prompt = (
             f"Evaluate the following support ticket:\n{text}\n"
             "Return JSON with: escalate (bool), escalate_prob (float), "
@@ -100,6 +114,8 @@ def default_tier2_invoker(text: str) -> RouterPrediction:
 def create_tier2_invoker(
     model_role: str = "router_tier2",
     custom_caller: Optional[Callable[[str], RouterPrediction]] = None,
+    project: Optional[str] = None,
+    location: Optional[str] = None,
 ) -> Callable[[str], RouterPrediction]:
     """Build a Tier 2 fallback invoker using Gemini Flash (REQ-AGENT-002, REQ-AGENT-013).
 
@@ -114,6 +130,7 @@ class TriageRouterAgent:
     """TriageRouterAgent coordinating rules, router-s1, Flash, MCP store, and A2A handoffs.
 
     Fulfills REQ-AGENT-001..006, 011..015.
+    Supports lazy initialization for Agent Engine serialization safety.
     """
 
     def __init__(
@@ -122,15 +139,75 @@ class TriageRouterAgent:
         mcp_client: Optional[TicketDbMcpClientProtocol] = None,
         a2a_client: Optional[A2AClientProtocol] = None,
         logger: Optional[StructuredJsonLogger] = None,
+        lazy_init: bool = False,
     ) -> None:
-        self.policy = policy or TriagePolicy(
-            thresholds=RouterThresholds(),
-            s1_client=RouterS1Client(),
-            tier2_invoker=create_tier2_invoker("router_tier2"),
-        )
-        self.mcp_client = mcp_client or InMemoryTicketDbMcpClient()
-        self.a2a_client = a2a_client or InMemoryA2AClient()
+        self._policy = policy
+        self._mcp_client = mcp_client
+        self._a2a_client = a2a_client
         self.logger = logger or StructuredJsonLogger(name="triage_router")
+        self.lazy_init = lazy_init
+        if not lazy_init:
+            self._ensure_initialized()
+
+    def _ensure_initialized(self) -> None:
+        """Initialize dependencies; validates environment settings when require_real_deps is True."""
+        if not self.lazy_init and self._policy is not None and self._mcp_client is not None and self._a2a_client is not None:
+            return
+
+        settings = Settings.from_env()
+        if settings.require_real_deps:
+            settings.validate_for_triage()
+            s1_client = RouterS1Client(
+                endpoint=settings.router_s1_endpoint,
+                base_url=settings.router_s1_base_url,
+            )
+            tier2_invoker = create_tier2_invoker(
+                "router_tier2",
+                project=settings.project,
+                location=settings.location,
+            )
+            self._policy = TriagePolicy(
+                thresholds=RouterThresholds(),
+                s1_client=s1_client,
+                tier2_invoker=tier2_invoker,
+            )
+            self._mcp_client = HttpTicketDbMcpClient(
+                base_url=settings.ticket_db_mcp_url or "http://localhost:8080",
+            )
+            self._a2a_client = HttpA2AClient(
+                endpoint_url=settings.faq_resolver_url or "http://localhost:8080",
+                target_audience=settings.faq_resolver_audience,
+            )
+        else:
+            if self._policy is None:
+                self._policy = TriagePolicy(
+                    thresholds=RouterThresholds(),
+                    s1_client=RouterS1Client(),
+                    tier2_invoker=create_tier2_invoker("router_tier2"),
+                )
+            if self._mcp_client is None:
+                self._mcp_client = InMemoryTicketDbMcpClient()
+            if self._a2a_client is None:
+                self._a2a_client = InMemoryA2AClient()
+        self.lazy_init = False
+
+    @property
+    def policy(self) -> TriagePolicy:
+        self._ensure_initialized()
+        assert self._policy is not None
+        return self._policy
+
+    @property
+    def mcp_client(self) -> TicketDbMcpClientProtocol:
+        self._ensure_initialized()
+        assert self._mcp_client is not None
+        return self._mcp_client
+
+    @property
+    def a2a_client(self) -> A2AClientProtocol:
+        self._ensure_initialized()
+        assert self._a2a_client is not None
+        return self._a2a_client
 
     def triage(
         self,
@@ -143,6 +220,7 @@ class TriageRouterAgent:
         memory_summary: str = "",
     ) -> TriageResult:
         """Execute end-to-end triage evaluation, persistence, and dispatch."""
+        self._ensure_initialized()
         start_time = time.monotonic()
         t_id = ticket_id or f"TICK-{session_id[:8]}"
         traceparent = generate_traceparent()
@@ -163,14 +241,12 @@ class TriageRouterAgent:
 
             # 2. Branch: Escalation path vs. Auto-RAG path
             if decision.decision == "escalate":
-                # Render calming acknowledgement with ticket ID and SLA ETA (REQ-AGENT-005)
                 calming_ack = render_calming_acknowledgement(
                     queue=decision.queue,
                     ticket_id=t_id,
                     category=decision.details.get("category"),
                 )
 
-                # Persist ticket state to ticket-db-mcp idempotently (REQ-AGENT-005, REQ-AGENT-010)
                 self.mcp_client.upsert_ticket(
                     idempotency_key=idempotency_key,
                     customer_id=customer_id,
@@ -179,7 +255,6 @@ class TriageRouterAgent:
                     decision=asdict(decision),
                 )
             else:
-                # Persist ticket state before handoff
                 self.mcp_client.upsert_ticket(
                     idempotency_key=idempotency_key,
                     customer_id=customer_id,
@@ -188,13 +263,13 @@ class TriageRouterAgent:
                     decision=asdict(decision),
                 )
 
-                # Dispatch to FaqResolverAgent via A2A protocol (REQ-AGENT-006)
                 payload = A2AHandoffPayload(
                     ticket_id=t_id,
                     session_id=session_id,
                     predicted_intent=decision.predicted_intent,
                     redacted_message=message_text,
                     memory_summary=memory_summary,
+                    customer_id=customer_id,
                 )
                 handoff_resp = self.a2a_client.handoff(payload)
 
@@ -252,10 +327,14 @@ class _AdkAgentShim:
         """Generator stream query entrypoint for Gemini Enterprise compatibility."""
         yield self.query(query, session_id=session_id, customer_id=customer_id)
 
+    def triage(self, *args: Any, **kwargs: Any) -> TriageResult:
+        """Direct triage delegation."""
+        return self.triage_handler.triage(*args, **kwargs)
+
 
 def create_root_agent() -> Any:
     """Factory creating root_agent for Agent Engine / Agent Runtime deploy."""
-    router_agent_instance = TriageRouterAgent()
+    router_agent_instance = TriageRouterAgent(lazy_init=True)
     instruction = (
         "You are the TriageRouterAgent for customer support. You classify inbound "
         "messages into automated FAQ resolution or human queue escalation."

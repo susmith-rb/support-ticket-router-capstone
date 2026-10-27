@@ -10,9 +10,20 @@ import hashlib
 import json
 from typing import Any, Callable, Dict, Optional, Protocol, runtime_checkable
 import uuid
+import requests
+from requests.adapters import HTTPAdapter
 
-from ticket_router.common.auth import get_access_token
+from ticket_router.common.idtoken import get_id_token
 from ticket_router.common.resilience import TICKET_DB_MCP_TIMEOUT_S
+
+
+def _create_pooled_session() -> requests.Session:
+    """Create thread-safe requests session with keep-alive connection pooling."""
+    sess = requests.Session()
+    adapter = HTTPAdapter(pool_connections=10, pool_maxsize=20, max_retries=0)
+    sess.mount("https://", adapter)
+    sess.mount("http://", adapter)
+    return sess
 
 
 def compute_idempotency_key(session_id: str, body_redacted: str) -> str:
@@ -134,30 +145,31 @@ class HttpTicketDbMcpClient:
         self,
         base_url: str,
         timeout_s: float = TICKET_DB_MCP_TIMEOUT_S,
-        token_provider: Optional[Callable[[], Optional[str]]] = None,
+        token_provider: Optional[Callable[[str], Optional[str]]] = None,
         session: Optional[Any] = None,
+        audience: Optional[str] = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
+        self.audience = audience or self.base_url
         self.timeout_s = timeout_s
-        self.token_provider = token_provider or get_access_token
-        self._session = session
+        self.token_provider = token_provider or get_id_token
+        self.session = session if session is not None else _create_pooled_session()
 
     def _post_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         url = f"{self.base_url}/tools/{tool_name}"
         headers = {"Content-Type": "application/json"}
-        token = self.token_provider()
+        token = None
+        try:
+            token = self.token_provider(self.audience)
+        except TypeError:
+            token = self.token_provider()
+        except Exception:
+            token = None
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
         data_bytes = json.dumps(arguments).encode("utf-8")
-
-        if self._session is not None:
-            resp = self._session.post(url, data=data_bytes, headers=headers, timeout=self.timeout_s)
-            resp.raise_for_status()
-            return resp.json()
-
-        import requests
-        resp = requests.post(url, data=data_bytes, headers=headers, timeout=self.timeout_s)
+        resp = self.session.post(url, data=data_bytes, headers=headers, timeout=self.timeout_s)
         resp.raise_for_status()
         return resp.json()
 

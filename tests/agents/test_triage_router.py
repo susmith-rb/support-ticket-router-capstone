@@ -16,6 +16,7 @@ from ticket_router.agents.triage_router.a2a_client import (
 )
 from ticket_router.agents.triage_router.agent import TriageRouterAgent
 from ticket_router.agents.triage_router.mcp_client import (
+    HttpTicketDbMcpClient,
     InMemoryTicketDbMcpClient,
     compute_idempotency_key,
 )
@@ -415,3 +416,92 @@ def test_triage_circuit_breaker_fallback():
     assert decision.degraded is True
     assert decision.decision == "auto_rag"
     assert decision.predicted_intent == "billing"
+
+
+# =============================================================================
+# Runtime Wiring & Fail-Fast Tests
+# =============================================================================
+
+
+class FakeMcpResponse:
+    """Mock HTTP response for MCP client testing."""
+
+    def __init__(self, data: dict, status_code: int = 200) -> None:
+        self._data = data
+        self.status_code = status_code
+
+    def json(self) -> dict:
+        return self._data
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code} error")
+
+
+def test_http_ticket_db_mcp_client_sends_bearer_token():
+    """Verify HttpTicketDbMcpClient sends OIDC ID token in Authorization header."""
+    mock_session = MagicMock()
+    mock_session.post.return_value = FakeMcpResponse({"ticket_id": "t1", "status": "OPEN"})
+
+    client = HttpTicketDbMcpClient(
+        base_url="https://ticket-db.run.app",
+        session=mock_session,
+        token_provider=lambda aud: "mock_ticket_db_id_token",
+    )
+    client.claim_ticket("t1", "agent-007")
+
+    assert mock_session.post.called
+    call_kwargs = mock_session.post.call_args.kwargs
+    assert call_kwargs["headers"]["Authorization"] == "Bearer mock_ticket_db_id_token"
+
+
+def test_http_a2a_client_sends_customer_id_and_bearer():
+    """Verify HttpA2AClient passes customer_id in payload and Authorization Bearer header."""
+    mock_session = MagicMock()
+    mock_session.post.return_value = FakeMcpResponse({"status": "ACCEPTED"})
+
+    client = HttpA2AClient(
+        endpoint_url="https://faq-resolver.run.app",
+        target_audience="https://faq-resolver.run.app",
+        session=mock_session,
+        token_provider=lambda aud: "mock_a2a_id_token",
+    )
+    payload = A2AHandoffPayload(
+        ticket_id="tick-1",
+        session_id="sess-1",
+        predicted_intent="shipping",
+        redacted_message="Where is my box?",
+        customer_id="cust-vip-100",
+    )
+    resp = client.handoff(payload)
+    assert resp["status"] == "ACCEPTED"
+
+    call_kwargs = mock_session.post.call_args.kwargs
+    assert call_kwargs["headers"]["Authorization"] == "Bearer mock_a2a_id_token"
+
+    import json
+    body_data = json.loads(call_kwargs["data"].decode("utf-8"))
+    assert body_data["customer_id"] == "cust-vip-100"
+
+
+def test_triage_router_lazy_init_fail_fast_on_missing_env(monkeypatch):
+    """Verify TriageRouterAgent with lazy_init=True fails fast on first request if env is missing."""
+    import pytest
+    monkeypatch.setenv("REQUIRE_REAL_DEPS", "1")
+    monkeypatch.delenv("TICKET_DB_MCP_URL", raising=False)
+    monkeypatch.delenv("FAQ_RESOLVER_URL", raising=False)
+
+    agent = TriageRouterAgent(lazy_init=True)
+    with pytest.raises(ValueError, match="Missing required environment variable"):
+        agent.triage(session_id="s1", customer_id="c1", message_text="hello")
+
+
+def test_triage_router_root_agent_import_and_query_in_test_env():
+    """Verify root_agent can be imported and queried safely in test environment."""
+    from ticket_router.agents.triage_router.agent import root_agent
+    assert root_agent is not None
+    # In test environment (where require_real_deps is False), query succeeds with fakes
+    res = root_agent.query("What is the return policy?", session_id="s_test", customer_id="c_test")
+    assert "ticket_id" in res
+    assert "decision" in res
+

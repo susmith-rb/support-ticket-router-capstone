@@ -8,8 +8,19 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import json
 from typing import Any, Callable, Dict, Optional, Protocol, runtime_checkable
+import requests
+from requests.adapters import HTTPAdapter
 
-from ticket_router.common.auth import get_access_token
+from ticket_router.common.idtoken import get_id_token
+
+
+def _create_pooled_session() -> requests.Session:
+    """Create thread-safe requests session with keep-alive connection pooling."""
+    sess = requests.Session()
+    adapter = HTTPAdapter(pool_connections=10, pool_maxsize=20, max_retries=0)
+    sess.mount("https://", adapter)
+    sess.mount("http://", adapter)
+    return sess
 
 
 @dataclass(frozen=True)
@@ -20,6 +31,7 @@ class A2AHandoffPayload:
     predicted_intent: str
     redacted_message: str
     memory_summary: str = ""
+    customer_id: str = ""
 
 
 @runtime_checkable
@@ -52,37 +64,42 @@ class InMemoryA2AClient:
 
 
 class HttpA2AClient:
-    """HTTP client dispatching A2A requests over Agent Gateway with per-hop OIDC token."""
+    """HTTP client dispatching A2A requests with per-hop OIDC ID token.
+
+    Uses pooled keep-alive HTTP connections via requests.Session.
+    """
 
     def __init__(
         self,
         endpoint_url: str,
-        target_audience: str = "sa-faq@susmith-fde-ticket-router.iam.gserviceaccount.com",
+        target_audience: Optional[str] = None,
         timeout_s: float = 5.0,
         token_provider: Optional[Callable[[str], Optional[str]]] = None,
         session: Optional[Any] = None,
     ) -> None:
         self.endpoint_url = endpoint_url
-        self.target_audience = target_audience
+        self.target_audience = target_audience or endpoint_url
         self.timeout_s = timeout_s
-        self.token_provider = token_provider or (lambda aud: get_access_token())
-        self._session = session
+        self.token_provider = token_provider or get_id_token
+        self.session = session if session is not None else _create_pooled_session()
 
     def handoff(self, payload: A2AHandoffPayload) -> Dict[str, Any]:
-        url = f"{self.endpoint_url.rstrip('/')}/a2a/handoff"
+        clean_endpoint = self.endpoint_url.rstrip("/")
+        if clean_endpoint.endswith("/a2a/handoff") or clean_endpoint.endswith("/a2a") or clean_endpoint.endswith("/resolve"):
+            url = clean_endpoint
+        else:
+            url = f"{clean_endpoint}/a2a/handoff"
+
         headers = {"Content-Type": "application/json"}
-        token = self.token_provider(self.target_audience)
+        token = None
+        try:
+            token = self.token_provider(self.target_audience)
+        except Exception:
+            token = None
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
         data_bytes = json.dumps(asdict(payload)).encode("utf-8")
-
-        if self._session is not None:
-            resp = self._session.post(url, data=data_bytes, headers=headers, timeout=self.timeout_s)
-            resp.raise_for_status()
-            return resp.json()
-
-        import requests
-        resp = requests.post(url, data=data_bytes, headers=headers, timeout=self.timeout_s)
+        resp = self.session.post(url, data=data_bytes, headers=headers, timeout=self.timeout_s)
         resp.raise_for_status()
         return resp.json()

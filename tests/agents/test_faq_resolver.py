@@ -107,11 +107,23 @@ class MockClock:
     def __init__(self, start: float = 1000.0) -> None:
         self.time = start
 
-    def __call__(self) -> float:
+    def now(self) -> float:
         return self.time
 
     def advance(self, seconds: float) -> None:
         self.time += seconds
+
+
+class TimingOutSearchClient(FakeSearchClient):
+    """Fake search client that simulates a timeout by advancing a mock clock."""
+
+    def __init__(self, clock: MockClock, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.clock = clock
+
+    def search(self, **kwargs: Any) -> SearchResult:
+        self.clock.advance(21.0)
+        return super().search(**kwargs)
 
 
 # =============================================================================
@@ -142,7 +154,7 @@ def test_bounded_react_and_rerank():
         reranker=reranker,
         order_client=order_client,
         llm_client=llm_client,
-        clock=clock,
+        clock=clock.now,
         total_budget_s=20.0,
     )
 
@@ -187,17 +199,11 @@ def test_bounded_react_and_rerank():
 def test_wall_clock_budget_enforcement():
     """Verify that exceeding the 20-second budget triggers graceful escalation to human queue."""
     clock = MockClock(start=0.0)
-
-    class TimingOutSearchClient(FakeSearchClient):
-        def search(self, **kwargs: Any) -> SearchResult:
-            clock.advance(21.0)
-            return super().search(**kwargs)
-
-    search_client = TimingOutSearchClient()
+    search_client = TimingOutSearchClient(clock=clock)
 
     agent = FaqResolverAgent(
         search_client=search_client,
-        clock=clock,
+        clock=clock.now,
         total_budget_s=20.0,
     )
 
@@ -482,3 +488,214 @@ def test_http_app_entrypoint():
     # root_agent is exposed
     assert root_agent is not None
     assert isinstance(root_agent, FaqResolverAgent)
+
+
+# =============================================================================
+# REQ-AGENT-001 / REQ-AGENT-006: Inbound Auth & Runtime Wiring Acceptance Tests
+# =============================================================================
+
+
+class FakeOrderResponse:
+    """Mock HTTP response for HttpOrderLookupClient testing."""
+
+    def __init__(self, data: Dict[str, Any], status_code: int = 200) -> None:
+        self._data = data
+        self.status_code = status_code
+        import json
+        self.text = json.dumps(data)
+
+    def json(self) -> Dict[str, Any]:
+        return self._data
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code} error")
+
+
+def test_faq_resolver_inbound_auth_health_unauthenticated():
+    """Verify /health and /healthz endpoints are unauthenticated."""
+    from starlette.testclient import TestClient
+    from ticket_router.agents.faq_resolver.app import create_fastapi_app
+    from ticket_router.common.settings import Settings
+
+    settings = Settings.from_env(env={
+        "ALLOWED_CALLERS": "sa-triage@susmith-fde-ticket-router.iam.gserviceaccount.com",
+        "REQUIRE_REAL_DEPS": "1",
+    })
+    app = create_fastapi_app(agent=FaqResolverAgent(), settings=settings)
+    client = TestClient(app)
+
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "healthy"
+
+
+def test_faq_resolver_inbound_auth_missing_header_rejected():
+    """Verify missing Authorization header returns 401 when auth is required."""
+    from starlette.testclient import TestClient
+    from ticket_router.agents.faq_resolver.app import create_fastapi_app
+    from ticket_router.common.settings import Settings
+
+    settings = Settings.from_env(env={
+        "ALLOWED_CALLERS": "sa-triage@susmith-fde-ticket-router.iam.gserviceaccount.com",
+        "REQUIRE_REAL_DEPS": "1",
+    })
+    app = create_fastapi_app(agent=FaqResolverAgent(), settings=settings)
+    client = TestClient(app)
+
+    payload = {
+        "ticket_id": "t-001",
+        "session_id": "s-001",
+        "message": "hello",
+        "customer_id": "c-001",
+    }
+    resp = client.post("/a2a", json=payload)
+    assert resp.status_code == 401
+    assert "Missing Authorization" in resp.json()["detail"]
+
+
+def test_faq_resolver_inbound_auth_unauthorized_caller_rejected(monkeypatch):
+    """Verify token from caller not in ALLOWED_CALLERS returns 403."""
+    from unittest.mock import MagicMock
+    from starlette.testclient import TestClient
+    from ticket_router.agents.faq_resolver.app import create_fastapi_app
+    from ticket_router.common.settings import Settings
+
+    monkeypatch.setattr(
+        "google.oauth2.id_token.verify_oauth2_token",
+        MagicMock(return_value={"email": "attacker@evil.com", "email_verified": True}),
+    )
+
+    settings = Settings.from_env(env={
+        "ALLOWED_CALLERS": "sa-triage@susmith-fde-ticket-router.iam.gserviceaccount.com",
+        "REQUIRE_REAL_DEPS": "1",
+    })
+    app = create_fastapi_app(agent=FaqResolverAgent(), settings=settings)
+    client = TestClient(app)
+
+    payload = {
+        "ticket_id": "t-001",
+        "session_id": "s-001",
+        "message": "hello",
+        "customer_id": "c-001",
+    }
+    resp = client.post(
+        "/a2a",
+        headers={"Authorization": "Bearer untrusted_token"},
+        json=payload,
+    )
+    assert resp.status_code == 403
+    assert "not in ALLOWED_CALLERS" in resp.json()["detail"]
+
+
+def test_faq_resolver_inbound_auth_unverified_email_rejected(monkeypatch):
+    """Verify token with email_verified=False returns 401."""
+    from unittest.mock import MagicMock
+    from starlette.testclient import TestClient
+    from ticket_router.agents.faq_resolver.app import create_fastapi_app
+    from ticket_router.common.settings import Settings
+
+    monkeypatch.setattr(
+        "google.oauth2.id_token.verify_oauth2_token",
+        MagicMock(return_value={
+            "email": "sa-triage@susmith-fde-ticket-router.iam.gserviceaccount.com",
+            "email_verified": False,
+        }),
+    )
+
+    settings = Settings.from_env(env={
+        "ALLOWED_CALLERS": "sa-triage@susmith-fde-ticket-router.iam.gserviceaccount.com",
+        "REQUIRE_REAL_DEPS": "1",
+    })
+    app = create_fastapi_app(agent=FaqResolverAgent(), settings=settings)
+    client = TestClient(app)
+
+    payload = {
+        "ticket_id": "t-001",
+        "session_id": "s-001",
+        "message": "hello",
+        "customer_id": "c-001",
+    }
+    resp = client.post(
+        "/a2a",
+        headers={"Authorization": "Bearer unverified_token"},
+        json=payload,
+    )
+    assert resp.status_code == 401
+    assert "email is not verified" in resp.json()["detail"]
+
+
+def test_faq_resolver_inbound_auth_authorized_caller_accepted(monkeypatch):
+    """Verify valid token from allowed caller processes inquiry."""
+    from unittest.mock import MagicMock
+    from starlette.testclient import TestClient
+    from ticket_router.agents.faq_resolver.app import create_fastapi_app
+    from ticket_router.common.settings import Settings
+
+    monkeypatch.setattr(
+        "google.oauth2.id_token.verify_oauth2_token",
+        MagicMock(return_value={
+            "email": "sa-triage@susmith-fde-ticket-router.iam.gserviceaccount.com",
+            "email_verified": True,
+        }),
+    )
+
+    settings = Settings.from_env(env={
+        "ALLOWED_CALLERS": "sa-triage@susmith-fde-ticket-router.iam.gserviceaccount.com",
+        "REQUIRE_REAL_DEPS": "1",
+    })
+    agent = FaqResolverAgent(llm_client=FakeLLMClient(default_answer="Refund within 30 days."))
+    app = create_fastapi_app(agent=agent, settings=settings)
+    client = TestClient(app)
+
+    payload = {
+        "ticket_id": "t-001",
+        "session_id": "s-001",
+        "message": "How do I return?",
+        "customer_id": "c-001",
+    }
+    resp = client.post(
+        "/a2a",
+        headers={"Authorization": "Bearer valid_signed_token"},
+        json=payload,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] in ("AUTO_RESOLVED", "ESCALATED")
+
+
+def test_http_order_lookup_client_sends_context_and_bearer_headers():
+    """Verify HttpOrderLookupClient sends X-Customer-ID context header and OIDC bearer."""
+    from unittest.mock import MagicMock
+    from ticket_router.agents.faq_resolver.mcp_client import HttpOrderLookupClient
+
+    mock_session = MagicMock()
+    mock_session.post.return_value = FakeOrderResponse({"order_id": "1001", "status": "SHIPPED"})
+
+    client = HttpOrderLookupClient(
+        base_url="https://order-lookup.run.app",
+        session=mock_session,
+        token_provider=lambda aud: "mock_oidc_id_token",
+    )
+    order = client.get_order(order_id="1001", customer_id="cust-secure-789")
+
+    assert order["status"] == "SHIPPED"
+    call_kwargs = mock_session.post.call_args.kwargs
+    headers = call_kwargs["headers"]
+    assert headers["X-Customer-ID"] == "cust-secure-789"
+    assert headers["Authorization"] == "Bearer mock_oidc_id_token"
+
+
+def test_faq_resolver_startup_fails_fast_on_missing_env(monkeypatch):
+    """Verify FaqResolver fail-fast behavior when REQUIRE_REAL_DEPS=1 and env is incomplete."""
+    from ticket_router.agents.faq_resolver.agent import create_faq_resolver_agent
+    from ticket_router.common.settings import Settings
+
+    bad_env = {
+        "REQUIRE_REAL_DEPS": "1",
+        "GOOGLE_CLOUD_PROJECT": "test-project",
+        # Missing ORDER_LOOKUP_MCP_URL, ALLOWED_CALLERS, etc.
+    }
+    settings = Settings.from_env(env=bad_env)
+    with pytest.raises(ValueError, match="Missing required environment variable"):
+        create_faq_resolver_agent(settings)
+

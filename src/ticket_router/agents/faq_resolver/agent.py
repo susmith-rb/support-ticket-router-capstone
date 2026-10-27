@@ -1,23 +1,24 @@
 """agent.py — Bounded ReAct FaqResolverAgent with mandatory citations.
 
-REQ-AGENT-007: FaqResolver Bounded ReAct Loop, Search & Laya Rerank Integration.
-- <= 6 tool calls
-- <= 2 retrieval passes
-- <= 1 answer regeneration
-- 20-second wall-clock budget (injectable clock)
-- Production search config 'intent_soft_noisy_0.2'
-- Cross-encoder rerank via router-s1
-- order-lookup-mcp integration with BOLA/IDOR protection
-
-REQ-AGENT-008: Mandatory Grounded Citations with Non-Hallucination Fallback.
-- >= 1 verbatim citation quote matching retrieved article text
-- 1 failed regeneration -> handoff {route: "human", reason: "uncited_answer"}
-- Agent Search failure -> handoff {route: "human", degraded: True}
+# REQ-AGENT-007: FaqResolver Bounded ReAct Loop, Search & Laya Rerank Integration.
+# - <= 6 tool calls
+# - <= 2 retrieval passes
+# - <= 1 answer regeneration
+# - 20-second wall-clock budget (injectable clock)
+# - Production search config 'intent_soft_noisy_0.2'
+# - Cross-encoder rerank via router-s1
+# - order-lookup-mcp integration with BOLA/IDOR protection
+#
+# REQ-AGENT-008: Mandatory Grounded Citations with Non-Hallucination Fallback.
+# - >= 1 verbatim citation quote matching retrieved article text
+# - 1 failed regeneration -> handoff {route: "human", reason: "uncited_answer"}
+# - Agent Search failure -> handoff {route: "human", degraded: True}
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 import re
 import time
 from typing import Any, Dict, List, Optional, Sequence
@@ -25,6 +26,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from ticket_router.agents.faq_resolver.mcp_client import (
     BolaViolationError,
     FakeOrderLookupClient,
+    HttpOrderLookupClient,
     OrderLookupProtocol,
 )
 from ticket_router.agents.faq_resolver.protocols import (
@@ -32,6 +34,9 @@ from ticket_router.agents.faq_resolver.protocols import (
     LLMClientProtocol,
     RerankerProtocol,
     SearchClientProtocol,
+)
+from ticket_router.agents.faq_resolver.reranker import (
+    VertexLayaReranker,
 )
 from ticket_router.agents.faq_resolver.search import (
     execute_faq_search,
@@ -41,7 +46,9 @@ from ticket_router.common.resilience import (
     CircuitBreaker,
     FAQ_OVERALL_BUDGET_S,
 )
+from ticket_router.common.settings import Settings
 from ticket_router.config.models import model_id
+from ticket_router.models.router_s1_client import RouterS1Client
 
 
 @dataclass
@@ -116,13 +123,11 @@ class FakeLLMClient(LLMClientProtocol):
         })
 
         if self.always_fail_citations or (self.fail_citations_once and self.call_count == 1):
-            # Return ungrounded/paraphrased citation
             return {
                 "answer": "You can return items anytime you feel like it.",
                 "citations": [{"doc_id": "non_existent_doc", "quote": "fake quote"}],
             }
 
-        # Pick doc_id and verbatim quote from retrieved_docs
         doc_id = self.default_doc_id
         quote = self.default_quote
 
@@ -130,7 +135,6 @@ class FakeLLMClient(LLMClientProtocol):
             first_doc = retrieved_docs[0]
             doc_id = first_doc.get("id") or first_doc.get("doc_id", "faq-general")
             content = first_doc.get("content") or first_doc.get("title", "")
-            # Pick first 30 chars as verbatim quote
             quote = content[:40].strip() if content else "Standard policy"
 
         citations = []
@@ -140,6 +144,93 @@ class FakeLLMClient(LLMClientProtocol):
         return {
             "answer": self.default_answer,
             "citations": citations,
+        }
+
+
+class GeminiAnswerClient(LLMClientProtocol):
+    """Production LLM client synthesizing answers with mandatory citations via google-genai."""
+
+    def __init__(
+        self,
+        project: str,
+        location: str,
+        model_role: str = "answer",
+    ) -> None:
+        self.project = project
+        self.location = location
+        self.model_role = model_role
+        self.resolved_model_id = model_id(self.model_role)
+        self._client: Optional[Any] = None
+
+    def _get_client(self) -> Any:
+        if self._client is None:
+            from google import genai  # type: ignore[import-untyped]
+            self._client = genai.Client(
+                vertexai=True,
+                project=self.project,
+                location=self.location,
+            )
+        return self._client
+
+    def generate_answer(
+        self,
+        query: str,
+        retrieved_docs: Sequence[Dict[str, Any]],
+        order_info: Optional[Dict[str, Any]] = None,
+        model_id: Optional[str] = None,
+        system_instruction: Optional[str] = None,
+        feedback: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Synthesize answer with mandatory citations based strictly on retrieved docs."""
+        client = self._get_client()
+        docs_context = json.dumps(list(retrieved_docs), indent=2)
+        order_context = json.dumps(order_info or {}, indent=2)
+
+        prompt = (
+            f"Customer Inquiry: {query}\n\n"
+            f"Retrieved Documents:\n{docs_context}\n\n"
+            f"Order Context:\n{order_context}\n\n"
+        )
+        if feedback:
+            prompt += f"Correction Feedback:\n{feedback}\n\n"
+
+        prompt += (
+            "Provide a helpful answer grounded strictly in the provided documents.\n"
+            "Return valid JSON strictly matching:\n"
+            '{\n  "answer": "your answer here",\n  "citations": [{"doc_id": "document_id", "quote": "verbatim text quotation"}]\n}\n'
+            "Every answer MUST include at least one citation with a verbatim quotation from the retrieved documents."
+        )
+
+        target_model = model_id or self.resolved_model_id
+        resp = client.models.generate_content(
+            model=target_model,
+            contents=prompt,
+        )
+        raw_text = ""
+        try:
+            raw_text = str(resp.text)
+        except AttributeError:
+            raw_text = ""
+
+        clean_text = raw_text.strip()
+        if clean_text.startswith("```"):
+            lines = clean_text.splitlines()
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            clean_text = "\n".join(lines).strip()
+
+        try:
+            parsed = json.loads(clean_text)
+            if isinstance(parsed, dict) and "answer" in parsed:
+                return parsed
+        except Exception:
+            pass
+
+        return {
+            "answer": clean_text,
+            "citations": [],
         }
 
 
@@ -167,11 +258,12 @@ class FaqResolverAgent:
         max_tool_calls: int = 6,
         max_retrieval_passes: int = 2,
         max_regenerations: int = 1,
+        lazy_init: bool = False,
     ) -> None:
         self.search_client = search_client
         self.reranker = reranker
-        self.order_client = order_client or FakeOrderLookupClient()
-        self.llm_client = llm_client or FakeLLMClient()
+        self.order_client = order_client
+        self.llm_client = llm_client
         self.validator = validator or CitationValidator()
         self.circuit_breaker = circuit_breaker
         self._clock: Clock = clock if clock is not None else time.monotonic
@@ -180,13 +272,51 @@ class FaqResolverAgent:
         self.max_tool_calls = max_tool_calls
         self.max_retrieval_passes = max_retrieval_passes
         self.max_regenerations = max_regenerations
+        self._lazy_init = lazy_init
 
         # Resolve model ID dynamically from configuration
         self.resolved_model_id = model_id(self.model_role)
 
+    def _ensure_initialized(self) -> None:
+        """Lazily initialize real dependencies from environment settings."""
+        if not self._lazy_init:
+            if self.order_client is None:
+                self.order_client = FakeOrderLookupClient()
+            if self.llm_client is None:
+                self.llm_client = FakeLLMClient()
+            return
+
+        settings = Settings.from_env()
+        if settings.require_real_deps:
+            settings.validate_for_faq()
+            from ticket_router.retrieval.search_client import SearchClient
+            self.search_client = SearchClient(
+                project=settings.project,
+                location=settings.agent_search_location,
+                engine=settings.agent_search_engine_id,
+            )
+            s1_client = RouterS1Client(
+                endpoint=settings.router_s1_endpoint,
+                base_url=settings.router_s1_base_url,
+            )
+            self.reranker = VertexLayaReranker(client=s1_client)
+            self.order_client = HttpOrderLookupClient(
+                base_url=settings.order_lookup_mcp_url or "http://localhost:8080",
+            )
+            self.llm_client = GeminiAnswerClient(
+                project=settings.project,
+                location=settings.location,
+                model_role=self.model_role,
+            )
+        else:
+            if self.order_client is None:
+                self.order_client = FakeOrderLookupClient()
+            if self.llm_client is None:
+                self.llm_client = FakeLLMClient()
+        self._lazy_init = False
+
     def _extract_order_id(self, message: str) -> Optional[str]:
         """Extract redacted or plain order IDs from customer message."""
-        # Match [ORDER_1], [ORDER_123], #12345, order 12345
         m = re.search(r"\[ORDER_(\w+)\]", message, re.IGNORECASE)
         if m:
             return f"ORDER_{m.group(1)}"
@@ -194,6 +324,14 @@ class FaqResolverAgent:
         if m2:
             return m2.group(1)
         return None
+
+    def _elapsed_ms(self, t_start: float) -> float:
+        """Return elapsed milliseconds since t_start."""
+        return round((self._clock() - t_start) * 1000.0, 2)
+
+    def _is_budget_exhausted(self, t_start: float) -> bool:
+        """Check if elapsed time since t_start exceeds total budget."""
+        return (self._clock() - t_start) >= self.total_budget_s
 
     def resolve(
         self,
@@ -207,20 +345,15 @@ class FaqResolverAgent:
         untrusted_customer_id: Optional[str] = None,
     ) -> ResolutionResult:
         """Execute bounded ReAct loop to resolve FAQ or order inquiry."""
+        self._ensure_initialized()
         t_start = self._clock()
-
-        def elapsed_ms() -> float:
-            return round((self._clock() - t_start) * 1000.0, 2)
-
-        def is_budget_exhausted() -> bool:
-            return (self._clock() - t_start) >= self.total_budget_s
 
         tool_calls_count = 0
         retrieval_passes_count = 0
         regeneration_count = 0
 
         # Enforce initial budget check
-        if is_budget_exhausted():
+        if self._is_budget_exhausted(t_start):
             return ResolutionResult(
                 status="ESCALATED",
                 route="human",
@@ -231,7 +364,7 @@ class FaqResolverAgent:
                 tool_calls_count=0,
                 retrieval_passes_count=0,
                 regeneration_count=0,
-                latency_ms=elapsed_ms(),
+                latency_ms=self._elapsed_ms(t_start),
             )
 
         # -----------------------------------------------------------------
@@ -241,7 +374,7 @@ class FaqResolverAgent:
         order_id = self._extract_order_id(message)
 
         if order_id and self.order_client is not None:
-            if tool_calls_count < self.max_tool_calls and not is_budget_exhausted():
+            if tool_calls_count < self.max_tool_calls and not self._is_budget_exhausted(t_start):
                 tool_calls_count += 1
                 try:
                     # BOLA / IDOR Protection: customer_id is verified session context
@@ -251,7 +384,6 @@ class FaqResolverAgent:
                         untrusted_customer_id=untrusted_customer_id,
                     )
                 except BolaViolationError:
-                    # Security violation: immediate escalation without exposing details
                     return ResolutionResult(
                         status="ESCALATED",
                         route="human",
@@ -262,7 +394,7 @@ class FaqResolverAgent:
                         tool_calls_count=tool_calls_count,
                         retrieval_passes_count=0,
                         regeneration_count=0,
-                        latency_ms=elapsed_ms(),
+                        latency_ms=self._elapsed_ms(t_start),
                     )
                 except LookupError:
                     order_info = {"order_id": order_id, "status": "NOT_FOUND"}
@@ -297,7 +429,7 @@ class FaqResolverAgent:
                         tool_calls_count=tool_calls_count,
                         retrieval_passes_count=retrieval_passes_count,
                         regeneration_count=regeneration_count,
-                        latency_ms=elapsed_ms(),
+                        latency_ms=self._elapsed_ms(t_start),
                     )
 
                 for doc_id, doc in search_res.documents.items():
@@ -312,7 +444,7 @@ class FaqResolverAgent:
         # Step 3: Candidate Reranking via router-s1
         # -----------------------------------------------------------------
         if self.reranker is not None and retrieved_docs_map:
-            if tool_calls_count < self.max_tool_calls and not is_budget_exhausted():
+            if tool_calls_count < self.max_tool_calls and not self._is_budget_exhausted(t_start):
                 tool_calls_count += 1
                 candidates = [retrieved_docs_map[did] for did in ordered_doc_ids if did in retrieved_docs_map]
                 reranked, _ = self.reranker.rerank(query=message, candidates=candidates)
@@ -322,7 +454,7 @@ class FaqResolverAgent:
         # -----------------------------------------------------------------
         # Step 4: Grounded Answer Synthesis & Mandatory Citations
         # -----------------------------------------------------------------
-        if is_budget_exhausted():
+        if self._is_budget_exhausted(t_start):
             return ResolutionResult(
                 status="ESCALATED",
                 route="human",
@@ -333,12 +465,14 @@ class FaqResolverAgent:
                 tool_calls_count=tool_calls_count,
                 retrieval_passes_count=retrieval_passes_count,
                 regeneration_count=regeneration_count,
-                latency_ms=elapsed_ms(),
+                latency_ms=self._elapsed_ms(t_start),
             )
 
         candidate_docs_list = [retrieved_docs_map[did] for did in ordered_doc_ids if did in retrieved_docs_map]
 
-        # Generate initial answer
+        if self.llm_client is None:
+            self.llm_client = FakeLLMClient()
+
         answer_payload = self.llm_client.generate_answer(
             query=message,
             retrieved_docs=candidate_docs_list,
@@ -351,7 +485,7 @@ class FaqResolverAgent:
         # -----------------------------------------------------------------
         # Step 5: Conditional 1-Time Answer Regeneration
         # -----------------------------------------------------------------
-        if not val_result.is_valid and regeneration_count < self.max_regenerations and not is_budget_exhausted():
+        if not val_result.is_valid and regeneration_count < self.max_regenerations and not self._is_budget_exhausted(t_start):
             regeneration_count += 1
             feedback = (
                 f"Citation validation rejected previous response: {val_result.reason} ({val_result.details}). "
@@ -370,7 +504,6 @@ class FaqResolverAgent:
         # Step 6: Non-Hallucination Fallback or Auto-Resolution
         # -----------------------------------------------------------------
         if not val_result.is_valid:
-            # Enforce non-hallucination fallback: NEVER return ungrounded answer
             return ResolutionResult(
                 status="ESCALATED",
                 route="human",
@@ -381,7 +514,7 @@ class FaqResolverAgent:
                 tool_calls_count=tool_calls_count,
                 retrieval_passes_count=retrieval_passes_count,
                 regeneration_count=regeneration_count,
-                latency_ms=elapsed_ms(),
+                latency_ms=self._elapsed_ms(t_start),
             )
 
         return ResolutionResult(
@@ -393,9 +526,58 @@ class FaqResolverAgent:
             tool_calls_count=tool_calls_count,
             retrieval_passes_count=retrieval_passes_count,
             regeneration_count=regeneration_count,
-            latency_ms=elapsed_ms(),
+            latency_ms=self._elapsed_ms(t_start),
         )
 
 
-# ADK wiring: export default root_agent instance
-root_agent = FaqResolverAgent()
+def create_faq_resolver_agent(settings: Optional[Settings] = None) -> FaqResolverAgent:
+    """Build FaqResolverAgent with real production dependencies configured from settings."""
+    cfg = settings or Settings.from_env()
+    cfg.validate_for_faq()
+
+    # 1. SearchClient with production config
+    if cfg.require_real_deps or cfg.agent_search_engine_id:
+        from ticket_router.retrieval.search_client import SearchClient
+        search_client: Optional[SearchClientProtocol] = SearchClient(
+            project=cfg.project,
+            location=cfg.agent_search_location,
+            engine=cfg.agent_search_engine_id,
+        )
+    else:
+        search_client = None
+
+    # 2. RouterS1Client reranker
+    s1_client = RouterS1Client(
+        endpoint=cfg.router_s1_endpoint,
+        base_url=cfg.router_s1_base_url,
+    )
+    reranker = VertexLayaReranker(client=s1_client)
+
+    # 3. HttpOrderLookupClient
+    if cfg.order_lookup_mcp_url:
+        order_client: OrderLookupProtocol = HttpOrderLookupClient(
+            base_url=cfg.order_lookup_mcp_url,
+        )
+    else:
+        order_client = FakeOrderLookupClient()
+
+    # 4. Gemini Answer Client
+    if cfg.require_real_deps:
+        llm_client: LLMClientProtocol = GeminiAnswerClient(
+            project=cfg.project,
+            location=cfg.location,
+            model_role="answer",
+        )
+    else:
+        llm_client = FakeLLMClient()
+
+    return FaqResolverAgent(
+        search_client=search_client,
+        reranker=reranker,
+        order_client=order_client,
+        llm_client=llm_client,
+    )
+
+
+# ADK wiring: export default root_agent instance (lazy initialization)
+root_agent = FaqResolverAgent(lazy_init=True)

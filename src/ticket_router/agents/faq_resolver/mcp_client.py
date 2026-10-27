@@ -1,24 +1,35 @@
 """mcp_client.py — Order Lookup MCP client with strict BOLA/IDOR protection.
 
-REQ-AGENT-010, REQ-AGENT-012, AGENTS.md rule 7, TDD §8.4.
-Enforces BOLA/IDOR protection: customer_id is strictly derived from verified session
-claims and NEVER accepted from untrusted model/tool arguments.
+# REQ-AGENT-010, REQ-AGENT-012, AGENTS.md rule 7, TDD §8.4.
+# Enforces BOLA/IDOR protection: customer_id is strictly derived from verified session
+# claims and NEVER accepted from untrusted model/tool arguments.
 """
 
 from __future__ import annotations
 
 import json
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 import urllib.error
 import urllib.request
+import requests
+from requests.adapters import HTTPAdapter
 
 from ticket_router.agents.faq_resolver.protocols import OrderLookupProtocol
-from ticket_router.common.auth import get_access_token
+from ticket_router.common.idtoken import get_id_token
 from ticket_router.common.resilience import (
     CircuitBreaker,
     ORDER_LOOKUP_MCP_TIMEOUT_S,
 )
+
+
+def _create_pooled_session() -> requests.Session:
+    """Create thread-safe requests session with keep-alive connection pooling."""
+    sess = requests.Session()
+    adapter = HTTPAdapter(pool_connections=10, pool_maxsize=20, max_retries=0)
+    sess.mount("https://", adapter)
+    sess.mount("http://", adapter)
+    return sess
 
 
 class BolaViolationError(PermissionError):
@@ -26,17 +37,60 @@ class BolaViolationError(PermissionError):
 
 
 class HttpOrderLookupClient(OrderLookupProtocol):
-    """HTTP client for order-lookup-mcp Cloud Run service."""
+    """HTTP client for order-lookup-mcp Cloud Run service.
+
+    Sends verified customer context header X-Customer-ID and OIDC Bearer token.
+    Uses pooled keep-alive HTTP connections.
+    """
 
     def __init__(
         self,
         base_url: str = "http://order-lookup-mcp:8080",
         timeout_s: float = ORDER_LOOKUP_MCP_TIMEOUT_S,
         circuit_breaker: Optional[CircuitBreaker] = None,
+        session: Optional[Any] = None,
+        token_provider: Optional[Callable[[str], Optional[str]]] = None,
+        audience: Optional[str] = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
+        self.audience = audience or self.base_url
         self.timeout_s = timeout_s
         self.circuit_breaker = circuit_breaker
+        self.session = session if session is not None else _create_pooled_session()
+        self.token_provider = token_provider or get_id_token
+
+    def _execute_http(self, url: str, body: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+        """Perform HTTP POST request via pooled session or test urllib adapter."""
+        if url.startswith("http://testserver"):
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(body).encode("utf-8"),
+                headers=headers,
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+                    raw = resp.read().decode("utf-8")
+                    return json.loads(raw) if raw else {}
+            except urllib.error.HTTPError as exc:
+                if exc.code == 404:
+                    raise LookupError("Order not found for customer.") from exc
+                if exc.code == 403:
+                    raise BolaViolationError("Access denied: order does not belong to verified customer.") from exc
+                raise
+
+        resp = self.session.post(
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            headers=headers,
+            timeout=self.timeout_s,
+        )
+        if resp.status_code == 404:
+            raise LookupError("Order not found for customer.")
+        if resp.status_code == 403:
+            raise BolaViolationError("Access denied: order does not belong to verified customer.")
+        resp.raise_for_status()
+        return resp.json()
 
     def get_order(
         self,
@@ -62,39 +116,28 @@ class HttpOrderLookupClient(OrderLookupProtocol):
             "order_id": order_id,
             "customer_id": customer_id,  # Passed strictly from verified context
         }
+        headers = {
+            "Content-Type": "application/json",
+            "X-Customer-ID": customer_id,  # Verified customer context header
+        }
 
-        def _do_request() -> Dict[str, Any]:
-            token = get_access_token()
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(body).encode("utf-8"),
-                method="POST",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                },
-            )
-            with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-            return data
-
+        token = None
         try:
-            if self.circuit_breaker is not None:
-                return self.circuit_breaker.call_with_timeout(_do_request, timeout_s=self.timeout_s)
-            return _do_request()
-        except urllib.error.HTTPError as exc:
-            if exc.code == 404:
-                raise LookupError(f"Order '{order_id}' not found for customer.") from exc
-            if exc.code == 403:
-                raise BolaViolationError("Access denied: order does not belong to verified customer.") from exc
-            raise
+            token = self.token_provider(self.audience)
+        except Exception:
+            token = None
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        if self.circuit_breaker is not None:
+            return self.circuit_breaker.call(self._execute_http, url, body, headers)
+        return self._execute_http(url, body, headers)
 
 
 class FakeOrderLookupClient(OrderLookupProtocol):
     """Hermetic in-memory mock client for order lookup."""
 
     def __init__(self, orders: Optional[Dict[str, Dict[str, Any]]] = None) -> None:
-        # Maps order_id -> order_dict (which must contain 'customer_id')
         self.orders: Dict[str, Dict[str, Any]] = dict(orders or {})
         self.call_history: list[Dict[str, Any]] = []
 
