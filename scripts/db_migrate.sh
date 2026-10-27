@@ -15,11 +15,14 @@ REGION="${REGION:-us-central1}"
 INSTANCE_NAME="${INSTANCE_NAME:-ticket-store}"
 DATABASE_NAME="${DATABASE_NAME:-support}"
 DB_USER="${DB_USER:-postgres_admin}"
+DB_PASSWORD="${DB_PASSWORD:-}"
+PASSWORD_SECRET="${PASSWORD_SECRET:-cloudsql-ticket-store-admin-password}"
 MIGRATIONS_DIR="${MIGRATIONS_DIR:-${REPO_ROOT}/db/migrations}"
 SEED_DIR="${SEED_DIR:-${REPO_ROOT}/db/seed}"
 
 DRY_RUN=false
 APPLY_SEED=false
+VERIFY_ONLY=false
 
 usage() {
     cat << EOF
@@ -31,8 +34,11 @@ Options:
   --instance INSTANCE      Cloud SQL Instance Name (default: ${INSTANCE_NAME})
   --database DATABASE      Database Name (default: ${DATABASE_NAME})
   --user USER              Database User (default: ${DB_USER})
+  --password PASSWORD      Database Password (never logs; defaults to env DB_PASSWORD)
+  --password-secret SECRET Secret Manager secret ID for password
   --seed                   Apply seed data from db/seed/ after migrations
   --dry-run                Print migration files without applying them
+  --verify-only            Skip migrations and perform schema/RLS/role verification only
   --help                   Display this help message
 EOF
     exit 0
@@ -60,12 +66,24 @@ while [[ $# -gt 0 ]]; do
             DB_USER="$2"
             shift 2
             ;;
+        --password)
+            DB_PASSWORD="$2"
+            shift 2
+            ;;
+        --password-secret)
+            PASSWORD_SECRET="$2"
+            shift 2
+            ;;
         --seed)
             APPLY_SEED=true
             shift
             ;;
         --dry-run)
             DRY_RUN=true
+            shift
+            ;;
+        --verify-only)
+            VERIFY_ONLY=true
             shift
             ;;
         --help|-h)
@@ -122,7 +140,10 @@ export CLOUDSDK_CONTEXT_AWARE_USE_CLIENT_CERTIFICATE=false
     --instance "${INSTANCE_NAME}" \
     --database "${DATABASE_NAME}" \
     --user "${DB_USER}" \
+    --password-secret "${PASSWORD_SECRET}" \
     --migrations-dir "${MIGRATIONS_DIR}" \
-    $([ "${APPLY_SEED}" == "true" ] && echo "--seed-dir ${SEED_DIR}")
+    $([ -n "${DB_PASSWORD}" ] && echo "--password ${DB_PASSWORD}") \
+    $([ "${APPLY_SEED}" == "true" ] && echo "--seed-dir ${SEED_DIR}") \
+    $([ "${VERIFY_ONLY}" == "true" ] && echo "--verify-only")
 
 echo "Migration run completed successfully."
