@@ -27,7 +27,21 @@ resource "google_container_cluster" "support_agents" {
     enable_private_endpoint = false
   }
 
+  # ARCHITECTURAL DECISION & SECURITY NOTE ON NODE SERVICE ACCOUNT:
+  # Autopilot clusters default to the Compute Engine default service account
+  # (<project_number>-compute@developer.gserviceaccount.com).
+  # Changing cluster node service account on an active cluster forces recreation/replacement.
+  # To avoid cluster replacement during live operations, image pull access on Artifact Registry
+  # repo 'serving' is granted to this default SA via modules/router-endpoint (REQ-AGENT-021).
+  # TODO: On next cluster rebuild, provision dedicated least-privilege node SA 'gke-nodes' with:
+  # - roles/logging.logWriter
+  # - roles/monitoring.metricWriter
+  # - roles/monitoring.viewer
+  # - roles/stackdriver.resourceMetadata.writer
+  # - roles/artifactregistry.reader
+
   deletion_protection = var.deletion_protection
+
 
   resource_labels = var.labels
 }

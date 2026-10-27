@@ -266,3 +266,11 @@ src/ticket_router/
 - **Status**: done
 - **Owner**: agent-service
 
+### REQ-AGENT-021: GKE Node Artifact Registry Pull Access and Least-Privilege Node Identity
+- **Statement**: GKE Autopilot worker nodes executing containerized agent workloads (such as `FaqResolverAgent`) MUST possess `roles/artifactregistry.reader` permission on the serving Artifact Registry repository (`serving`). In the initial deployment, this is granted to the default Compute Engine service account (`data.google_compute_default_service_account`) to avoid cluster recreation. On the next scheduled cluster rebuild, a dedicated least-privilege node service account (`gke-nodes`) MUST be provisioned with strictly scoped roles: `logging.logWriter`, `monitoring.metricWriter`, `monitoring.viewer`, `stackdriver.resourceMetadata.writer`, and `artifactregistry.reader`.
+- **Rationale**: Autopilot nodes require image pull authentication to retrieve private images (`agents:<tag>`) without granting unnecessary broad project permissions.
+- **Acceptance**: `tests/infra/test_agent_infra_static.py::test_gke_node_artifact_registry_reader`
+- **Status**: done
+- **Owner**: agent-service
+
+

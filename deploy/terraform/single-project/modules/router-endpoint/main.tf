@@ -72,6 +72,24 @@ resource "google_artifact_registry_repository_iam_member" "cloudbuild_serving_wr
   member     = "serviceAccount:${local.cloudbuild_sa}"
 }
 
+data "google_compute_default_service_account" "default" {
+  project = var.project_id
+}
+
+# Grant GKE Autopilot default compute node service account read access to serving images
+# (Fixes ImagePullBackOff for FaqResolver on GKE Autopilot; cluster autoprovisioning uses default SA).
+# TODO: On next cluster rebuild, adopt dedicated least-privilege node service account (gke-nodes)
+# with logging.logWriter, monitoring.metricWriter, monitoring.viewer, stackdriver.resourceMetadata.writer,
+# and artifactregistry.reader (REQ-AGENT-021). Changing node SA on existing cluster forces recreation.
+resource "google_artifact_registry_repository_iam_member" "gke_nodes_serving_reader" {
+  project    = var.project_id
+  location   = google_artifact_registry_repository.serving.location
+  repository = google_artifact_registry_repository.serving.name
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${data.google_compute_default_service_account.default.email}"
+}
+
+
 resource "google_vertex_ai_endpoint" "router_s1" {
   count        = var.enable_router_endpoint ? 1 : 0
   name         = "router-s1"

@@ -420,3 +420,27 @@ def test_pubsub_escalation_and_dlq():
     assert 'module "gke_autopilot"' in root_main
     assert 'module "agents_iam"' in root_main
     assert 'module "cloud_run_services"' in root_main
+
+
+# REQ-AGENT-021
+def test_gke_node_artifact_registry_reader():
+    """Verify GKE node SA has roles/artifactregistry.reader on serving repository and TODO is documented."""
+    router_main = (MOD_DIR / "router-endpoint" / "main.tf").read_text(encoding="utf-8")
+    gke_main = (MOD_DIR / "gke-autopilot" / "main.tf").read_text(encoding="utf-8")
+
+    # Data source without depends_on
+    assert 'data "google_compute_default_service_account" "default"' in router_main
+    data_block = router_main.split('data "google_compute_default_service_account" "default"')[1].split("}")[0]
+    assert "depends_on" not in data_block
+
+    # IAM member resource
+    assert 'resource "google_artifact_registry_repository_iam_member" "gke_nodes_serving_reader"' in router_main
+    assert 'role       = "roles/artifactregistry.reader"' in router_main
+    assert "data.google_compute_default_service_account.default.email" in router_main
+
+    # GKE Autopilot doc note & TODO
+    assert "TODO" in gke_main
+    assert "gke-nodes" in gke_main
+    assert "roles/logging.logWriter" in gke_main
+    assert "roles/artifactregistry.reader" in gke_main
+
