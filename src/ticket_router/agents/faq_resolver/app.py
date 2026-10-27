@@ -23,6 +23,7 @@ from ticket_router.common.settings import Settings
 
 try:
     from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+    from starlette.concurrency import run_in_threadpool
 
     _FASTAPI_AVAILABLE = True
 except ImportError:
@@ -136,7 +137,7 @@ if _FASTAPI_AVAILABLE:
                 status_code=400, detail=f"Invalid JSON payload: {e}"
             ) from e
 
-        return handle_a2a_request(payload, agent=active_agent)
+        return await run_in_threadpool(handle_a2a_request, payload, agent=active_agent)
 
 
 def create_fastapi_app(

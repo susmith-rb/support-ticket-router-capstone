@@ -32,8 +32,8 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -122,6 +122,7 @@ def prepare_environment(
         "ALLOWED_CALLERS": allowed_callers,
         "REQUIRE_REAL_DEPS": require_real_deps,
         "SERVICE": service,
+        "PYTHONPATH": "/code/src:src:.",
     }
 
     for key, val in env_vars.items():
@@ -222,7 +223,11 @@ def deploy_reasoning_engine(
         return f"projects/{project}/locations/{region}/reasoningEngines/dry-run-sample-id"
 
     import vertexai
-    vertexai.init(project=project, location=region, staging_bucket=staging_bucket)
+    bucket_uri = staging_bucket
+    if "/" in staging_bucket.replace("gs://", ""):
+        bucket_name = staging_bucket.replace("gs://", "").split("/")[0]
+        bucket_uri = f"gs://{bucket_name}"
+    vertexai.init(project=project, location=region, staging_bucket=bucket_uri)
 
     has_agent_engines = False
     try:

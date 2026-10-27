@@ -274,7 +274,7 @@ def run_benchmark(args: argparse.Namespace) -> Dict[str, Any]:
 
     reranker_results: Dict[str, Any] = {}
 
-    for cfg_name, is_quant, n_threads, is_bf16 in reranker_configs:
+    for cfg_name, is_quant, n_threads, _is_bf16 in reranker_configs:
         print(f"\n--- Running Reranker Config: {cfg_name} (quantize={is_quant}, threads={n_threads}) ---")
         torch.set_num_threads(n_threads)
         agent = laya.load(args.reranker_ckpt)
@@ -387,7 +387,7 @@ def run_benchmark(args: argparse.Namespace) -> Dict[str, Any]:
         preds: List[Dict[str, Any]] = []
 
         t_start = time.perf_counter()
-        for idx, row in enumerate(rows):
+        for _idx, row in enumerate(rows):
             q = row.get("query", "")
             t0 = time.perf_counter()
             resp = agent.predict(q, router_questions)

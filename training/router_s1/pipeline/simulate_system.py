@@ -21,7 +21,7 @@ import json
 import re
 
 try:
-    from langdetect import detect, DetectorFactory
+    from langdetect import DetectorFactory, detect
     DetectorFactory.seed = 0
 except Exception:  # fallback heuristic
     detect = None

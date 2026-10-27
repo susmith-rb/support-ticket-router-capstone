@@ -2,6 +2,7 @@
 
 import json
 import pathlib
+
 import pytest
 
 from corpus.regroup_themes import (

@@ -16,8 +16,10 @@ import re
 import subprocess
 import time
 import urllib.request
+
 from ticket_router.config.models import model_id
 from training.router_s1.pipeline.router_schema import INTENTS, QUESTIONS, SENTIMENTS, URGENCY_LEVELS
+
 
 def rubric():
     lines = []

@@ -9,6 +9,7 @@ Validates:
 """
 
 import pytest
+
 from experiments.rerank_laya import (
     QUESTION_ID,
     convert_row_to_laya,

@@ -61,7 +61,7 @@ def main():
             with urllib.request.urlopen(req, timeout=60) as r:
                 return json.loads(r.read())
         except urllib.error.HTTPError as e:
-            raise SystemExit(f"HTTP {e.code}: {e.read().decode()[:800]}")
+            raise SystemExit(f"HTTP {e.code}: {e.read().decode()[:800]}") from e
 
     for q in a.queries:
         print(f"\n=== {q}")

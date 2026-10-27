@@ -13,19 +13,20 @@ Covers:
 """
 
 import json
-from pathlib import Path
 import random
+from pathlib import Path
+
 import pytest
 
 from experiments.rerank_data import (
-    assign_candidate_grades,
-    build_candidates_for_query,
-    build_docs_catalog,
-    export_dev_candidates,
-    load_eval_leakage_sets,
-    normalize_query,
-    split_train_val_by_thread,
-    verify_no_leakage,
+  assign_candidate_grades,
+  build_candidates_for_query,
+  build_docs_catalog,
+  export_dev_candidates,
+  load_eval_leakage_sets,
+  normalize_query,
+  split_train_val_by_thread,
+  verify_no_leakage,
 )
 
 SCRATCH_DIR = Path(

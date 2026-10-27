@@ -1,15 +1,36 @@
-# Conservative ruff configuration for support-ticket-router-capstone
+# Ruff configuration for support-ticket-router-capstone
 line-length = 120
 target-version = "py311"
 
 [lint]
-select = ["E", "F"]
+select = [
+    "E",
+    "F",
+    "W",
+    "I",
+    "B",
+    "PIE790",
+    "PIE810",
+    "RET505",
+    "RUF019",
+    "RUF022",
+    "RUF100",
+    "SIM102",
+]
 ignore = [
     "E501",  # line too long (handled flexibly in data/test fixtures)
     "E741",  # ambiguous variable name (e.g. l for line in list comprehensions)
     "E701",  # multiple statements on one line (colon)
     "E702",  # multiple statements on one line (semicolon)
+    "B008",  # function calls in default arguments (FastAPI Depends/Query/Header)
+    "B905",  # zip() without explicit strict= parameter
 ]
 
 [lint.per-file-ignores]
 "__init__.py" = ["F401"]
+"scripts/**/*.py" = ["E402"]
+"tests/**/*.py" = ["E402"]
+"training/**/*.py" = ["E402"]
+"evals/**/*.py" = ["E402"]
+"corpus/**/*.py" = ["E402"]
+

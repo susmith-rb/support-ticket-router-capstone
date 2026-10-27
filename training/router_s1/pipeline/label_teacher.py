@@ -97,8 +97,8 @@ async def main():
     ap.add_argument("--seed", type=int, default=7)
     a = ap.parse_args()
 
-    from google import genai
     import pandas as pd
+    from google import genai
     df = pd.read_parquet(a.inp)
     client = genai.Client(vertexai=True, project=os.environ["PROJECT"], location=a.location)
     out = pathlib.Path(a.out); out.parent.mkdir(parents=True, exist_ok=True)

@@ -109,7 +109,7 @@ def gemini(tok, project, prompt, schema, model=None, thinking="LOW"):
             if e.code in (429, 500, 503) and attempt < 5:
                 time.sleep(min(60, 2**attempt + 1))
                 continue
-            raise RuntimeError(f"{e.code} {e.read().decode()[:300]}")
+            raise RuntimeError(f"{e.code} {e.read().decode()[:300]}") from e
         except (KeyError, json.JSONDecodeError):
             if attempt < 2:
                 continue

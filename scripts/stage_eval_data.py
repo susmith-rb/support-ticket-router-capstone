@@ -10,9 +10,9 @@ Enforces zero-leakage invariants:
 
 import argparse
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -32,7 +32,7 @@ PRODUCTION_BASELINE = {
 def validate_record_is_dev_only(rec: Dict[str, Any], source_desc: str = "") -> None:
     """Assert that a record is strictly DEV data and does not contain TEST items."""
     qid = str(rec.get("qid") or rec.get("query_id") or rec.get("id") or "")
-    if qid.startswith("t") or qid.startswith("test"):
+    if qid.startswith(("t", "test")):
         raise ValueError(
             f"LEAKAGE DETECTED in {source_desc}: Query ID '{qid}' is a test query. "
             "Only DEV queries (d-prefixed) are allowed to be staged."
@@ -52,7 +52,7 @@ def filter_dev_only(records: List[Dict[str, Any]], dev_qids: Optional[Set[str]] 
     for rec in records:
         qid = str(rec.get("qid") or rec.get("query_id") or rec.get("id") or "")
         # If explicitly marked as test or t-prefixed, skip it during filtering
-        if qid.startswith("t") or qid.startswith("test") or rec.get("split") == "test":
+        if qid.startswith(("t", "test")) or rec.get("split") == "test":
             continue
 
         if dev_qids is not None and qid not in dev_qids:

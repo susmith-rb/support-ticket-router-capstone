@@ -16,7 +16,7 @@ set -euo pipefail
 PROJECT="${PROJECT:-susmith-fde-ticket-router}"
 REGION="${REGION:-us-central1}"
 IMAGE_URI="${IMAGE_URI:-${REGION}-docker.pkg.dev/${PROJECT}/serving/laya-serving:v2}"
-ENDPOINT_NAME="${ENDPOINT_NAME:-router-s1}"
+ENDPOINT_NAME="${ENDPOINT_NAME:-router-s1-dedicated}"
 MODEL_DISPLAY_NAME="${MODEL_DISPLAY_NAME:-router-s1-v2}"
 MACHINE_TYPE="${MACHINE_TYPE:-g2-standard-4}"
 ACCELERATOR="${ACCELERATOR:-NVIDIA_L4}"

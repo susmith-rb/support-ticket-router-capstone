@@ -8,8 +8,9 @@ Validates compliance with:
 """
 
 import json
-from pathlib import Path
 import re
+from pathlib import Path
+
 from evals.ci_eval_gate import compute_chain_version, execute_gate_check, main
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -356,8 +357,8 @@ def test_ci_eval_gate_logic(tmp_path):
 # REQ-CICD-004
 def test_ci_eval_gate_live_search_branch(monkeypatch, tmp_path):
     """Verify live SearchClient integration uses real dev.jsonl schema (qid/query) and cleans text."""
-    from ticket_router.retrieval.search_client import SearchResult, clean_query
     import evals.ci_eval_gate as eval_gate_module
+    from ticket_router.retrieval.search_client import SearchResult, clean_query
 
     received_queries = []
 
@@ -446,8 +447,8 @@ def test_ci_eval_gate_live_search_branch(monkeypatch, tmp_path):
 # REQ-CICD-004
 def test_ci_eval_gate_empty_query_fails_exit_2(monkeypatch, tmp_path):
     """Empty query strings in queries file must produce counted warning and fail with exit code 2."""
-    from ticket_router.retrieval.search_client import SearchResult
     import evals.ci_eval_gate as eval_gate_module
+    from ticket_router.retrieval.search_client import SearchResult
 
     class FakeSearchClient:
         def __init__(self, project=None, engine=None, location=None):
@@ -564,8 +565,8 @@ def test_ci_eval_gate_multi_label_scoring_regression(monkeypatch, tmp_path):
     1. Through main() with --system-run and --labels-c
     2. Through main() with live search branch (Fake SearchClient) and --labels-c
     """
-    from ticket_router.retrieval.search_client import SearchResult
     import evals.ci_eval_gate as eval_gate_module
+    from ticket_router.retrieval.search_client import SearchResult
 
     # Real schemas: dev queries, C2 labels, system top-10
     dev_rows = [

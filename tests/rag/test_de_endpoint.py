@@ -1,4 +1,5 @@
 import json
+
 from evals import search_test
 from ticket_router.retrieval.de_endpoint import (
     api_base,
@@ -139,6 +140,7 @@ def test_search_test_location_default_global(monkeypatch):
         return DummyHTTPResponse({"results": [], "summary": {"summaryText": "Mock summary"}})
 
     monkeypatch.setattr("subprocess.check_output", lambda *a, **kw: "dummy-token\n")
+    monkeypatch.setattr("evals.search_test.get_access_token", lambda *a, **kw: "dummy-token")
     monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
     monkeypatch.setattr("sys.argv", ["search_test.py", "return window query"])
 
@@ -175,6 +177,7 @@ def test_search_test_location_us(monkeypatch):
         return DummyHTTPResponse({"results": [], "summary": {"summaryText": "Mock summary"}})
 
     monkeypatch.setattr("subprocess.check_output", lambda *a, **kw: "dummy-token\n")
+    monkeypatch.setattr("evals.search_test.get_access_token", lambda *a, **kw: "dummy-token")
     monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
     monkeypatch.setattr("sys.argv", ["search_test.py", "--location", "us", "return window query"])
 
@@ -211,7 +214,7 @@ def test_import_threads_trigger_and_poll(monkeypatch):
         calls.append((method, url, body))
         if method == "POST":
             return {"name": "projects/p/locations/us/collections/default_collection/dataStores/resolved-threads/branches/0/operations/op-123"}
-        elif method == "GET":
+        if method == "GET":
             return {"name": "op-123", "done": True, "response": {"successCount": 81103}}
         return {}
 

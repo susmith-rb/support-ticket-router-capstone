@@ -8,22 +8,22 @@
 from __future__ import annotations
 
 import io
+import urllib.request
 from typing import Optional
 from urllib.error import HTTPError
-import urllib.request
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
+import ticket_router.mcp.order_lookup.schemas as order_schemas
+import ticket_router.mcp.ticket_db.schemas as ticket_schemas
 from ticket_router.agents.faq_resolver.mcp_client import (
     HttpOrderLookupClient,
 )
 from ticket_router.agents.triage_router.mcp_client import (
     HttpTicketDbMcpClient,
 )
-import ticket_router.mcp.order_lookup.schemas as order_schemas
 from ticket_router.mcp.order_lookup.server import create_app as create_order_app
-import ticket_router.mcp.ticket_db.schemas as ticket_schemas
 from ticket_router.mcp.ticket_db.server import create_app as create_ticket_app
 from ticket_router.store.fake import FakeOrderRepo, FakeTicketRepo
 from ticket_router.store.models import Order

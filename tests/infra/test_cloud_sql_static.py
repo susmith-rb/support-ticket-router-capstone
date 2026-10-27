@@ -2,8 +2,8 @@
 # Static analysis and verification of Cloud SQL Terraform, SQL migrations, seed data, and tooling.
 # Implements REQ-STORE-001, REQ-STORE-002, REQ-STORE-003, REQ-STORE-004, REQ-STORE-005, REQ-STORE-007.
 
-from pathlib import Path
 import re
+from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TF_DIR = REPO_ROOT / "deploy" / "terraform" / "single-project"

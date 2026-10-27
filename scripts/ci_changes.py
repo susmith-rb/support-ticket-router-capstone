@@ -17,9 +17,9 @@ or git diff inspection for local development.
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Union
 
 

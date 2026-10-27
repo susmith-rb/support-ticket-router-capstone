@@ -76,13 +76,14 @@ steps:
   # ---------------------------------------------------------------------------
   # Step 5: Regression gate check (Δrecall@5 >= -0.02) with atomic rollback
   # ---------------------------------------------------------------------------
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+  - name: 'python:3.11-slim'
     id: 'enforce-regression-gate'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         set -euo pipefail
+        pip install --no-cache-dir -e .[runtime]
         python3 - << 'EOF'
         import json, os, subprocess, sys
 
@@ -108,11 +109,11 @@ steps:
 
         if delta < GATE_THRESHOLD:
             print(f"CRITICAL: Regression gate FAILED (delta {delta:+.4f} < {GATE_THRESHOLD}). Initiating rollback!")
-            prev_release = os.environ.get("_PREVIOUS_RELEASE", "1")
+            prev_release = "${_PREVIOUS_RELEASE}" or os.environ.get("_PREVIOUS_RELEASE", "1")
             project = "${PROJECT_ID}"
             location = "${_LOCATION}"
             cmd = [
-                "python3", "rag/publish_faq.py",
+                "python3", "-m", "corpus.publish_faq",
                 "--work", "rag/corpus_v2",
                 "--project", project,
                 "--location", location,

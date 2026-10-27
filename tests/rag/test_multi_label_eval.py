@@ -13,7 +13,9 @@ Covers:
 
 import json
 import math
+
 import pytest
+
 from evals.multi_label_eval import (
     compute_agreement_stats,
     compute_cohen_kappa,

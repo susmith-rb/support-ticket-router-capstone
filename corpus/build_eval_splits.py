@@ -12,14 +12,13 @@ Invariants:
 """
 
 import argparse
-from collections import Counter
 import json
 import os
 import pathlib
 import random
 import re
+from collections import Counter
 from typing import Any, Dict, List, Optional, Set, Tuple
-
 
 DEFAULT_SCRATCH = pathlib.Path(
     os.environ.get(

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator, Iterator
 from typing import Any, Optional
+
 from pydantic import PrivateAttr
 
 from ticket_router.agents.triage_router.agent import TriageResult, TriageRouterAgent
@@ -118,6 +119,9 @@ def extract_answer_from_result(result: TriageResult) -> str:
         ans = result.handoff_response.get("answer")
         if ans:
             return str(ans)
+        calming = result.handoff_response.get("calming_ack")
+        if calming:
+            return str(calming)
         status = result.handoff_response.get("status")
         if status:
             return f"Your request has been routed for automated resolution (status: {status})."
@@ -177,13 +181,23 @@ class TriageRouterAdkAgent(BaseAgent):
         super().__init__(name=name, description=description)
         self.name = name
         self.description = description
-        self._router = router
+        object.__setattr__(self, "_router", router)
+
+    def __getattr__(self, name: str) -> Any:
+        if name == "_router":
+            return None
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def _get_router(self) -> TriageRouterAgent:
         """Lazily initialize TriageRouterAgent on first invocation."""
-        if self._router is None:
-            self._router = TriageRouterAgent(lazy_init=False)
-        return self._router
+        router = getattr(self, "_router", None)
+        if not isinstance(router, TriageRouterAgent):
+            router = TriageRouterAgent(lazy_init=False)
+            try:
+                object.__setattr__(self, "_router", router)
+            except Exception:
+                pass
+        return router
 
     async def _run_async_impl(self, ctx: Any) -> AsyncGenerator[Any, None]:
         """Execute async agent invocation yielding final response event."""

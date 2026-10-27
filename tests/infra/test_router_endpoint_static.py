@@ -14,6 +14,7 @@ Validates:
 """
 
 from pathlib import Path
+
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -80,6 +81,15 @@ def test_router_endpoint_vertex_resource():
     assert 'name         = "router-s1"' in content or 'name = "router-s1"' in content
     assert "var.enable_router_endpoint" in content
 
+    # Verify enable_router_endpoint defaults to false in module and root vars
+    mod_vars = (MODULE_DIR / "variables.tf").read_text()
+    assert 'variable "enable_router_endpoint"' in mod_vars
+    assert "default     = false" in mod_vars or "default = false" in mod_vars
+
+    root_vars = (TF_DIR / "variables.tf").read_text()
+    assert 'variable "enable_router_endpoint"' in root_vars
+    assert "default     = false" in root_vars or "default = false" in root_vars
+
 
 # REQ-SERVE-005
 def test_root_terraform_wiring():
@@ -109,6 +119,7 @@ def test_deploy_sh_defaults_and_autoscaling():
     content = DEPLOY_SH.read_text()
 
     # User decision (2026-10-26): MIN_REPLICAS=1 default, MAX_REPLICAS=4
+    assert 'ENDPOINT_NAME="${ENDPOINT_NAME:-router-s1-dedicated}"' in content
     assert 'MIN_REPLICAS="${MIN_REPLICAS:-1}"' in content
     assert 'MAX_REPLICAS="${MAX_REPLICAS:-4}"' in content
     assert 'AUTOSCALING_METRIC_TARGET="${AUTOSCALING_METRIC_TARGET:-60}"' in content
@@ -138,6 +149,7 @@ def test_cloudbuild_serving_yaml_validity():
     assert subs.get("_MACHINE_TYPE") == "g2-standard-4"
     assert subs.get("_ACCELERATOR") == "NVIDIA_L4"
     assert subs.get("_AUTOSCALING_METRIC_TARGET") == "60"
+    assert subs.get("_ENDPOINT_NAME") == "router-s1-dedicated"
     assert "_SERVING_SA" in subs
 
     steps = data.get("steps", [])

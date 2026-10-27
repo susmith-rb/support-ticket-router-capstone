@@ -17,9 +17,11 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+
 from ticket_router.config.models import model_id
 from training.router_s1.pipeline.label_gpt_oss import PROMPT, rubric
 from training.router_s1.pipeline.router_schema import INTENTS, SENTIMENTS, URGENCY_LEVELS
+
 
 def token():
     return subprocess.check_output(["gcloud", "auth", "print-access-token"], text=True).strip()

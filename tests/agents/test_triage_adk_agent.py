@@ -214,3 +214,16 @@ def test_exported_root_agent():
     assert root_agent is not None
     assert root_agent.name == "triage_router"
     assert "Triage" in root_agent.description
+
+
+def test_adk_agent_cloudpickle_private_attr_recovery():
+    """Verify TriageRouterAdkAgent recovers _router gracefully if stripped during cloudpickle deserialization."""
+    agent = TriageRouterAdkAgent()
+    if hasattr(agent, "__pydantic_private__") and agent.__pydantic_private__:
+        agent.__pydantic_private__.pop("_router", None)
+    agent.__dict__.pop("_router", None)
+
+    resolved_router = agent._get_router()
+    assert isinstance(resolved_router, TriageRouterAgent)
+    assert agent._router is resolved_router
+

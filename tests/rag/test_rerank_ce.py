@@ -15,6 +15,7 @@ Offline mode: uses mock scorers and stubs; no network or model downloads.
 
 import json
 from pathlib import Path
+
 import pytest
 
 from experiments.rerank_ce import (

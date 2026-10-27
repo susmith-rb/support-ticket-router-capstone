@@ -1,14 +1,16 @@
 import hashlib
 import json
+
 import pytest
+
 from corpus.publish_faq import (
-    sha,
     answer_only,
-    lint,
-    load_manifest,
-    stamp,
     build_import_payload,
     check_manifest_invariants,
+    lint,
+    load_manifest,
+    sha,
+    stamp,
 )
 
 
@@ -401,6 +403,7 @@ def test_check_manifest_invariants_skips_retired():
 # REQ-RAG-CORPUS-010
 def test_publish_faq_location_default_global(tmp_path, monkeypatch):
     import subprocess
+
     from corpus.publish_faq import main
 
     docs_dir = tmp_path / "docs"
@@ -452,6 +455,7 @@ def test_publish_faq_location_default_global(tmp_path, monkeypatch):
 # REQ-RAG-CORPUS-010
 def test_publish_faq_location_us(tmp_path, monkeypatch):
     import subprocess
+
     from corpus.publish_faq import main
 
     docs_dir = tmp_path / "docs"

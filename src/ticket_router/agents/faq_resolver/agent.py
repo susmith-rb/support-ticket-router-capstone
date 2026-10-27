@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from dataclasses import dataclass, field
@@ -47,8 +48,10 @@ from ticket_router.common.resilience import (
     CircuitBreaker,
 )
 from ticket_router.common.settings import Settings
-from ticket_router.config.models import model_id
+from ticket_router.config.models import get, model_id
 from ticket_router.models.router_s1_client import RouterS1Client
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -157,9 +160,14 @@ class GeminiAnswerClient(LLMClientProtocol):
         model_role: str = "answer",
     ) -> None:
         self.project = project
-        self.location = location
         self.model_role = model_role
-        self.resolved_model_id = model_id(self.model_role)
+        try:
+            model_cfg = get(self.model_role)
+            self.location = model_cfg.get("location") or location
+            self.resolved_model_id = str(model_cfg.get("id") or model_id(self.model_role))
+        except Exception:
+            self.location = location
+            self.resolved_model_id = model_id(self.model_role)
         self._client: Optional[Any] = None
 
     def _get_client(self) -> Any:
@@ -404,6 +412,9 @@ class FaqResolverAgent:
                 )
             except LookupError:
                 order_info = {"order_id": order_id, "status": "NOT_FOUND"}
+            except Exception as exc:
+                logger.warning("Order lookup failed gracefully: %s", exc)
+                order_info = {"order_id": order_id, "status": "UNAVAILABLE"}
 
         # -----------------------------------------------------------------
         # Step 2: Agent Search Retrieval Pass

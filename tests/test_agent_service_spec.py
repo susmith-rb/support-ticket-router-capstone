@@ -11,8 +11,8 @@ Validates that:
 8. MCP contracts, circuit breaker parameters, latency budgets, and observability are specified.
 """
 
-from pathlib import Path
 import re
+from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SPEC_PATH = REPO_ROOT / "specs" / "agent-service.md"

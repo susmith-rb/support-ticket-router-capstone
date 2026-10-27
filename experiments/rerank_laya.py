@@ -16,7 +16,6 @@ import pathlib
 import time
 from typing import Any, Dict, List, Sequence, Tuple, Union
 
-
 QUESTION_ID = "article"
 QUESTION_INSTRUCTIONS = "Which FAQ article best answers or addresses the customer inquiry?"
 MAX_OPTIONS = 5
@@ -223,13 +222,13 @@ def rerank_top5_candidates(
 
     try:
         resp = agent_or_predict_fn.predict(query, questions)
-    except AttributeError:
+    except AttributeError as err:
         if callable(agent_or_predict_fn):
             resp = agent_or_predict_fn(query, questions)
         else:
             raise TypeError(
                 f"agent_or_predict_fn must have .predict or be callable, got {type(agent_or_predict_fn)}"
-            )
+            ) from err
 
     answers = resp.get("answers", resp)
     art_ans = answers.get(QUESTION_ID, {})

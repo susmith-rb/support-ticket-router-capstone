@@ -9,8 +9,8 @@ Validates that:
 5. Every requirement ID referenced in tests exists in the specs.
 """
 
-from pathlib import Path
 import re
+from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SPECS_DIR = REPO_ROOT / "specs"

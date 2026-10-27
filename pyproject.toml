@@ -74,3 +74,4 @@ packages = [
 
 [tool.setuptools.package-data]
 "ticket_router.config" = ["models.yaml"]
+

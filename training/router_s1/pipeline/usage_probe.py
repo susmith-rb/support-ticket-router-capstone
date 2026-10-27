@@ -16,6 +16,7 @@ def main(argv=None):
     import pandas as pd
     from google import genai
     from google.genai import types
+
     from training.router_s1.pipeline.label_teacher import PROMPT, SCHEMA, rubric
 
     teacher_cfg = get("teacher")

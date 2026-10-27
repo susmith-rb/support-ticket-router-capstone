@@ -8,6 +8,7 @@
 
 import json
 from unittest.mock import MagicMock
+
 import pytest
 from requests.adapters import HTTPAdapter
 
@@ -34,6 +35,15 @@ class FakeResponse:
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code} error")
+
+
+@pytest.fixture(autouse=True)
+def _mock_adc_token(monkeypatch):
+    """Ensure RouterS1Client unit tests remain hermetic without live cloud ADC credentials."""
+    monkeypatch.setattr(
+        "ticket_router.models.router_s1_client.get_access_token",
+        lambda *a, **kw: "hermetic-test-token",
+    )
 
 
 def test_router_s1_client_url_resolution():

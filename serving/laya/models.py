@@ -30,7 +30,7 @@ except ImportError:
         def model_dump(self) -> Dict[str, Any]:
             return self.__dict__
 
-    def Field(default: Any = ..., **kwargs: Any) -> Any:  # noqa: N802
+    def Field(default: Any = ..., **kwargs: Any) -> Any:
         return default
 
 

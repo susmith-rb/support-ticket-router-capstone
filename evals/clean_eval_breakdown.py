@@ -3,8 +3,8 @@
 import json
 import os
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
 
 from ticket_router.common.auth import get_access_token
 from ticket_router.config.models import model_id

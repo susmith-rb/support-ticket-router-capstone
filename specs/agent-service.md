@@ -82,7 +82,7 @@ src/ticket_router/
 
 | ID | Title | Status | Acceptance |
 |---|---|---|---|
-| `REQ-AGENT-001` | Multi-Agent Package Structure and Deployment Topology | `open` | `tests/agents/test_package_layout.py::test_directory_structure` |
+| `REQ-AGENT-001` | Multi-Agent Package Structure and Deployment Topology | `done` | `tests/agents/test_package_layout.py::test_directory_structure` |
 | `REQ-AGENT-002` | TriageRouter Tiered Decision Policy & Thresholds | `done` | `tests/agents/test_triage_router.py::test_tiered_policy_thresholds` |
 | `REQ-AGENT-003` | Invariant: Add-Only Escalation and Abuse-Resistant Routing | `done` | `tests/agents/test_triage_router.py::test_add_only_escalation_invariant` |
 | `REQ-AGENT-004` | Gaming-Resistant Queue Priority Assignment | `done` | `tests/agents/test_triage_router.py::test_gaming_resistant_priority` |
@@ -94,9 +94,9 @@ src/ticket_router/
 | `REQ-AGENT-010` | MCP Tool Contracts, JSON Schemas, and Role-Based DB Access | `done` | `tests/mcp/test_tool_contracts.py::test_schemas_and_roles` |
 | `REQ-AGENT-011` | Distributed Circuit Breakers and Fallback Hierarchies | `done` | `tests/common/test_resilience.py::test_circuit_breakers_and_fallbacks` |
 | `REQ-AGENT-012` | Execution Budgets, Service Timeouts, and Latency SLAs | `done` | `tests/common/test_resilience.py::test_latency_budgets_and_timeouts` |
-| `REQ-AGENT-013` | Centralized Model Configuration Resolution | `open` | `tests/config/test_agent_models.py::test_model_registry_resolution` |
+| `REQ-AGENT-013` | Centralized Model Configuration Resolution | `done` | `tests/config/test_agent_models.py::test_model_registry_resolution` |
 | `REQ-AGENT-014` | Observability: Distributed Tracing & PII-Free Structured Logging | `done` | `tests/common/test_observability.py::test_otel_spans_and_pii_free_logs` |
-| `REQ-AGENT-015` | Test Strategy: Hermetic Unit Tests, Schema Contracts, and E2E Smoke | `open` | `tests/agents/test_agent_smoke.py::test_e2e_triage_smoke` |
+| `REQ-AGENT-015` | Test Strategy: Hermetic Unit Tests, Schema Contracts, and E2E Smoke | `done` | `tests/agents/test_agent_smoke.py::test_e2e_triage_smoke` |
 | `REQ-AGENT-016` | Dedicated Agent Service Accounts and Least-Privilege IAM | `done` | `tests/infra/test_agent_infra_static.py::test_agents_iam_least_privilege` |
 | `REQ-AGENT-017` | Agent Runtime Deployment for TriageRouterAgent | `done` | `tests/infra/test_agent_infra_static.py::test_triage_deployment_script` |
 | `REQ-AGENT-018` | GKE Autopilot Workload Identity & HPA for FaqResolverAgent | `done` | `tests/infra/test_agent_infra_static.py::test_faq_gke_manifests` |
@@ -112,7 +112,7 @@ src/ticket_router/
 - **Statement**: The agent codebase MUST be structured under `src/ticket_router/agents/{triage_router,faq_resolver,human_queue}/` and `src/ticket_router/mcp/{ticket_db,order_lookup}/`. Runtimes MUST map to: `TriageRouterAgent` on GEAP Agent Runtime (SA `sa-triage@`), `FaqResolverAgent` on GKE Autopilot Deployment with HPA and Workload Identity (K8s SA `ksa-faq` bound to `sa-faq@`), `HumanQueueAgent` on Cloud Run (SA `sa-queue@`), and MCP servers on Cloud Run (`sa-order-mcp@`, `sa-ticket-mcp@`). ALL infrastructure (SAs, IAM roles, Cloud Run services, GKE Autopilot cluster + Deployment/HPA/KSA binding, Agent Runtime deployment config, Pub/Sub topics) MUST be declared in Terraform under `deploy/terraform/single-project/modules/*`; imperative scripts are permitted only for artifact builds and model/agent deployment steps that the Terraform provider cannot express, with each exception explicitly documented.
 - **Rationale**: Deconstructs monolithic routing into isolated, least-privilege services adhering to TDD §3.5 and GCP security boundaries, with declarative infrastructure reproducibility.
 - **Acceptance**: `tests/agents/test_package_layout.py::test_directory_structure`
-- **Status**: open
+- **Status**: done
 - **Owner**: agent-service
 
 ### REQ-AGENT-002: TriageRouter Tiered Decision Policy & Thresholds
@@ -182,7 +182,7 @@ src/ticket_router/
 - **Owner**: agent-service
 
 ### REQ-AGENT-011: Distributed Circuit Breakers and Fallback Hierarchies
-- **Statement**: Outbound client calls to external dependencies (`router-s1` endpoint, Agent Search, and MCP services) MUST sit behind in-memory circuit breakers configured for: 3 consecutive failures $\to$ `OPEN` state for 30 s base cooldown, exponential doubling up to 300 s cap, and $\pm 20\%$ random jitter. In `HALF_OPEN` state, 1 canary probe is permitted, requiring 2 consecutive successes to transition to `CLOSED`. When `router-s1` is open/unhealthy, triage MUST fall back to Tier 2 `gemini-3.8-flash`. When Agent Search is open/unhealthy, resolution MUST immediately route to human queues with a degraded notification.
+- **Statement**: Outbound client calls to external dependencies (`router-s1` endpoint, Agent Search, and MCP services) MUST sit behind in-memory circuit breakers configured for: 3 consecutive failures $\to$ `OPEN` state for 30 s base cooldown, exponential doubling up to 300 s cap, and $\pm 20\%$ random jitter. In `HALF_OPEN` state, 1 canary probe is permitted, requiring 2 consecutive successes to transition to `CLOSED`. When `router-s1` is open/unhealthy, triage MUST fall back to Tier 2 `gemini-3.8-flash`. When Agent Search is open/unhealthy or when an A2A handoff to `FaqResolverAgent` times out or raises an exception, resolution MUST immediately degrade to human escalation (`human-standard`, `degraded=True`) with a calming notification.
 - **Rationale**: Prevents cascading failures and protects user experience during infrastructure outages (TDD §3.4, §10.4; AGENTS.md rule 5).
 - **Acceptance**: `tests/common/test_resilience.py::test_circuit_breakers_and_fallbacks`
 - **Status**: done
@@ -192,17 +192,17 @@ src/ticket_router/
 - **Statement**: Service calls MUST enforce strict timeout budgets and connection pooling:
   - Clients MUST reuse connections via persistent pooled keep-alive HTTPS sessions (`requests.Session` with `HTTPAdapter(pool_connections, pool_maxsize, max_retries=0)`). Unpooled HTTPS/urllib connections incur ~185 ms p95 TLS handshake overhead. Persistent keep-alive connections achieve shared endpoint latency of p50 96 ms / p95 134 ms, and dedicated endpoint latency of p50 54 ms / p95 77 ms / p99 135 ms.
   - `TriageRouterAgent` overall turn budget: $\le 3,000\text{ ms}$. Tier 1 `router-s1` endpoint call HTTP timeout: 500 ms (protecting 150 ms model budget); Tier 2 Flash fallback timeout: 1,500 ms.
-  - `FaqResolverAgent` overall turn budget: $\le 20,000\text{ ms}$. Agent Search query timeout: 800 ms; Laya rerank call HTTP timeout: 600 ms (protecting 200 ms model budget); `order-lookup-mcp` timeout: 300 ms; `ticket-db-mcp` timeout: 500 ms.
+  - `FaqResolverAgent` overall turn budget: $\le 20,000\text{ ms}$ (and `HttpA2AClient` default timeout `20.0\text{ s}`). Agent Search query timeout: 800 ms; Laya rerank call HTTP timeout: 600 ms (protecting 200 ms model budget); `order-lookup-mcp` timeout: 300 ms; `ticket-db-mcp` timeout: 500 ms. FastAPI `/resolve` executes `handle_a2a_request` via `starlette.concurrency.run_in_threadpool` so synchronous downstream calls do not block the event loop or starve GKE `/healthz` probes.
 - **Rationale**: Enforces customer-facing latency SLAs and eliminates TLS connection setup overhead across repeated agent requests (TDD §3.5, §10.1).
 - **Acceptance**: `tests/common/test_resilience.py::test_latency_budgets_and_timeouts`
 - **Status**: done
 - **Owner**: agent-service
 
 ### REQ-AGENT-013: Centralized Model Configuration Resolution
-- **Statement**: Agents and helper services MUST load all model IDs, endpoint URLs, and generation parameters dynamically from `src/ticket_router/config` using `models.get(role)` or `models.model_id(role)` (resolving roles `answer`, `router_tier2`, `tier3_multihop`). Hardcoded model identifier strings are strictly prohibited in application source code.
+- **Statement**: Agents and helper services MUST load all model IDs, endpoint URLs, model serving locations (e.g. `global` for `gemini-3.8-flash` in `GeminiAnswerClient`), and generation parameters dynamically from `src/ticket_router/config` using `models.get(role)` or `models.model_id(role)` (resolving roles `answer`, `router_tier2`, `tier3_multihop`). Hardcoded model identifier strings are strictly prohibited in application source code.
 - **Rationale**: Decouples model version upgrades from application deployments and complies with AGENTS.md Non-negotiable 2.
 - **Acceptance**: `tests/config/test_agent_models.py::test_model_registry_resolution`
-- **Status**: open
+- **Status**: done
 - **Owner**: agent-service
 
 ### REQ-AGENT-014: Observability: Distributed Tracing & PII-Free Structured Logging
@@ -216,7 +216,7 @@ src/ticket_router/
 - **Statement**: The agent test suite MUST provide: (1) hermetic unit tests with fakes (`FakeRouterEndpoint`, `FakeAgentSearch`, `FakeMcpClient`) requiring zero network or cloud credentials; (2) contract tests validating MCP request/response payloads against their formal JSON schemas; and (3) an end-to-end integration smoke test verifying the complete routing and answering pipeline across simulated tickets.
 - **Rationale**: Ensures rapid local developer test cycles, catches schema regressions, and verifies multi-agent wiring before deployment (TDD §7.1, §12.1).
 - **Acceptance**: `tests/agents/test_agent_smoke.py::test_e2e_triage_smoke`
-- **Status**: open
+- **Status**: done
 - **Owner**: agent-service
 
 ---
@@ -239,7 +239,7 @@ src/ticket_router/
 - **Owner**: agent-service
 
 ### REQ-AGENT-017: Agent Runtime Deployment for TriageRouterAgent
-- **Statement**: TriageRouterAgent is deployed to Vertex AI Agent Engine / Reasoning Engine via the Vertex AI SDK (`scripts/deploy_agents/deploy_triage_agent_runtime.py`) or Cloud Run fallback. The deployment packaging script MUST isolate execution environments by setting `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION` in-process before importing or serializing agent closures, preventing local workstation project names from baking into the pickled artifact, and pin runtime dependencies (`cloudpickle==3.0.0`, `pydantic>=2.0.0`, `google-adk>=0.1.0`). The Reasoning Engine service agent MUST be granted `roles/storage.objectViewer` on the staging bucket.
+- **Statement**: TriageRouterAgent is deployed to Vertex AI Agent Engine / Reasoning Engine via the Vertex AI SDK (`scripts/deploy_agents/deploy_triage_agent_runtime.py`) or Cloud Run fallback. The deployment packaging script MUST isolate execution environments by setting `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, and `PYTHONPATH=/code/src:src:.` in-process and in container `env_vars` before importing or serializing agent closures, preventing local workstation project names from baking into the pickled artifact, normalize `staging_bucket` to `gs://<bucket>` for `vertexai.init`, and pin runtime dependencies (`cloudpickle==3.0.0`, `pydantic>=2.0.0`, `google-adk>=0.1.0`). `TriageRouterAdkAgent` MUST preserve lazy `_router` re-initialization across `cloudpickle` deserialization. The Reasoning Engine service agent MUST be granted `roles/storage.objectViewer` on the staging bucket.
 - **Rationale**: Vertex AI Reasoning Engine manages serverless session state and Python code execution natively; isolation prevents deployment failure across dev/prod environments.
 - **Acceptance**: `tests/infra/test_agent_infra_static.py::test_triage_deployment_script`
 - **Status**: done

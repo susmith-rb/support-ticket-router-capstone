@@ -15,7 +15,9 @@ import collections
 import json
 import pathlib
 import random
+
 from training.router_s1.pipeline.router_schema import QUESTIONS
+
 
 def argmax(p): return max(p, key=p.get)
 

@@ -201,8 +201,8 @@ class LayaTorchEngine(ModelEngine):
 
     def load_models(self) -> None:
         """Download checkpoints (if needed) and load Laya models into memory."""
-        import torch
         import laya
+        import torch
 
         torch_ver = torch.__version__
         try:

@@ -24,13 +24,13 @@ identical to primary hits), MSE regression directly correlates with graded nDCG@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import json
 import math
-from pathlib import Path
 import random
 import sys
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from ticket_router.config.models import model_id
@@ -68,10 +68,9 @@ def compute_rank_prior(
 
     if mode == "reciprocal":
         return 1.0 / (float(rank) + 1.0)
-    elif mode == "linear":
+    if mode == "linear":
         return max(0.0, float(total - rank) / float(total))
-    else:
-        raise ValueError(f"Unsupported prior mode: {mode}. Use 'reciprocal' or 'linear'.")
+    raise ValueError(f"Unsupported prior mode: {mode}. Use 'reciprocal' or 'linear'.")
 
 
 def fuse_scores(

@@ -2,12 +2,12 @@
 
 output "endpoint_id" {
   description = "Resource ID of the Vertex AI Endpoint"
-  value       = var.enable_router_endpoint && length(google_vertex_ai_endpoint.router_s1) > 0 ? google_vertex_ai_endpoint.router_s1[0].id : null
+  value       = var.enable_router_endpoint && length(google_vertex_ai_endpoint.router_s1) > 0 ? google_vertex_ai_endpoint.router_s1[0].id : ""
 }
 
 output "endpoint_name" {
   description = "Display name of the Vertex AI Endpoint"
-  value       = var.enable_router_endpoint && length(google_vertex_ai_endpoint.router_s1) > 0 ? google_vertex_ai_endpoint.router_s1[0].name : null
+  value       = var.enable_router_endpoint && length(google_vertex_ai_endpoint.router_s1) > 0 ? google_vertex_ai_endpoint.router_s1[0].name : ""
 }
 
 output "service_account_email" {

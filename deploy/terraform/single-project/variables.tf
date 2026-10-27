@@ -81,7 +81,7 @@ variable "laya_region" {
 variable "enable_router_endpoint" {
   description = "Whether to deploy the Vertex AI router endpoint resource (empty endpoint is free)"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "cloud_sql_tier" {

@@ -517,6 +517,7 @@ class FakeOrderResponse:
 def test_faq_resolver_inbound_auth_health_unauthenticated():
     """Verify /health and /healthz endpoints are unauthenticated."""
     from starlette.testclient import TestClient
+
     from ticket_router.agents.faq_resolver.app import create_fastapi_app
     from ticket_router.common.settings import Settings
 
@@ -535,6 +536,7 @@ def test_faq_resolver_inbound_auth_health_unauthenticated():
 def test_faq_resolver_inbound_auth_missing_header_rejected():
     """Verify missing Authorization header returns 401 when auth is required."""
     from starlette.testclient import TestClient
+
     from ticket_router.agents.faq_resolver.app import create_fastapi_app
     from ticket_router.common.settings import Settings
 
@@ -559,7 +561,9 @@ def test_faq_resolver_inbound_auth_missing_header_rejected():
 def test_faq_resolver_inbound_auth_unauthorized_caller_rejected(monkeypatch):
     """Verify token from caller not in ALLOWED_CALLERS returns 403."""
     from unittest.mock import MagicMock
+
     from starlette.testclient import TestClient
+
     from ticket_router.agents.faq_resolver.app import create_fastapi_app
     from ticket_router.common.settings import Settings
 
@@ -593,7 +597,9 @@ def test_faq_resolver_inbound_auth_unauthorized_caller_rejected(monkeypatch):
 def test_faq_resolver_inbound_auth_unverified_email_rejected(monkeypatch):
     """Verify token with email_verified=False returns 401."""
     from unittest.mock import MagicMock
+
     from starlette.testclient import TestClient
+
     from ticket_router.agents.faq_resolver.app import create_fastapi_app
     from ticket_router.common.settings import Settings
 
@@ -630,7 +636,9 @@ def test_faq_resolver_inbound_auth_unverified_email_rejected(monkeypatch):
 def test_faq_resolver_inbound_auth_authorized_caller_accepted(monkeypatch):
     """Verify valid token from allowed caller processes inquiry."""
     from unittest.mock import MagicMock
+
     from starlette.testclient import TestClient
+
     from ticket_router.agents.faq_resolver.app import create_fastapi_app
     from ticket_router.common.settings import Settings
 
@@ -668,6 +676,7 @@ def test_faq_resolver_inbound_auth_authorized_caller_accepted(monkeypatch):
 def test_http_order_lookup_client_sends_context_and_bearer_headers():
     """Verify HttpOrderLookupClient sends X-Customer-ID context header and OIDC bearer."""
     from unittest.mock import MagicMock
+
     from ticket_router.agents.faq_resolver.mcp_client import HttpOrderLookupClient
 
     mock_session = MagicMock()
@@ -738,5 +747,53 @@ def test_faq_resolver_circuit_breaker_integration():
         assert res_fail.status == "ESCALATED"
         assert res_fail.degraded is True
     assert cb_fail.state == CircuitState.OPEN
+
+
+# REQ-AGENT-013, REQ-AGENT-007
+def test_gemini_answer_client_location_and_graceful_order_error():
+    """Verify GeminiAnswerClient resolves location from models.yaml and FaqResolver degrades gracefully on order error."""
+    from ticket_router.agents.faq_resolver.agent import GeminiAnswerClient
+
+    ans_client = GeminiAnswerClient(project="susmith-fde-ticket-router", location="us-central1", model_role="answer")
+    assert ans_client.location == "global"
+    assert ans_client.resolved_model_id == "gemini-3.8-flash"
+
+    class BrokenOrderClient:
+        def get_order(
+            self,
+            order_id: str,
+            customer_id: str,
+            session_id: str = "",
+            untrusted_customer_id: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            raise RuntimeError("Downstream order MCP connection reset")
+
+    recorded_order_info = []
+
+    class RecordingLLMClient(FakeLLMClient):
+        def generate_answer(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
+            recorded_order_info.append(kwargs.get("order_info"))
+            return super().generate_answer(*args, **kwargs)
+
+    fake_llm = RecordingLLMClient(
+        default_answer="Returns are permitted within 30 days.",
+        default_doc_id="faq-returns-window",
+        default_quote="within 30 days of delivery",
+    )
+    agent = FaqResolverAgent(
+        search_client=FakeSearchClient(),
+        llm_client=fake_llm,
+        order_client=BrokenOrderClient(),
+    )
+    res = agent.resolve(
+        ticket_id="t-ord-err",
+        session_id="s-ord-err",
+        message="What is the return policy for order ORD-10001?",
+        customer_id="cust_1001",
+    )
+    assert res.status == "AUTO_RESOLVED"
+    assert res.tool_calls_count >= 2
+    assert recorded_order_info[-1] == {"order_id": "ORD-10001", "status": "UNAVAILABLE"}
+
 
 

@@ -10,6 +10,7 @@ Validates:
 """
 
 from typing import Any, Dict
+
 import pytest
 
 from experiments.laya_cpu_bench import (

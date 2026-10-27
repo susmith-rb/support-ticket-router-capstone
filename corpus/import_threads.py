@@ -44,7 +44,7 @@ def call(method, url, project, token, body=None, timeout=120):
             return json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:
         msg = e.read().decode("utf-8")[:600]
-        raise RuntimeError(f"HTTP {e.code} on {method} {url}: {msg}")
+        raise RuntimeError(f"HTTP {e.code} on {method} {url}: {msg}") from e
 
 
 def trigger_import(
@@ -68,7 +68,7 @@ def poll_operation(op_name, project=DEFAULT_PROJECT, location="global", token=No
     tok = token or get_token()
     base = api_base(location)
     url = f"{base}{op_name}"
-    for attempt in range(1, max_attempts + 1):
+    for _attempt in range(1, max_attempts + 1):
         op = call("GET", url, project, tok)
         if op.get("done"):
             return op

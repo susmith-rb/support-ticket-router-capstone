@@ -7,6 +7,7 @@
 import base64
 import json
 from unittest.mock import MagicMock
+
 import pytest
 
 from ticket_router.common.idtoken import (

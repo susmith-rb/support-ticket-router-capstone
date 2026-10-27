@@ -1,9 +1,10 @@
 # REQ-RAG-RETR-013: Evaluation Set Split and Metric Standards
 """Unit tests for split generation and disjointness in rag/build_eval_splits.py."""
 
-from collections import Counter
 import json
+from collections import Counter
 from pathlib import Path
+
 import pytest
 
 from corpus.build_eval_splits import (

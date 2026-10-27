@@ -121,6 +121,25 @@ class NoOpSpan:
         self.ended = True
 
 
+class SpanAdapter:
+    """Adapter ensuring unified interface across OTel Span and NoOpSpan."""
+
+    def __init__(self, raw_span: Any) -> None:
+        self._raw_span = raw_span
+        self.ended = False
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._raw_span, name)
+
+    def set_attribute(self, key: str, value: Any) -> None:
+        self._raw_span.set_attribute(key, value)
+
+    def end(self, *args: Any, **kwargs: Any) -> None:
+        self.ended = True
+        if hasattr(self._raw_span, "end"):
+            self._raw_span.end(*args, **kwargs)
+
+
 @contextmanager
 def start_span(
     name: str,
@@ -132,7 +151,9 @@ def start_span(
 
     if _OTEL_AVAILABLE and _TRACER is not None:
         with _TRACER.start_as_current_span(name, attributes=sanitized_attrs) as span:
-            yield span
+            adapter = SpanAdapter(span)
+            yield adapter
+            adapter.ended = True
     else:
         span = NoOpSpan(name, attributes=sanitized_attrs)
         yield span

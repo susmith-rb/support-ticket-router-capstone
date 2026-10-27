@@ -10,8 +10,9 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+import json
 import time
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Callable, Dict, Optional
 
 from ticket_router.agents.triage_router.a2a_client import (
@@ -87,6 +88,49 @@ def invoke_tier2_gemini(
         except AttributeError:
             raw_text = ""
 
+        clean_text = raw_text.strip()
+        if clean_text.startswith("```"):
+            lines = clean_text.splitlines()
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            clean_text = "\n".join(lines).strip()
+
+        try:
+            parsed = json.loads(clean_text)
+            if isinstance(parsed, dict) and (
+                "escalate" in parsed or "intent" in parsed or "sentiment" in parsed
+            ):
+                esc_raw = parsed.get("escalate", False)
+                if isinstance(esc_raw, bool):
+                    is_esc = esc_raw
+                elif isinstance(esc_raw, str):
+                    is_esc = esc_raw.strip().lower() in ("true", "yes", "1", "escalate")
+                else:
+                    is_esc = bool(esc_raw)
+
+                sentiment = str(parsed.get("sentiment") or ("angry" if is_esc else "neutral")).strip().lower()
+                urgency = str(parsed.get("urgency") or "normal").strip().lower()
+                if sentiment == "angry" or urgency == "immediate":
+                    is_esc = True
+                intent = str(parsed.get("intent") or ("other" if is_esc else "faq")).strip()
+                esc_prob = float(parsed.get("escalate_prob", 0.85 if is_esc else 0.10))
+                intent_prob = float(parsed.get("intent_prob", 0.80))
+                return RouterPrediction(
+                    escalate=is_esc,
+                    escalate_prob=esc_prob,
+                    sentiment=sentiment,
+                    sentiment_prob=0.85,
+                    urgency=urgency,
+                    urgency_prob=0.85,
+                    intent=intent,
+                    intent_prob=intent_prob,
+                    latency_ms=120.0,
+                )
+        except Exception:
+            pass
+
         is_angry = "angry" in raw_text.lower()
         is_urgent = "immediate" in raw_text.lower()
         is_esc = "escalate" in raw_text.lower() or is_angry or is_urgent
@@ -103,6 +147,24 @@ def invoke_tier2_gemini(
         )
     except Exception as exc:
         raise RuntimeError(f"Tier 2 model call failed ({target_model}): {exc}") from exc
+
+
+@dataclass(frozen=True)
+class Tier2GeminiInvoker:
+    """Picklable top-level callable invoking Tier 2 Gemini Flash with configured project/location."""
+
+    model_role: str = "router_tier2"
+    project: Optional[str] = None
+    location: Optional[str] = None
+
+    def __call__(self, text: str) -> RouterPrediction:
+        target_model = model_id(self.model_role)
+        return invoke_tier2_gemini(
+            text,
+            target_model,
+            project=self.project,
+            location=self.location,
+        )
 
 
 def default_tier2_invoker(text: str) -> RouterPrediction:
@@ -123,7 +185,11 @@ def create_tier2_invoker(
     """
     if custom_caller is not None:
         return custom_caller
-    return default_tier2_invoker
+    # Validate model_role exists in registry at creation time
+    _ = model_id(model_role)
+    if model_role == "router_tier2" and project is None and location is None:
+        return default_tier2_invoker
+    return Tier2GeminiInvoker(model_role=model_role, project=project, location=location)
 
 
 class TriageRouterAgent:
@@ -271,7 +337,45 @@ class TriageRouterAgent:
                     memory_summary=memory_summary,
                     customer_id=customer_id,
                 )
-                handoff_resp = self.a2a_client.handoff(payload)
+                try:
+                    handoff_resp = self.a2a_client.handoff(payload)
+                    if isinstance(handoff_resp, dict) and handoff_resp.get("status") == "ESCALATED":
+                        calming_ack = str(
+                            handoff_resp.get("calming_ack")
+                            or render_calming_acknowledgement(
+                                queue=str(handoff_resp.get("queue", "human-standard")),
+                                ticket_id=t_id,
+                            )
+                        )
+                except Exception as exc:
+                    decision = replace(
+                        decision,
+                        decision="escalate",
+                        escalate=True,
+                        queue="human-standard",
+                        degraded=True,
+                        details={**decision.details, "a2a_error": type(exc).__name__},
+                    )
+                    calming_ack = render_calming_acknowledgement(
+                        queue=decision.queue,
+                        ticket_id=t_id,
+                    )
+                    handoff_resp = {
+                        "status": "ESCALATED",
+                        "queue": decision.queue,
+                        "reason": "a2a_handoff_failed",
+                        "calming_ack": calming_ack,
+                    }
+                    try:
+                        self.mcp_client.upsert_ticket(
+                            idempotency_key=f"{idempotency_key}:a2a_degraded",
+                            customer_id=customer_id,
+                            channel=channel,
+                            body_redacted=message_text,
+                            decision=asdict(decision),
+                        )
+                    except Exception:
+                        pass
 
             elapsed_ms = (time.monotonic() - start_time) * 1000.0
 

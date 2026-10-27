@@ -3,8 +3,9 @@
 # Implements REQ-AGENT-016, REQ-AGENT-017, REQ-AGENT-018, REQ-AGENT-019, REQ-AGENT-020.
 
 import os
-from pathlib import Path
 import subprocess
+from pathlib import Path
+
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

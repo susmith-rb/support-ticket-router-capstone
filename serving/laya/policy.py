@@ -128,14 +128,14 @@ def apply_temperature_scaling(
     # Convert probabilities to logits and scale by temperature
     scaled_logits = [math.log(max(float(probs[k]), eps)) / max(temperature, 1e-4) for k in keys]
     max_logit = max(scaled_logits)
-    exp_logits = [math.exp(l - max_logit) for l in scaled_logits]
+    exp_logits = [math.exp(logit - max_logit) for logit in scaled_logits]
     sum_exp = sum(exp_logits)
 
     if sum_exp <= 0.0:
         uniform = 1.0 / len(keys)
         return {k: round(uniform, 4) for k in keys}
 
-    return {k: round(exp_l / sum_exp, 4) for k, exp_l in zip(keys, exp_logits)}
+    return {k: round(exp_l / sum_exp, 4) for k, exp_l in zip(keys, exp_logits, strict=False)}
 
 
 def extract_raw_probabilities(answer_obj: Any) -> Dict[str, float]:

@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 from typing import List, Tuple
+
 import pytest
 
 from ticket_router.config.models import _parse_yaml_fallback, get, list_roles, model_id

@@ -87,7 +87,7 @@ Strict "must reach a human" set = gold sentiment `angry` OR urgency `immediate` 
 | `REQ-ROUTER-S1-010` | Strict DoD Angry/Urgent Routing Recall Simulation | `done` | `tests/training/test_strict_recall.py::test_strict_run` |
 | `REQ-ROUTER-S1-011` | Human-Verified Golden Set Promotion | `partial` | `manual: python training/router_s1/pipeline/golden_score.py a.csv b.csv golden_key.jsonl` |
 | `REQ-ROUTER-S1-012` | Target System Recall ≥ 0.98 for Angry/Urgent Inquiries | `partial` | `manual: python training/router_s1/pipeline/strict_recall.py` |
-| `REQ-ROUTER-S1-013` | Vertex AI Model Registry and Endpoint Serving | `open` | `manual: gcloud ai models upload --region=us-central1 --display-name=router-s1-v2` |
+| `REQ-ROUTER-S1-013` | Vertex AI Model Registry and Endpoint Serving | `done` | `manual: gcloud ai models upload --region=us-central1 --display-name=router-s1-v2` |
 
 ---
 
@@ -181,7 +181,7 @@ Strict "must reach a human" set = gold sentiment `angry` OR urgency `immediate` 
 - **Statement**: The fine-tuned `router-s1` v2 checkpoint SHOULD be uploaded to Vertex AI Model Registry and deployed to a dedicated Vertex AI Prediction endpoint on a g2-standard-4 (1×L4) GPU accepting `:rawPredict` calls.
 - **Rationale**: Delivers scalable, low-latency (<100 ms p95) serving without JSON key reordering (TDD §4.1, §5.4; AGENTS.md rule 4; training/router_s1/README.md lines 88–96).
 - **Acceptance**: `manual: gcloud ai models upload --region=us-central1 --display-name=router-s1-v2`
-- **Status**: open
+- **Status**: done
 - **Owner**: router-s1
 
 ---

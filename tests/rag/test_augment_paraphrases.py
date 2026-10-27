@@ -1,6 +1,8 @@
 import json
 import pathlib
+
 import pytest
+
 from corpus.augment_paraphrases import (
     merge_paraphrases_into_body,
     normalize_text,
@@ -115,7 +117,7 @@ def test_paraphrases_v1_leakage_and_lint():
     """
     repo = pathlib.Path(__file__).resolve().parent.parent.parent
     scratch = pathlib.Path("/usr/local/google/home/susmith/.gemini/jetski/brain/92e6895e-6aa0-4668-8e1e-5cb583072600/scratch/rag")
-    
+
     para_path = repo / "rag/corpus_v2/agent_decisions/paraphrases_v1.json"
     dev_path = scratch / "eval/dev.jsonl"
     test_path = scratch / "eval/test.jsonl"

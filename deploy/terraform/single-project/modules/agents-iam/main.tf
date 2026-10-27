@@ -40,7 +40,7 @@ resource "google_service_account_iam_member" "faq_workload_identity" {
 
 resource "google_vertex_ai_endpoint_iam_member" "triage_prediction_user" {
   provider = google-beta
-  count    = var.router_endpoint_id != "" ? 1 : 0
+  count    = var.router_endpoint_id != null && var.router_endpoint_id != "" ? 1 : 0
   project  = var.project_id
   location = var.region
   endpoint = var.router_endpoint_id
@@ -50,7 +50,7 @@ resource "google_vertex_ai_endpoint_iam_member" "triage_prediction_user" {
 
 resource "google_vertex_ai_endpoint_iam_member" "faq_prediction_user" {
   provider = google-beta
-  count    = var.router_endpoint_id != "" ? 1 : 0
+  count    = var.router_endpoint_id != null && var.router_endpoint_id != "" ? 1 : 0
   project  = var.project_id
   location = var.region
   endpoint = var.router_endpoint_id

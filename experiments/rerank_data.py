@@ -16,9 +16,9 @@ Outputs to $S/rerank/:
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import random
 import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 CONFUSION_PAIRS = [
@@ -131,9 +131,9 @@ def load_eval_leakage_sets(
         if not line.strip():
           continue
         d = json.loads(line)
-        if "thread_id" in d and d["thread_id"]:
+        if d.get("thread_id"):
           eval_thread_ids.add(str(d["thread_id"]))
-        if "query" in d and d["query"]:
+        if d.get("query"):
           eval_queries_norm.add(normalize_query(d["query"]))
 
   return eval_thread_ids, eval_queries_norm

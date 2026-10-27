@@ -147,7 +147,7 @@ def test_compute_fingerprints_deterministic(tmp_path):
 
     assert fp1 == fp2
     assert set(fp1.keys()) == {"retrieval", "corpus", "terraform"}
-    for k, v in fp1.items():
+    for _k, v in fp1.items():
         assert len(v) == 64  # SHA-256 hex string
 
 

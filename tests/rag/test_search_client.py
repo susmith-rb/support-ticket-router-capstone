@@ -6,8 +6,9 @@ Tests cover:
 - Intent family filtering and automatic unconstrained fallback (REQ-RAG-RETR-010)
 """
 
-from datetime import datetime, timezone
 import json
+from datetime import datetime, timezone
+
 from ticket_router.retrieval.search_client import (
     SearchClient,
     build_filter,
@@ -371,7 +372,7 @@ def test_search_client_rich_rerank_blend_margin(monkeypatch):
                 ],
                 "totalSize": 3,
             })
-        elif ":rank" in url:
+        if ":rank" in url:
             # Rank reorders doc-alt-2 to #1 with score 0.85, doc-orig-1 with score 0.78
             # Score delta = 0.85 - 0.78 = 0.07
             return MockHTTPResponse({

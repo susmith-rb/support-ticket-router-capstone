@@ -34,9 +34,9 @@ def load_eval_leakage_sets(dev_path: pathlib.Path, test_path: pathlib.Path) -> T
                 if not line.strip():
                     continue
                 d = json.loads(line)
-                if "thread_id" in d and d["thread_id"]:
+                if d.get("thread_id"):
                     eval_thread_ids.add(str(d["thread_id"]))
-                if "query" in d and d["query"]:
+                if d.get("query"):
                     eval_queries_norm.add(normalize_text(d["query"]))
 
     return eval_thread_ids, eval_queries_norm
@@ -48,7 +48,7 @@ def verify_no_leakage(
     test_path: pathlib.Path,
 ) -> None:
     """Enforce provenance and leakage invariants:
-    
+
     1. No source_thread_id belongs to dev.jsonl or test.jsonl.
     2. No paraphrase string matches or near-duplicates any query in dev.jsonl or test.jsonl.
     """
@@ -151,8 +151,7 @@ def apply_disambiguation_to_body(
             + rest
         )
         return "\n".join(new_lines).strip() + "\n"
-    else:
-        return "\n".join(lines).strip() + "\n"
+    return "\n".join(lines).strip() + "\n"
 
 
 def merge_paraphrases_into_body(body: str, new_paraphrases: List[str]) -> str:
@@ -171,7 +170,7 @@ def merge_paraphrases_into_body(body: str, new_paraphrases: List[str]) -> str:
             if l.startswith("# "):
                 insert_idx = idx + 1
                 break
-        
+
         para_block = ["", "Also asked as:"] + [f"- {p.strip()}" for p in new_paraphrases] + [""]
         new_lines = lines[:insert_idx] + para_block + lines[insert_idx:]
         return "\n".join(new_lines).strip() + "\n"

@@ -58,7 +58,7 @@ def post(url, body, extra=None, retries=6, timeout=120):
                 continue
             if isinstance(e, urllib.error.HTTPError):
                 msg = e.read().decode()[:400]
-                raise RuntimeError(f"HTTP {e.code}: {msg}")
+                raise RuntimeError(f"HTTP {e.code}: {msg}") from e
             raise
 
 
@@ -201,7 +201,7 @@ def main():
             res, u = gemini(a.gen_model, prompt, ANSWER_SCHEMA)
             return r, res, u, ctx
         with cf.ThreadPoolExecutor(a.workers) as ex, open(af, "w") as fh:
-            for r, res, u, ctx in ex.map(answer, RET):
+            for r, res, u, _ctx in ex.map(answer, RET):
                 usage["answer"][0] += u.get("promptTokenCount", 0)
                 usage["answer"][1] += u.get("candidatesTokenCount", 0) + u.get("thoughtsTokenCount", 0)
                 fh.write(json.dumps({**r, "gen": res, "context_ids": r["top"][:5]}) + "\n")

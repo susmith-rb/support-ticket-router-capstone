@@ -19,7 +19,7 @@ variable "corpus_bucket_name" {
 variable "enable_router_endpoint" {
   description = "Whether to create the Vertex AI Endpoint (empty endpoint is free)"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "labels" {

@@ -55,7 +55,7 @@ def call(method, url, project, body=None):
         with urllib.request.urlopen(req, timeout=120) as r:
             return json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:
-        raise RuntimeError(f"{method} {url} -> {e.code} {e.read().decode()[:400]}")
+        raise RuntimeError(f"{method} {url} -> {e.code} {e.read().decode()[:400]}") from e
 
 
 def sha(text): return hashlib.sha256(text.encode()).hexdigest()

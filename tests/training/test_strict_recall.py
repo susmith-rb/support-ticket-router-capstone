@@ -1,4 +1,5 @@
 import pytest
+
 from training.router_s1.pipeline.strict_recall import RULESETS, run, strict
 
 

@@ -117,10 +117,9 @@ def test_runtime_offline_isolation():
                     root_pkg = alias.name.split(".")[0]
                     if root_pkg in forbidden_roots:
                         violations.append((rel, node.lineno, alias.name))
-            elif isinstance(node, ast.ImportFrom):
-                if node.module:
-                    root_pkg = node.module.split(".")[0]
-                    if root_pkg in forbidden_roots:
-                        violations.append((rel, node.lineno, node.module))
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                root_pkg = node.module.split(".")[0]
+                if root_pkg in forbidden_roots:
+                    violations.append((rel, node.lineno, node.module))
 
     assert not violations, f"Runtime code illegally imports offline modules: {violations}"

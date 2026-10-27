@@ -505,3 +505,104 @@ def test_triage_router_root_agent_import_and_query_in_test_env():
     assert "ticket_id" in res
     assert "decision" in res
 
+
+def test_invoke_tier2_gemini_json_parsing_and_invoker_wiring(monkeypatch):
+    """Verify invoke_tier2_gemini parses JSON escalate=false vs true accurately and create_tier2_invoker forwards project/location."""
+    import pickle
+    import sys
+    from types import SimpleNamespace
+
+    from ticket_router.agents.triage_router.agent import (
+        create_tier2_invoker,
+        invoke_tier2_gemini,
+    )
+
+    recorded_clients = []
+
+    class FakeGenaiClient:
+        def __init__(self, **kwargs):
+            recorded_clients.append(kwargs)
+            self.models = SimpleNamespace(generate_content=self._generate_content)
+
+        def _generate_content(self, model, contents):
+            if "i want a refund" in contents.lower():
+                return SimpleNamespace(
+                    text='```json\n{"escalate": true, "escalate_prob": 0.91, "sentiment": "angry", "urgency": "immediate", "intent": "returns_refunds", "intent_prob": 0.88}\n```'
+                )
+            return SimpleNamespace(
+                text='{"escalate": false, "escalate_prob": 0.08, "sentiment": "neutral", "urgency": "normal", "intent": "shipping_policy", "intent_prob": 0.94}'
+            )
+
+    fake_google = SimpleNamespace(genai=SimpleNamespace(Client=FakeGenaiClient))
+    monkeypatch.setitem(sys.modules, "google", fake_google)
+    monkeypatch.setitem(sys.modules, "google.genai", fake_google.genai)
+
+    # 1. JSON with escalate=false must NOT be treated as escalate=True
+    pred_no_esc = invoke_tier2_gemini(
+        "What are your shipping options?",
+        target_model="gemini-test-model",
+        project="proj-tier2",
+        location="us-central1",
+    )
+    assert pred_no_esc.escalate is False
+    assert pred_no_esc.escalate_prob == 0.08
+    assert pred_no_esc.intent == "shipping_policy"
+    assert pred_no_esc.intent_prob == 0.94
+    assert recorded_clients[-1] == {"project": "proj-tier2", "vertexai": True, "location": "us-central1"}
+
+    # 2. JSON with escalate=true in markdown fence
+    pred_esc = invoke_tier2_gemini(
+        "I want a refund right now!",
+        target_model="gemini-test-model",
+    )
+    assert pred_esc.escalate is True
+    assert pred_esc.escalate_prob == 0.91
+    assert pred_esc.sentiment == "angry"
+    assert pred_esc.urgency == "immediate"
+    assert pred_esc.intent == "returns_refunds"
+
+    # 3. create_tier2_invoker forwards project & location and is picklable
+    invoker = create_tier2_invoker("router_tier2", project="proj-custom", location="us-west1")
+    unpickled_invoker = pickle.loads(pickle.dumps(invoker))
+    res = unpickled_invoker("What are your shipping options?")
+    assert res.escalate is False
+    assert res.intent == "shipping_policy"
+    assert recorded_clients[-1] == {"project": "proj-custom", "vertexai": True, "location": "us-west1"}
+
+
+def test_triage_a2a_handoff_failure_degrades_to_escalation():
+    """Verify TriageRouterAgent degrades gracefully to human escalation when A2A handoff raises or escalates."""
+    mock_s1 = MagicMock(spec=RouterS1Client)
+    mock_s1.route.return_value = _make_prediction(
+        escalate_prob=0.04,
+        intent="shipping",
+        intent_prob=0.92,
+        sentiment="neutral",
+    )
+    policy = TriagePolicy(s1_client=mock_s1)
+    mcp_client = InMemoryTicketDbMcpClient()
+
+    failing_a2a = MagicMock()
+    failing_a2a.handoff.side_effect = TimeoutError("Read timed out (read timeout=20.0)")
+
+    agent = TriageRouterAgent(policy=policy, mcp_client=mcp_client, a2a_client=failing_a2a)
+    result = agent.triage(
+        session_id="sess_a2a_timeout",
+        customer_id="cust_99",
+        message_text="What is the status of order ORD-10001?",
+        ticket_id="TICK-TIMEOUT-1",
+    )
+
+    assert result.decision.decision == "escalate"
+    assert result.decision.escalate is True
+    assert result.decision.degraded is True
+    assert result.decision.queue == "human-standard"
+    assert result.decision.details.get("a2a_error") == "TimeoutError"
+    assert result.calming_ack is not None
+    assert "TICK-TIMEOUT-1" in result.calming_ack
+    assert result.handoff_response is not None
+    assert result.handoff_response["status"] == "ESCALATED"
+    assert result.handoff_response["reason"] == "a2a_handoff_failed"
+
+
+

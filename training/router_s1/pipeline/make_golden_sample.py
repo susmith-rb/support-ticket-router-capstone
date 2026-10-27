@@ -33,8 +33,8 @@ def main():
     rows = []
     for t, p in zip(test, pred):
         vs = [v for v in votes[t["id"]] if "error" not in v]
-        def maj(q):
-            return collections.Counter(str(v[q]) for v in vs).most_common(1)[0][0]
+        def maj(q, cur_vs=vs):
+            return collections.Counter(str(v[q]) for v in cur_vs).most_common(1)[0][0]
         split = len({str(v["escalate"]) for v in vs}) > 1 or len({v["sentiment"] for v in vs}) > 1
         strict = maj("sentiment") == "angry" or maj("urgency") == "3"
         stratum = "split" if split else ("strict" if strict else "rest")
@@ -52,7 +52,7 @@ def main():
     need = a.n - len(pick)
     rest = by["rest"]; by_int = collections.defaultdict(list)
     for r in rest: by_int[r["teacher"]["intent"]].append(r)
-    for intent, group in sorted(by_int.items()):
+    for _intent, group in sorted(by_int.items()):
         k = round(need * len(group) / len(rest)); pick += group[:k]
     pick = pick[: a.n]
     rng.shuffle(pick)

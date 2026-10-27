@@ -22,13 +22,13 @@ Supported Ablation Grid:
 """
 
 import argparse
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import json
 import pathlib
 import random
 import sys
 import time
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from evals import eval_metrics
@@ -38,9 +38,9 @@ from ticket_router.retrieval.search_client import (
     DEFAULT_ENGINE,
     DEFAULT_LOCATION,
     DEFAULT_PROJECT,
-    SearchResult,
-    SearchClient,
     VALID_INTENT_FAMILIES,
+    SearchClient,
+    SearchResult,
     clean_query,
     load_rich_faq_records,
 )

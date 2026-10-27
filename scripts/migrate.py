@@ -13,8 +13,8 @@ import argparse
 import base64
 import logging
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -111,11 +111,11 @@ def get_connector(oauth_token: Optional[str] = None):
     """Initialize Cloud SQL Connector with optional short-lived OAuth token credentials."""
     try:
         from google.cloud.sql.connector import Connector
-    except ImportError:
+    except ImportError as err:
         raise ImportError(
             "Missing database dependencies (cloud-sql-python-connector). "
             "Install with: pip install '.[db]'"
-        )
+        ) from err
 
     token = oauth_token or os.environ.get("GOOGLE_OAUTH_ACCESS_TOKEN")
     if token:
@@ -241,9 +241,8 @@ def verify_database(conn) -> Dict[str, Any]:
                 elif "ticket-mcp" in user:
                     if user not in memberships["ticket_rw"]:
                         raise RuntimeError(f"IAM user {user} is not granted ticket_rw!")
-                elif "queue" in user:
-                    if user not in memberships["queue_rw"]:
-                        raise RuntimeError(f"IAM user {user} is not granted queue_rw!")
+                elif "queue" in user and user not in memberships["queue_rw"]:
+                    raise RuntimeError(f"IAM user {user} is not granted queue_rw!")
 
         # Ensure human IAM DB users hold analyst_ro (only if any human IAM users exist)
         human_iam_users = [r for r in roles if "@" in r and not r.startswith("sa-")]

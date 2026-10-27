@@ -19,17 +19,19 @@ import pathlib
 import random
 import re
 import time
-from typing import Any, Dict, List
 import urllib.error
 import urllib.request
+from typing import Any, Dict, List
 
 from evals import eval_metrics
 from ticket_router.common.auth import get_access_token
 from ticket_router.retrieval.de_endpoint import data_store_name, search_url
 from ticket_router.retrieval.search_client import (
+    VALID_INTENT_FAMILIES,
     SearchClient,
     SearchResult,
-    VALID_INTENT_FAMILIES,
+)
+from ticket_router.retrieval.search_client import (
     clean_query as client_clean_query,
 )
 

@@ -9,7 +9,7 @@ substitutions:
   _AUTOSCALING_METRIC_TARGET: '60'
   _ROUTER_CKPT_URI: 'gs://susmith-fde-ticket-router-laya/checkpoints/router-s1/v2/'
   _RERANKER_CKPT_URI: 'gs://susmith-fde-ticket-router-laya/rerank/v2/ckpt/'
-  _ENDPOINT_NAME: 'router-s1'
+  _ENDPOINT_NAME: 'router-s1-dedicated'
   _MODEL_DISPLAY_NAME: 'router-s1-v2'
   _SERVING_SA: 'ticket-router-serving@${PROJECT_ID}.iam.gserviceaccount.com'
 

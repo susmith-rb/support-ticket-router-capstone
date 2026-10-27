@@ -40,7 +40,7 @@ class Settings:
         serving_cfg = get_serving_config("router_s1")
         default_s1_endpoint = serving_cfg.get(
             "default_endpoint",
-            "projects/susmith-fde-ticket-router/locations/us-central1/endpoints/router-s1",
+            "projects/susmith-fde-ticket-router/locations/us-central1/endpoints/router-s1-dedicated",
         )
         default_s1_base_url = serving_cfg.get("dedicated_base_url")
 

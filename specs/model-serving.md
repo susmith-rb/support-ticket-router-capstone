@@ -174,8 +174,8 @@ When rolling out updated serving containers to a Vertex AI Endpoint:
 - **Owner**: serving
 
 ### REQ-SERVE-005: Shared GPU Replicas and Vertex Endpoint Infrastructure
-- **Statement**: The Terraform module `router-endpoint` MUST provision a dedicated Vertex AI Prediction endpoint configured for shared GPU hosting with `min_replica_count = 1`, autoscaling `max_replica_count = 4` (utilization target 60% via `gpu-duty-cycle`), dedicated service account `ticket-router-serving`, and explicit impersonation bindings (`roles/iam.serviceAccountUser`) for the Vertex AI Service Agent and Cloud Build pipeline SA.
-- **Rationale**: Colocating both ModernBERT models on an L4 GPU requires <2.5 GB VRAM, achieving sub-100 ms p50 latency while autoscaling dynamically for load bursts without cold start delays, with least-privilege IAM allowing seamless deployment and execution without keys.
+- **Statement**: The Terraform module `router-endpoint` MUST provision a dedicated Vertex AI Prediction endpoint configured for shared GPU hosting with `min_replica_count = 1`, autoscaling `max_replica_count = 4` (utilization target 60% via `gpu-duty-cycle`), dedicated service account `ticket-router-serving`, and explicit impersonation bindings (`roles/iam.serviceAccountUser`) for the Vertex AI Service Agent and Cloud Build pipeline SA. The legacy shared endpoint `router-s1` is disabled by default (`enable_router_endpoint = false`) in favor of `router-s1-dedicated` (`dedicated_endpoint_enabled = true`).
+- **Rationale**: Colocating both ModernBERT models on an L4 GPU requires <2.5 GB VRAM, achieving sub-100 ms p50 latency while autoscaling dynamically for load bursts without cold start delays, with least-privilege IAM allowing seamless deployment and execution without keys. Operating with `router-s1-dedicated` provides a stable dedicated DNS and endpoint without cross-service contention.
 - **Acceptance**: `pytest tests/infra/test_router_endpoint_static.py`
 - **Status**: done
 - **Owner**: serving

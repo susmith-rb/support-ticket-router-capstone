@@ -74,7 +74,7 @@ class HttpA2AClient:
         self,
         endpoint_url: str,
         target_audience: Optional[str] = None,
-        timeout_s: float = 5.0,
+        timeout_s: float = 20.0,
         token_provider: Optional[Callable[[str], Optional[str]]] = None,
         session: Optional[Any] = None,
     ) -> None:

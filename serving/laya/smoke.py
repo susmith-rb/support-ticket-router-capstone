@@ -17,9 +17,9 @@ import logging
 import subprocess
 import sys
 import time
-from typing import Any, Dict, List, Optional, Tuple
 import urllib.error
 import urllib.request
+from typing import Any, Dict, List, Optional, Tuple
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("smoke")
@@ -58,12 +58,28 @@ def parse_args() -> argparse.Namespace:
 
 
 def get_gcloud_auth_token() -> str:
-    """Retrieve Google Cloud OAuth access token via gcloud CLI."""
+    """Retrieve Google Cloud OAuth access token via gcloud CLI or google.auth ADC fallback."""
     cmd = ["gcloud", "auth", "print-access-token"]
-    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    if res.returncode != 0:
-        raise RuntimeError(f"Failed to obtain gcloud access token: {res.stderr}")
-    return res.stdout.strip()
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout.strip()
+        err_msg = res.stderr
+    except FileNotFoundError as exc:
+        err_msg = str(exc)
+
+    try:
+        import google.auth
+        from google.auth.transport.requests import Request
+
+        creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        if not creds.valid:
+            creds.refresh(Request())
+        if creds.token:
+            return str(creds.token)
+    except Exception:
+        pass
+    raise RuntimeError(f"Failed to obtain gcloud access token: {err_msg}")
 
 
 def send_predict_request(

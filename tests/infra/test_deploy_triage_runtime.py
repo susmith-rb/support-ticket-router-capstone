@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 from scripts.deploy_agents.deploy_triage_agent_runtime import (

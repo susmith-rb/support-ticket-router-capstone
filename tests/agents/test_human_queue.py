@@ -9,15 +9,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 from ticket_router.agents.human_queue.agent import HumanQueueAgent
 from ticket_router.agents.human_queue.server import create_app as create_human_queue_app
 from ticket_router.agents.triage_router.mcp_client import InMemoryTicketDbMcpClient
 from ticket_router.store.fake import FakeTicketRepo
 from ticket_router.store.models import TicketCreate
-
 
 # =============================================================================
 # REQ-AGENT-009: HumanQueue Acceptance Test
@@ -240,6 +239,7 @@ def test_human_queue_reidentify_pii_from_redaction_map():
     """Verify that HumanQueueAgent reads encrypted_mappings from RedactionMap in repository."""
     import json
     from uuid import uuid4
+
     from ticket_router.store.models import RedactionMap
 
     repo = FakeTicketRepo()
