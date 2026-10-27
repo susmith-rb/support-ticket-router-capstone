@@ -58,6 +58,27 @@ resource "google_vertex_ai_endpoint_iam_member" "faq_prediction_user" {
   member   = "serviceAccount:${google_service_account.sa_faq.email}"
 }
 
+resource "google_vertex_ai_endpoint_iam_member" "triage_dedicated_prediction_user" {
+  provider = google-beta
+  count    = var.dedicated_router_endpoint_id != "" ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  endpoint = var.dedicated_router_endpoint_id
+  role     = "roles/aiplatform.predictionUser"
+  member   = "serviceAccount:${google_service_account.sa_triage.email}"
+}
+
+resource "google_vertex_ai_endpoint_iam_member" "faq_dedicated_prediction_user" {
+  provider = google-beta
+  count    = var.dedicated_router_endpoint_id != "" ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  endpoint = var.dedicated_router_endpoint_id
+  role     = "roles/aiplatform.predictionUser"
+  member   = "serviceAccount:${google_service_account.sa_faq.email}"
+}
+
+
 # -----------------------------------------------------------------------------
 # 4. Generative AI Inference (Gemini 3.8 Flash via Vertex AI)
 # -----------------------------------------------------------------------------

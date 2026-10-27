@@ -1,0 +1,13 @@
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: faq-resolver-frontend-config
+  namespace: faq-resolver
+  labels:
+    app: faq-resolver
+    app.kubernetes.io/name: faq-resolver
+    app.kubernetes.io/part-of: support-ticket-router
+    cost_center: support-ticket-router
+spec:
+  redirectToHttps:
+    enabled: true

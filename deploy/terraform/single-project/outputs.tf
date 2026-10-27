@@ -177,5 +177,36 @@ output "vpc_subnetwork_name" {
   value       = module.network.subnetwork_name
 }
 
+output "faq_resolver_ip" {
+  description = "Global static external IP address for FaqResolver GKE Ingress"
+  value       = module.network.faq_resolver_ip
+}
+
+output "faq_resolver_ip_name" {
+  description = "Resource name of the global static IP for FaqResolver GKE Ingress"
+  value       = module.network.faq_resolver_ip_name
+}
+
+output "faq_resolver_url" {
+  description = "Public HTTPS URL for FaqResolver on GKE Autopilot via sslip.io"
+  value       = "https://faq.${replace(module.network.faq_resolver_ip, ".", "-")}.sslip.io"
+}
+
+output "faq_resolver_audience" {
+  description = "Target audience URI for Google ID token authentication on FaqResolver"
+  value       = "https://faq.${replace(module.network.faq_resolver_ip, ".", "-")}.sslip.io"
+}
+
+output "router_s1_dedicated_endpoint_id" {
+  description = "Resource ID of the dedicated router-s1 Vertex AI Endpoint"
+  value       = module.router_endpoint.dedicated_endpoint_id
+}
+
+output "router_s1_dedicated_base_url" {
+  description = "Base URL of the dedicated router-s1 Vertex AI Endpoint"
+  value       = "https://${module.router_endpoint.dedicated_endpoint_dns}"
+}
+
+
 
 

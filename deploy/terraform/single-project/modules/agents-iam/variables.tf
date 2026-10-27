@@ -15,6 +15,13 @@ variable "router_endpoint_id" {
   default     = ""
 }
 
+variable "dedicated_router_endpoint_id" {
+  description = "Resource ID of the dedicated router-s1 Vertex AI endpoint"
+  type        = string
+  default     = ""
+}
+
+
 variable "sa_queue_email" {
   description = "Email of the sa-queue service account"
   type        = string

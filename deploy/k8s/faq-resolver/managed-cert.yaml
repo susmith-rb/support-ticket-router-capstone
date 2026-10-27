@@ -1,0 +1,13 @@
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: faq-resolver-cert
+  namespace: faq-resolver
+  labels:
+    app: faq-resolver
+    app.kubernetes.io/name: faq-resolver
+    app.kubernetes.io/part-of: support-ticket-router
+    cost_center: support-ticket-router
+spec:
+  domains:
+    - DOMAIN_PLACEHOLDER

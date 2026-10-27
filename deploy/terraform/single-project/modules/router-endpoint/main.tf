@@ -81,3 +81,14 @@ resource "google_vertex_ai_endpoint" "router_s1" {
 
   labels = var.labels
 }
+
+resource "google_vertex_ai_endpoint" "router_s1_dedicated" {
+  name                       = "router-s1-dedicated"
+  display_name               = "router-s1-dedicated"
+  description                = "Dedicated Vertex AI Endpoint for System-1 router (ModernBERT) and choice reranker"
+  location                   = var.laya_region
+  dedicated_endpoint_enabled = true
+
+  labels = var.labels
+}
+

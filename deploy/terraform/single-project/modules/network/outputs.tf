@@ -39,3 +39,14 @@ output "services_secondary_range_name" {
   description = "Secondary range name for GKE services"
   value       = "gke-services"
 }
+
+output "faq_resolver_ip" {
+  description = "Global static IP address for FaqResolver GKE Ingress"
+  value       = google_compute_global_address.faq_resolver.address
+}
+
+output "faq_resolver_ip_name" {
+  description = "Name of the global static IP for FaqResolver GKE Ingress"
+  value       = google_compute_global_address.faq_resolver.name
+}
+

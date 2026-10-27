@@ -1,0 +1,19 @@
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: faq-resolver-backend-config
+  namespace: faq-resolver
+  labels:
+    app: faq-resolver
+    app.kubernetes.io/name: faq-resolver
+    app.kubernetes.io/part-of: support-ticket-router
+    cost_center: support-ticket-router
+spec:
+  healthCheck:
+    checkIntervalSec: 15
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    type: HTTP
+    requestPath: /healthz
+    port: 8080

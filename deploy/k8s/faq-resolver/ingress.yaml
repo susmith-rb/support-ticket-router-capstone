@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: faq-resolver-ingress
+  namespace: faq-resolver
+  labels:
+    app: faq-resolver
+    app.kubernetes.io/name: faq-resolver
+    app.kubernetes.io/part-of: support-ticket-router
+    cost_center: support-ticket-router
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.global-static-ip-name: "faq-resolver-ip"
+    networking.gke.io/managed-certificates: "faq-resolver-cert"
+    networking.gke.io/v1beta1.FrontendConfig: "faq-resolver-frontend-config"
+spec:
+  rules:
+  - host: DOMAIN_PLACEHOLDER
+    http:
+      paths:
+      - path: /*
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: faq-resolver
+            port:
+              number: 8080

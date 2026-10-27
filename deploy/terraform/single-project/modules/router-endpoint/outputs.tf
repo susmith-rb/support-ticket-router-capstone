@@ -24,3 +24,19 @@ output "artifact_registry_repository_url" {
   description = "Docker repository URI for pushing serving container images"
   value       = "${var.laya_region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.serving.repository_id}"
 }
+
+output "dedicated_endpoint_id" {
+  description = "Resource ID of the dedicated Vertex AI Endpoint"
+  value       = google_vertex_ai_endpoint.router_s1_dedicated.id
+}
+
+output "dedicated_endpoint_name" {
+  description = "Name of the dedicated Vertex AI Endpoint"
+  value       = google_vertex_ai_endpoint.router_s1_dedicated.name
+}
+
+output "dedicated_endpoint_dns" {
+  description = "Dedicated DNS of the Vertex AI Endpoint"
+  value       = google_vertex_ai_endpoint.router_s1_dedicated.dedicated_endpoint_dns
+}
+

@@ -141,6 +141,7 @@ module "agents_iam" {
   project_id                       = var.project_id
   region                           = var.region
   router_endpoint_id               = module.router_endpoint.endpoint_id
+  dedicated_router_endpoint_id     = module.router_endpoint.dedicated_endpoint_id
   sa_queue_email                   = module.cloud_sql.sa_queue_email
   pubsub_human_queue_topic_name    = module.pubsub.topic_name
   pubsub_human_queue_sub_name      = module.pubsub.subscription_name

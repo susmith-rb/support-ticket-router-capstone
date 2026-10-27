@@ -23,24 +23,42 @@ spec:
       serviceAccountName: ksa-faq
       containers:
       - name: faq-resolver
-        image: us-central1-docker.pkg.dev/susmith-fde-ticket-router/router-serving/support-agents:latest
+        image: us-central1-docker.pkg.dev/susmith-fde-ticket-router/serving/agents:72af728
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 8000
+        - containerPort: 8080
           name: http
         env:
-        - name: PROJECT_ID
+        - name: SERVICE
+          value: "faq_resolver"
+        - name: GOOGLE_CLOUD_PROJECT
           value: "susmith-fde-ticket-router"
-        - name: LOCATION
+        - name: GOOGLE_CLOUD_LOCATION
           value: "us-central1"
-        - name: SEARCH_ENGINE_ID
+        - name: AGENT_SEARCH_LOCATION
+          value: "global"
+        - name: AGENT_SEARCH_ENGINE_ID
           value: "support-kb-search"
-        - name: DATA_STORE_ID
-          value: "faq-articles"
-        - name: ROUTER_ENDPOINT_ID
-          value: "router-s1"
+        - name: ROUTER_S1_ENDPOINT
+          value: "projects/susmith-fde-ticket-router/locations/us-central1/endpoints/router-s1-dedicated"
+        - name: ROUTER_S1_BASE_URL
+          value: "https://router-s1-dedicated.us-central1-620485621180.prediction.vertexai.goog"
+        - name: ORDER_LOOKUP_MCP_URL
+          value: "https://order-lookup-mcp-34mwh7k34a-uc.a.run.app"
+        - name: TICKET_DB_MCP_URL
+          value: "https://ticket-db-mcp-34mwh7k34a-uc.a.run.app"
+        - name: HUMAN_QUEUE_URL
+          value: "https://human-queue-34mwh7k34a-uc.a.run.app"
+        - name: FAQ_RESOLVER_URL
+          value: "https://faq.sslip.io"
+        - name: FAQ_RESOLVER_AUDIENCE
+          value: "https://faq.sslip.io"
+        - name: ALLOWED_CALLERS
+          value: "sa-triage@susmith-fde-ticket-router.iam.gserviceaccount.com"
+        - name: REQUIRE_REAL_DEPS
+          value: "1"
         - name: PORT
-          value: "8000"
+          value: "8080"
         resources:
           requests:
             cpu: 250m

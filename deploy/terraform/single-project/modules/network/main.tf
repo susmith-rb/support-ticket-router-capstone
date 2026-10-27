@@ -28,6 +28,17 @@ resource "google_compute_subnetwork" "support_us_central1" {
   }
 }
 
+# -----------------------------------------------------------------------------
+# Global Static IP for FaqResolver Ingress
+# -----------------------------------------------------------------------------
+
+resource "google_compute_global_address" "faq_resolver" {
+  name        = "faq-resolver-ip"
+  project     = var.project_id
+  description = "Global static external IPv4 address for FaqResolver GKE Ingress"
+}
+
+
 # ARCHITECTURAL DECISION NOTE ON CLOUD NAT:
 # Cloud NAT is deliberately omitted to preserve minimal capstone cost posture (~$30/mo savings).
 # Private GKE worker nodes reach all required services (Artifact Registry, Vertex AI, Agent Search)

@@ -20,3 +20,10 @@ import {
   to = module.cloudbuild.google_cloudbuildv2_connection.github[0]
   id = "projects/susmith-fde-ticket-router/locations/us-central1/connections/github-connection"
 }
+
+# Import block for existing dedicated router-s1 Vertex AI endpoint
+import {
+  to = module.router_endpoint.google_vertex_ai_endpoint.router_s1_dedicated
+  id = "projects/susmith-fde-ticket-router/locations/us-central1/endpoints/router-s1-dedicated"
+}
+

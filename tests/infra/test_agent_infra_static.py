@@ -79,23 +79,45 @@ def test_agents_iam_least_privilege():
 
 # REQ-AGENT-017
 def test_triage_deployment_script():
-    """Verify Vertex AI Agent Engine deployment script and staging bucket IAM.
+    """Verify Vertex AI Agent Engine deployment script, staging bucket, and contract env vars.
 
     Invariants:
     1. Deployment script isolates environment in-process before imports/pickling.
-    2. Pinned dependencies include cloudpickle, pydantic, and google-cloud-aiplatform.
+    2. Pinned dependencies include extras from pyproject [agents, runtime] plus cloudpickle.
     3. Staging bucket grant gives roles/storage.objectViewer to Reasoning Engine service agent.
-    4. Script executes successfully in --dry-run mode without network credentials.
+    4. Service account defaults to sa-triage@ and extra_packages includes src/ticket_router.
+    5. Script executes successfully in --dry-run mode without network credentials.
     """
     script_path = SCRIPTS_DIR / "deploy_triage_agent_runtime.py"
     assert script_path.is_file(), f"Missing deploy script: {script_path}"
     assert os.access(script_path, os.X_OK), "deploy_triage_agent_runtime.py must be executable"
 
     script_content = script_path.read_text(encoding="utf-8")
-    assert 'os.environ["GOOGLE_CLOUD_PROJECT"] = project' in script_content
-    assert 'os.environ["GOOGLE_CLOUD_LOCATION"] = region' in script_content
+    assert 'os.environ[key] = val' in script_content or 'os.environ["GOOGLE_CLOUD_PROJECT"] = project' in script_content
     assert "cloudpickle==3.0.0" in script_content
     assert "pydantic>=2.0.0" in script_content
+    assert "agent-engine-staging" in script_content
+    assert "sa-triage@" in script_content
+    assert "src/ticket_router" in script_content
+
+    # Contract environment variables verified in deploy_triage_agent_runtime.py
+    for env_var in [
+        "GOOGLE_CLOUD_PROJECT",
+        "GOOGLE_CLOUD_LOCATION",
+        "AGENT_SEARCH_LOCATION",
+        "AGENT_SEARCH_ENGINE_ID",
+        "ROUTER_S1_ENDPOINT",
+        "ROUTER_S1_BASE_URL",
+        "ORDER_LOOKUP_MCP_URL",
+        "TICKET_DB_MCP_URL",
+        "HUMAN_QUEUE_URL",
+        "FAQ_RESOLVER_URL",
+        "FAQ_RESOLVER_AUDIENCE",
+        "ALLOWED_CALLERS",
+        "REQUIRE_REAL_DEPS",
+        "SERVICE",
+    ]:
+        assert env_var in script_content, f"Missing contract env var {env_var} in deploy_triage_agent_runtime.py"
 
     # Check Reasoning Engine service agent bucket permissions in agents-iam/main.tf
     iam_main_tf = (MOD_DIR / "agents-iam" / "main.tf").read_text(encoding="utf-8")
@@ -122,13 +144,15 @@ def test_triage_deployment_script():
 
 # REQ-AGENT-018
 def test_faq_gke_manifests():
-    """Verify GKE Autopilot Terraform and Kubernetes manifests for FaqResolverAgent.
+    """Verify GKE Autopilot Terraform, ingress, cert, and Kubernetes manifests for FaqResolverAgent.
 
     Invariants:
     1. GKE Autopilot cluster has private nodes, public endpoint, and REGULAR release channel.
-    2. Kubernetes manifests define Namespace, KSA with Workload Identity, Deployment, Service, and HPA.
-    3. HPA targets 60% CPU utilization with minReplicas 1 and maxReplicas 10.
-    4. deploy_faq_gke.sh is executable and supports --dry-run.
+    2. Kubernetes manifests define Namespace, KSA, BackendConfig, FrontendConfig, ManagedCert, Service, Ingress, HPA.
+    3. All 14 contract environment variables defined in deployment.yaml.
+    4. Probes configured on /healthz.
+    5. HPA targets 60% CPU utilization with minReplicas 1 and maxReplicas 10.
+    6. deploy_faq_gke.sh is executable and supports --dry-run.
     """
     gke_mod_dir = MOD_DIR / "gke-autopilot"
     assert gke_mod_dir.is_dir()
@@ -153,6 +177,8 @@ def test_faq_gke_manifests():
     assert 'private_ip_google_access = true' in net_main
     assert '"gke-pods"' in net_main
     assert '"gke-services"' in net_main
+    assert 'resource "google_compute_global_address" "faq_resolver"' in net_main
+    assert 'faq-resolver-ip' in net_main
 
     # Root module network wiring
     root_main = (TF_DIR / "main.tf").read_text(encoding="utf-8")
@@ -164,8 +190,12 @@ def test_faq_gke_manifests():
     # K8s Manifests
     assert (K8S_DIR / "namespace.yaml").is_file()
     assert (K8S_DIR / "ksa.yaml").is_file()
+    assert (K8S_DIR / "backendconfig.yaml").is_file()
+    assert (K8S_DIR / "frontendconfig.yaml").is_file()
+    assert (K8S_DIR / "managed-cert.yaml").is_file()
     assert (K8S_DIR / "deployment.yaml").is_file()
     assert (K8S_DIR / "service.yaml").is_file()
+    assert (K8S_DIR / "ingress.yaml").is_file()
     assert (K8S_DIR / "hpa.yaml").is_file()
 
     # Namespace
@@ -177,6 +207,36 @@ def test_faq_gke_manifests():
     assert ksa_data["metadata"]["name"] == "ksa-faq"
     assert "iam.gke.io/gcp-service-account" in ksa_data["metadata"]["annotations"]
 
+    # BackendConfig
+    bc_data = yaml.safe_load((K8S_DIR / "backendconfig.yaml").read_text(encoding="utf-8"))
+    assert bc_data["metadata"]["name"] == "faq-resolver-backend-config"
+    assert bc_data["spec"]["healthCheck"]["requestPath"] == "/healthz"
+    assert bc_data["spec"]["healthCheck"]["port"] == 8080
+
+    # FrontendConfig
+    fc_data = yaml.safe_load((K8S_DIR / "frontendconfig.yaml").read_text(encoding="utf-8"))
+    assert fc_data["metadata"]["name"] == "faq-resolver-frontend-config"
+    assert fc_data["spec"]["redirectToHttps"]["enabled"] is True
+
+    # ManagedCertificate
+    mc_data = yaml.safe_load((K8S_DIR / "managed-cert.yaml").read_text(encoding="utf-8"))
+    assert mc_data["metadata"]["name"] == "faq-resolver-cert"
+
+    # Ingress
+    ing_data = yaml.safe_load((K8S_DIR / "ingress.yaml").read_text(encoding="utf-8"))
+    assert ing_data["metadata"]["name"] == "faq-resolver-ingress"
+    assert ing_data["metadata"]["annotations"]["kubernetes.io/ingress.class"] == "gce"
+    assert ing_data["metadata"]["annotations"]["kubernetes.io/ingress.global-static-ip-name"] == "faq-resolver-ip"
+    assert ing_data["metadata"]["annotations"]["networking.gke.io/managed-certificates"] == "faq-resolver-cert"
+
+    # Service
+    svc_data = yaml.safe_load((K8S_DIR / "service.yaml").read_text(encoding="utf-8"))
+    assert svc_data["metadata"]["name"] == "faq-resolver"
+    assert svc_data["spec"]["type"] == "ClusterIP"
+    assert "faq-resolver-backend-config" in svc_data["metadata"]["annotations"]["cloud.google.com/backend-config"]
+    assert svc_data["spec"]["ports"][0]["port"] == 8080
+    assert svc_data["spec"]["ports"][0]["targetPort"] == 8080
+
     # Deployment
     deploy_data = yaml.safe_load((K8S_DIR / "deployment.yaml").read_text(encoding="utf-8"))
     assert deploy_data["metadata"]["name"] == "faq-resolver"
@@ -184,12 +244,35 @@ def test_faq_gke_manifests():
     assert pod_spec["serviceAccountName"] == "ksa-faq"
     container = pod_spec["containers"][0]
     assert container["name"] == "faq-resolver"
-    assert container["ports"][0]["containerPort"] == 8000
+    assert container["ports"][0]["containerPort"] == 8080
+    assert container["livenessProbe"]["httpGet"]["path"] == "/healthz"
+    assert container["readinessProbe"]["httpGet"]["path"] == "/healthz"
 
-    # Service
-    svc_data = yaml.safe_load((K8S_DIR / "service.yaml").read_text(encoding="utf-8"))
-    assert svc_data["metadata"]["name"] == "faq-resolver"
-    assert svc_data["spec"]["type"] == "ClusterIP"
+    # Verify all 14 contract environment variables in deployment.yaml
+    env_map = {item["name"]: item["value"] for item in container["env"]}
+    required_contract_vars = [
+        "GOOGLE_CLOUD_PROJECT",
+        "GOOGLE_CLOUD_LOCATION",
+        "AGENT_SEARCH_LOCATION",
+        "AGENT_SEARCH_ENGINE_ID",
+        "ROUTER_S1_ENDPOINT",
+        "ROUTER_S1_BASE_URL",
+        "ORDER_LOOKUP_MCP_URL",
+        "TICKET_DB_MCP_URL",
+        "HUMAN_QUEUE_URL",
+        "FAQ_RESOLVER_URL",
+        "FAQ_RESOLVER_AUDIENCE",
+        "ALLOWED_CALLERS",
+        "REQUIRE_REAL_DEPS",
+        "SERVICE",
+    ]
+    for v in required_contract_vars:
+        assert v in env_map, f"Missing required env var in deployment.yaml: {v}"
+    assert env_map["SERVICE"] == "faq_resolver"
+    assert env_map["AGENT_SEARCH_LOCATION"] == "global"
+    assert env_map["AGENT_SEARCH_ENGINE_ID"] == "support-kb-search"
+    assert env_map["REQUIRE_REAL_DEPS"] == "1"
+    assert "sa-triage@" in env_map["ALLOWED_CALLERS"]
 
     # HPA
     hpa_data = yaml.safe_load((K8S_DIR / "hpa.yaml").read_text(encoding="utf-8"))
@@ -205,6 +288,43 @@ def test_faq_gke_manifests():
     sh_content = deploy_sh.read_text(encoding="utf-8")
     assert "gcloud container clusters get-credentials" in sh_content
     assert "kubectl apply" in sh_content
+    assert "ManagedCertificate" in sh_content
+    assert "faq-resolver-backend-config" in (K8S_DIR / "backendconfig.yaml").read_text(encoding="utf-8")
+
+    # Shell script dry-run execution
+    dry_run_res = subprocess.run([str(deploy_sh), "--dry-run"], capture_output=True, text=True, check=False)
+    assert dry_run_res.returncode == 0, f"deploy_faq_gke.sh --dry-run failed: {dry_run_res.stderr}"
+
+
+def test_dedicated_router_endpoint_and_static_ip_terraform():
+    """Verify dedicated router-s1 endpoint, imports, and global static IP in Terraform."""
+    router_main = (MOD_DIR / "router-endpoint" / "main.tf").read_text(encoding="utf-8")
+    router_outputs = (MOD_DIR / "router-endpoint" / "outputs.tf").read_text(encoding="utf-8")
+    imports_tf = (TF_DIR / "imports.tf").read_text(encoding="utf-8")
+    agents_iam_main = (MOD_DIR / "agents-iam" / "main.tf").read_text(encoding="utf-8")
+    root_outputs = (TF_DIR / "outputs.tf").read_text(encoding="utf-8")
+
+    # Dedicated endpoint resource
+    assert 'resource "google_vertex_ai_endpoint" "router_s1_dedicated"' in router_main
+    assert 'dedicated_endpoint_enabled = true' in router_main
+    assert "dedicated_endpoint_id" in router_outputs
+    assert "dedicated_endpoint_dns" in router_outputs
+
+    # Import block
+    assert "module.router_endpoint.google_vertex_ai_endpoint.router_s1_dedicated" in imports_tf
+    assert "endpoints/router-s1-dedicated" in imports_tf
+
+    # IAM bindings on dedicated endpoint
+    assert 'resource "google_vertex_ai_endpoint_iam_member" "triage_dedicated_prediction_user"' in agents_iam_main
+    assert 'resource "google_vertex_ai_endpoint_iam_member" "faq_dedicated_prediction_user"' in agents_iam_main
+
+    # Outputs
+    assert "faq_resolver_ip" in root_outputs
+    assert "faq_resolver_url" in root_outputs
+    assert "faq_resolver_audience" in root_outputs
+    assert "router_s1_dedicated_endpoint_id" in root_outputs
+    assert "router_s1_dedicated_base_url" in root_outputs
+
 
 
 # REQ-AGENT-019

@@ -8,12 +8,15 @@ metadata:
     app.kubernetes.io/name: faq-resolver
     app.kubernetes.io/part-of: support-ticket-router
     cost_center: support-ticket-router
+  annotations:
+    cloud.google.com/backend-config: '{"default": "faq-resolver-backend-config"}'
+    cloud.google.com/neg: '{"ingress": true}'
 spec:
   type: ClusterIP
   selector:
     app: faq-resolver
   ports:
   - name: http
-    port: 80
-    targetPort: 8000
+    port: 8080
+    targetPort: 8080
     protocol: TCP
