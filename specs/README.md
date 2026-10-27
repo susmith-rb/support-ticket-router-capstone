@@ -49,6 +49,7 @@ Every requirement block in `specs/<area>.md` follows this exact structure:
 | **Billing & Models** | [`specs/billing-and-models.md`](billing-and-models.md) | Guardrails restricting offline LLM workloads to Jetski agents, allowed runtime Argolis API calls, and token-based cost accounting rules. | `REQ-BILLING-` |
 | **Model Serving** | [`specs/model-serving.md`](model-serving.md) | Model serving container, Vertex AI Endpoint resource, Artifact Registry packaging, and Cloud Build serving deployment pipeline. | `REQ-SERVING-` |
 | **Agent Service** | [`specs/agent-service.md`](agent-service.md) | Multi-agent service topology, TriageRouter policy, FaqResolver RAG ReAct loop, HumanQueue, MCP tool contracts, and resilience. | `REQ-AGENT-` |
+| **Ticket Store** | [`specs/ticket-store.md`](ticket-store.md) | Cloud SQL PostgreSQL 16 persistence, IAM DB auth, RLS, idempotent migrations, seed data, and repository layer. | `REQ-STORE-` |
 
 ---
 

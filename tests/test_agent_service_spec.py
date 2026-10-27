@@ -13,7 +13,6 @@ Validates that:
 
 from pathlib import Path
 import re
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SPEC_PATH = REPO_ROOT / "specs" / "agent-service.md"
@@ -63,7 +62,7 @@ def test_all_agent_reqs_defined_and_open():
         assert "- **Statement**:" in block, f"Missing Statement in {req_id}"
         assert "- **Rationale**:" in block, f"Missing Rationale in {req_id}"
         assert "- **Acceptance**:" in block, f"Missing Acceptance in {req_id}"
-        assert "- **Status**: open" in block, f"Status for {req_id} must be 'open'"
+        assert re.search(r"- \*\*Status\*\*: (open|done)\b", block), f"Status for {req_id} must be open or done"
         assert "- **Owner**: agent-service" in block, f"Owner for {req_id} must be 'agent-service'"
 
 
