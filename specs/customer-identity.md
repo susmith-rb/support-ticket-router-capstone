@@ -109,7 +109,7 @@ Migration `db/migrations/0003_customer_identity.sql` establishes relational mapp
 - **Statement**: The customer identity subsystem MUST be covered by automated test suites encompassing: (1) Unit tests for JWT parsing, expiry, invalid audience/issuer, and unlinked fallback; (2) MCP contract tests for `resolve_customer` schema and error handling; (3) Migration static checks validating PKs, FKs, indices, and absence of email columns; and (4) Live/mocked E2E tests verifying that test user A accesses `cust_1001` orders, is rejected for `cust_1002` orders, and anonymous callers are denied order lookups.
 - **Rationale**: TDD §7.1 and §7.2 verification gates guaranteeing zero regressions across identity boundaries.
 - **Acceptance**: `tests/identity/test_customer_identity_e2e.py::test_e2e_identity_verification`
-- **Status**: open
+- **Status**: done
 - **Owner**: identity
 
 ---

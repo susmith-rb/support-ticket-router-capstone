@@ -51,4 +51,5 @@ CREATE INDEX IF NOT EXISTS idx_identity_events_created_at ON identity_events(cre
 -- 4. Permissions
 -- ----------------------------------------------------------------------------
 GRANT SELECT ON customers, customer_identities TO ticket_rw;
-GRANT INSERT ON identity_events TO ticket_rw;
+-- SELECT is required because append_identity_event uses INSERT ... RETURNING (reads generated columns).
+GRANT SELECT, INSERT ON identity_events TO ticket_rw;

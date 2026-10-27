@@ -50,7 +50,7 @@ def test_customer_identity_schema():
 
     # 4. Grants to ticket_rw
     assert "GRANT SELECT ON customers, customer_identities TO ticket_rw;" in sql_text
-    assert "GRANT INSERT ON identity_events TO ticket_rw;" in sql_text
+    assert "GRANT SELECT, INSERT ON identity_events TO ticket_rw;" in sql_text  # SELECT needed for INSERT ... RETURNING
 
     # 5. Zero email storage invariant (no email column except email_verified)
     # Search for any column declaration with 'email' that isn't 'email_verified'
