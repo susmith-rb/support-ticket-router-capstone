@@ -110,6 +110,9 @@ def test_process_rerank_task(fake_engine):
     assert ranked[0]["id"] == "doc_refunds"
     assert ranked[0]["score"] >= ranked[1]["score"]
     assert ranked[1]["score"] >= ranked[2]["score"]
+    # Schema parity with router output: per-instance latency_ms
+    assert "latency_ms" in ranked[0]
+    assert ranked[0]["latency_ms"] >= 0.0
 
 
 # REQ-SERVE-001

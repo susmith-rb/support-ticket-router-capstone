@@ -173,6 +173,7 @@ def run_smoke_test(args: argparse.Namespace) -> Dict[str, Any]:
 
     # 2. Benchmark Route requests
     route_latencies: List[float] = []
+    route_server_latencies: List[float] = []
     logger.info("Sending %d Route requests...", args.n_requests)
     for i in range(args.n_requests):
         text = SAMPLE_ROUTE_TEXTS[i % len(SAMPLE_ROUTE_TEXTS)]
@@ -187,13 +188,20 @@ def run_smoke_test(args: argparse.Namespace) -> Dict[str, Any]:
         if not preds:
             raise ValueError(f"Empty predictions returned for route request {i}")
         validate_route_schema(preds[0])
+        if isinstance(preds[0], dict) and "latency_ms" in preds[0]:
+            route_server_latencies.append(float(preds[0]["latency_ms"]))
 
     route_stats = calculate_percentiles(route_latencies)
     logger.info("Route Latencies (ms): mean=%.1f, p50=%.1f, p95=%.1f, max=%.1f",
                 route_stats["mean"], route_stats["p50"], route_stats["p95"], route_stats["max"])
+    if route_server_latencies:
+        route_srv_stats = calculate_percentiles(route_server_latencies)
+        logger.info("Route Server Latencies (ms): mean=%.1f, p50=%.1f, p95=%.1f, max=%.1f",
+                    route_srv_stats["mean"], route_srv_stats["p50"], route_srv_stats["p95"], route_srv_stats["max"])
 
     # 3. Benchmark Rerank requests
     rerank_latencies: List[float] = []
+    rerank_server_latencies: List[float] = []
     logger.info("Sending %d Rerank requests...", args.n_requests)
     for i in range(args.n_requests):
         resp, lat_ms = send_predict_request(
@@ -207,10 +215,18 @@ def run_smoke_test(args: argparse.Namespace) -> Dict[str, Any]:
         if not preds:
             raise ValueError(f"Empty predictions returned for rerank request {i}")
         validate_rerank_schema(preds[0])
+        if isinstance(preds[0], list) and preds[0] and isinstance(preds[0][0], dict) and "latency_ms" in preds[0][0]:
+            rerank_server_latencies.append(float(preds[0][0]["latency_ms"]))
+        elif isinstance(preds[0], dict) and "latency_ms" in preds[0]:
+            rerank_server_latencies.append(float(preds[0]["latency_ms"]))
 
     rerank_stats = calculate_percentiles(rerank_latencies)
     logger.info("Rerank Latencies (ms): mean=%.1f, p50=%.1f, p95=%.1f, max=%.1f",
                 rerank_stats["mean"], rerank_stats["p50"], rerank_stats["p95"], rerank_stats["max"])
+    if rerank_server_latencies:
+        rerank_srv_stats = calculate_percentiles(rerank_server_latencies)
+        logger.info("Rerank Server Latencies (ms): mean=%.1f, p50=%.1f, p95=%.1f, max=%.1f",
+                    rerank_srv_stats["mean"], rerank_srv_stats["p50"], rerank_srv_stats["p95"], rerank_srv_stats["max"])
 
     # 4. Check SLA budget
     sla_passed = route_stats["p95"] <= args.sla_budget_ms

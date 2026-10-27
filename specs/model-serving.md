@@ -106,10 +106,13 @@ For texts exceeding 1800 characters (exceeding token capacity for low-latency cl
    - **`sentiment`**: Mean probability pooling across chunks.
    - **`intent`**: Mean probability pooling across chunks.
 
-### Choice Reranker Format
+### Choice Reranker Format & Latency Observability
 Formats candidates as choice options:
 `Question: Which article best answers: "<query>"? Candidates: [A] <c0> [B] <c1> ...`
 Extracts log probabilities for candidate tokens and produces normalized scores, sorted descending.
+
+**Per-Instance Server Latency Parity**:
+To provide latency observability parity with `route` decisions (which return `latency_ms` measuring in-process encoder forward pass and chunk pooling), choice reranker predictions include per-instance `latency_ms` on each candidate dictionary (`[{"id": "...", "score": ..., "latency_ms": 18.42}, ...]`). The returned list is also accessible via `pred["latency_ms"]` or `pred.latency_ms` in-process, preserving full backward-compatibility for clients iterating over candidate lists.
 
 ---
 
@@ -124,6 +127,11 @@ Extracts log probabilities for candidate tokens and produces normalized scores, 
   - `roles/storage.objectViewer` (to download model checkpoints from GCS).
   - `roles/logging.logWriter` (for Cloud Logging).
   - `roles/monitoring.metricWriter` (for Cloud Monitoring).
+
+### Deployment Lifecycle: Traffic Split & Undeploy (`deploy.sh`)
+When rolling out updated serving containers to a Vertex AI Endpoint:
+- **100% Traffic Cutover**: Deploying a second model passes `--traffic-split=0=100` on `gcloud ai endpoints deploy-model` (where `0` targets the model being deployed), preventing the endpoint from remaining 100% routed to the previous model.
+- **Previous Model Undeployment (`UNDEPLOY_PREVIOUS=1`)**: When enabled (default `0`), `deploy.sh` first updates the endpoint trafficSplit map to strictly 100% on the new deployed model ID (since Vertex AI rejects undeploy requests if an ID is present in the trafficSplit map, even with 0% weight), then calls `gcloud ai endpoints undeploy-model` on each superseded model ID, and finally outputs the endpoint's active deployedModels and trafficSplit state.
 
 ---
 

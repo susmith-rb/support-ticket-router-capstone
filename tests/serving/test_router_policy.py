@@ -183,8 +183,9 @@ def test_format_rerank_response_sorting_and_tail():
         "c5": 0.02,
     }
 
-    ranked = format_rerank_response(candidates, choice_probs)
+    ranked = format_rerank_response(candidates, choice_probs, latency_ms=18.42)
     assert len(ranked) == 7
+    assert ranked[0]["latency_ms"] == 18.42
 
     # Top 5 reordered by score: c3 (0.60), c1 (0.25), c4 (0.08), c2 (0.05), c5 (0.02)
     ranked_ids = [r["id"] for r in ranked]

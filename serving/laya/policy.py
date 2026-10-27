@@ -342,13 +342,16 @@ def build_rerank_choice_question(
 def format_rerank_response(
     candidates: Sequence[Dict[str, str]],
     choice_probs: Dict[str, float],
+    latency_ms: float = 0.0,
 ) -> List[Dict[str, Any]]:
     """Format and sort candidate documents by predicted choice probability descending.
 
     Top candidates (up to 5) are reordered by their predicted probability. Candidates
     past rank 5 (if provided) preserve their initial relative ordering with calibrated
-    tail scores below the lowest top-5 score.
+    tail scores below the lowest top-5 score. Each candidate dictionary includes
+    per-instance server `latency_ms` for schema parity with the router output.
     """
+    lat = round(latency_ms, 2)
     if not candidates:
         return []
 
@@ -381,11 +384,11 @@ def format_rerank_response(
             "score": round(score, 6),
         })
 
-    # Clean out internal sorting helper keys
+    # Clean out internal sorting helper keys and include latency_ms for schema parity
     result: List[Dict[str, Any]] = []
     for item in scored_head:
-        result.append({"id": item["id"], "score": item["score"]})
+        result.append({"id": item["id"], "score": item["score"], "latency_ms": lat})
     for item in scored_tail:
-        result.append({"id": item["id"], "score": item["score"]})
+        result.append({"id": item["id"], "score": item["score"], "latency_ms": lat})
 
     return result

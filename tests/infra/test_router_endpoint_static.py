@@ -172,6 +172,29 @@ def test_deploy_sh_model_id_resolution_and_validation():
     assert "tr '[:upper:]_' '[:lower:]-'" in content
 
 
+# REQ-SERVE-005
+def test_deploy_sh_traffic_split_and_undeploy_previous():
+    """Verify deploy.sh configures 100% traffic split to new model and supports undeploying previous models."""
+    assert DEPLOY_SH.is_file(), f"Missing {DEPLOY_SH}"
+    content = DEPLOY_SH.read_text()
+
+    # Traffic split flag passed to deploy-model
+    assert "--traffic-split=0=100" in content
+
+    # Default UNDEPLOY_PREVIOUS=0
+    assert 'UNDEPLOY_PREVIOUS="${UNDEPLOY_PREVIOUS:-0}"' in content
+
+    # Undeploy logic: endpoint update with 100% split to new model before undeploy-model
+    assert "gcloud ai endpoints update" in content
+    assert '--traffic-split="${NEW_DEPLOYED_MODEL_ID}=100"' in content
+    assert "gcloud ai endpoints undeploy-model" in content
+    assert '--deployed-model-id="${prev_id}"' in content
+
+    # Final status output
+    assert "Final Endpoint Deployed Models and Traffic Split:" in content
+    assert 'format="yaml(deployedModels,trafficSplit)"' in content
+
+
 # REQ-SERVE-001
 def test_serving_requirements_pinned_to_laya_tune():
     """Verify serving/laya/requirements.txt pins exact versions matching validated laya-tune venv."""

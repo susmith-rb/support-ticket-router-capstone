@@ -121,6 +121,7 @@ def process_predict_payload(
 
         elif task == "rerank":
             # --- Task: Choice Reranker ---
+            t_inst0 = time.perf_counter()
             query = clean_text(inst.get("query", ""))
             candidates = inst.get("candidates", [])
             if not isinstance(candidates, list) or len(candidates) == 0:
@@ -131,7 +132,12 @@ def process_predict_payload(
             choice_q = build_rerank_choice_question(cand_ids, cand_texts)
 
             choice_probs = engine.predict_rerank(query, choice_q)
-            ranked_candidates = format_rerank_response(candidates, choice_probs)
+            inst_latency_ms = (time.perf_counter() - t_inst0) * 1000.0
+            ranked_candidates = format_rerank_response(
+                candidates,
+                choice_probs,
+                latency_ms=inst_latency_ms,
+            )
             predictions.append(ranked_candidates)
 
         else:

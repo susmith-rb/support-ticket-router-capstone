@@ -28,6 +28,7 @@ ROUTER_CKPT_URI="${ROUTER_CKPT_URI:-gs://susmith-fde-ticket-router-laya/checkpoi
 RERANKER_CKPT_URI="${RERANKER_CKPT_URI:-gs://susmith-fde-ticket-router-laya/rerank/v2/ckpt/}"
 SERVING_SA="${SERVING_SA:-ticket-router-serving@${PROJECT}.iam.gserviceaccount.com}"
 ENDPOINT_ID="${ENDPOINT_ID:-}"
+UNDEPLOY_PREVIOUS="${UNDEPLOY_PREVIOUS:-0}"
 
 # Resolve version alias from container image tag (e.g. :v2 -> v2)
 IMAGE_TAG=$(echo "${IMAGE_URI}" | awk -F':' '{print $NF}')
@@ -65,6 +66,7 @@ echo "Accelerator:           ${ACCELERATOR} (count: ${ACCELERATOR_COUNT})"
 echo "Replicas (Min/Max):    ${MIN_REPLICAS} / ${MAX_REPLICAS}"
 echo "Target Utilization:    ${AUTOSCALING_METRIC_TARGET}%"
 echo "Serving SA:            ${SERVING_SA}"
+echo "Undeploy Previous:     ${UNDEPLOY_PREVIOUS}"
 echo "Router Checkpoint:     ${ROUTER_CKPT_URI}"
 echo "Reranker Checkpoint:   ${RERANKER_CKPT_URI}"
 echo "Dry Run Mode:          ${DRY_RUN}"
@@ -145,18 +147,88 @@ DEPLOY_CMD=(
   --accelerator="type=${ACCELERATOR_TYPE},count=${ACCELERATOR_COUNT}"
   --min-replica-count="${MIN_REPLICAS}"
   --max-replica-count="${MAX_REPLICAS}"
+  --traffic-split=0=100
   --service-account="${SERVING_SA}"
   --autoscaling-metric-specs="gpu-duty-cycle=${AUTOSCALING_METRIC_TARGET}"
   --enable-access-logging
 )
 
 echo ""
-echo "Step 2: Deploying Model to Endpoint..."
+echo "Step 2: Deploying Model to Endpoint with 100% Traffic Split..."
 if [ "${DRY_RUN}" = true ]; then
   echo "[DRY-RUN] ${DEPLOY_CMD[*]}"
 else
   "${DEPLOY_CMD[@]}"
   echo "Successfully deployed model ${MODEL_ID} to endpoint ${ENDPOINT_ID}."
+fi
+
+# 4. Undeploy Previous Models (Optional)
+if [ "${UNDEPLOY_PREVIOUS}" = "1" ] || [ "${UNDEPLOY_PREVIOUS}" = "true" ]; then
+  echo ""
+  echo "Step 3: Checking for previous deployed models to undeploy (UNDEPLOY_PREVIOUS=1)..."
+  if [ "${DRY_RUN}" = true ]; then
+    echo "[DRY-RUN] gcloud ai endpoints describe ${ENDPOINT_ID} --project=${PROJECT} --region=${REGION} --format=json"
+    echo "[DRY-RUN] gcloud ai endpoints update ${ENDPOINT_ID} --project=${PROJECT} --region=${REGION} --traffic-split=mock-deployed-new=100"
+    echo "[DRY-RUN] gcloud ai endpoints undeploy-model ${ENDPOINT_ID} --project=${PROJECT} --region=${REGION} --deployed-model-id=mock-deployed-old"
+  else
+    ENDPOINT_JSON=$(gcloud ai endpoints describe "${ENDPOINT_ID}" \
+      --project="${PROJECT}" \
+      --region="${REGION}" \
+      --format="json")
+
+    NEW_DEPLOYED_MODEL_ID=$(python3 -c "
+import json, sys
+try:
+    data = json.loads(sys.stdin.read())
+    matches = [m.get('id') for m in data.get('deployedModels', []) if m.get('model', '').endswith('/' + '${MODEL_ID}')]
+    print(matches[-1] if matches else (data.get('deployedModels', [{}])[-1].get('id', '')))
+except Exception:
+    pass
+" <<< "${ENDPOINT_JSON}")
+
+    PREVIOUS_MODEL_IDS=$(python3 -c "
+import json, sys
+try:
+    data = json.loads(sys.stdin.read())
+    new_id = '${NEW_DEPLOYED_MODEL_ID}'
+    others = [m.get('id') for m in data.get('deployedModels', []) if m.get('id') and m.get('id') != new_id]
+    print(' '.join(others))
+except Exception:
+    pass
+" <<< "${ENDPOINT_JSON}")
+
+    if [ -n "${NEW_DEPLOYED_MODEL_ID}" ] && [ -n "${PREVIOUS_MODEL_IDS}" ]; then
+      echo "New deployed model ID: ${NEW_DEPLOYED_MODEL_ID}"
+      echo "Previous deployed model IDs to remove: ${PREVIOUS_MODEL_IDS}"
+      echo "Updating endpoint traffic-split strictly to ${NEW_DEPLOYED_MODEL_ID}=100..."
+      gcloud ai endpoints update "${ENDPOINT_ID}" \
+        --project="${PROJECT}" \
+        --region="${REGION}" \
+        --traffic-split="${NEW_DEPLOYED_MODEL_ID}=100"
+
+      for prev_id in ${PREVIOUS_MODEL_IDS}; do
+        echo "Undeploying previous deployed model ${prev_id}..."
+        gcloud ai endpoints undeploy-model "${ENDPOINT_ID}" \
+          --project="${PROJECT}" \
+          --region="${REGION}" \
+          --deployed-model-id="${prev_id}"
+      done
+      echo "Successfully undeployed previous models."
+    else
+      echo "No previous deployed models found to undeploy."
+    fi
+  fi
+fi
+
+echo ""
+echo "Final Endpoint Deployed Models and Traffic Split:"
+if [ "${DRY_RUN}" = true ]; then
+  echo "[DRY-RUN] gcloud ai endpoints describe ${ENDPOINT_ID} --project=${PROJECT} --region=${REGION} --format=\"yaml(deployedModels,trafficSplit)\""
+else
+  gcloud ai endpoints describe "${ENDPOINT_ID}" \
+    --project="${PROJECT}" \
+    --region="${REGION}" \
+    --format="yaml(deployedModels,trafficSplit)"
 fi
 
 echo ""
