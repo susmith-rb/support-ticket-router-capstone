@@ -62,6 +62,7 @@ packages = [
     "ticket_router.mcp.order_lookup",
     "ticket_router.agents",
     "ticket_router.agents.triage_router",
+    "ticket_router.agents.faq_resolver",
     "ticket_router.agents.human_queue",
     "evals",
     "corpus",

@@ -30,6 +30,11 @@ RUN groupadd -g 10001 appgroup && \
 # Copy packaging configuration and core sources
 COPY pyproject.toml README.md /app/
 COPY src/ /app/src/
+# pyproject declares these offline packages too; setuptools needs them present to build (not imported at runtime)
+COPY evals/ /app/evals/
+COPY corpus/ /app/corpus/
+COPY experiments/ /app/experiments/
+COPY training/ /app/training/
 
 # Install package with runtime, db, and agents extras
 RUN pip install --no-cache-dir .[runtime,db,agents]
