@@ -17,8 +17,8 @@ import base64
 import json
 import logging
 import os
-from typing import Any, Dict, Optional
 import uuid
+from typing import Any, Dict, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, FastAPI, Header, Request
@@ -71,8 +71,8 @@ def get_ticket_repo(request: Request) -> TicketRepository:
     """Dependency retrieving configured TicketRepository from app state."""
     try:
         return request.app.state.ticket_repo
-    except AttributeError:
-        raise RuntimeError("TicketRepository not configured on app.state")
+    except AttributeError as err:
+        raise RuntimeError("TicketRepository not configured on app.state") from err
 
 
 @router.get("/health")

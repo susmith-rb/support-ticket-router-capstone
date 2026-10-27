@@ -7,11 +7,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import json
 import os
 import re
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+
 import requests
 from requests.adapters import HTTPAdapter
 
@@ -107,9 +108,9 @@ class RouterS1Client:
         """Resolve full target URL using base_url or Vertex endpoint resource."""
         if self.base_url:
             cleaned = self.base_url.strip().rstrip("/")
-            if not cleaned.startswith("http://") and not cleaned.startswith("https://"):
+            if not cleaned.startswith(("http://", "https://")):
                 cleaned = f"https://{cleaned}"
-            if cleaned.endswith(":rawPredict") or cleaned.endswith(":predict") or cleaned.endswith("/predict"):
+            if cleaned.endswith((":rawPredict", ":predict", "/predict")):
                 return cleaned
             if self.endpoint_resource:
                 endpoint_path = self.endpoint_resource.lstrip("/")
@@ -278,10 +279,7 @@ class RouterS1Client:
         """Parse raw rerank prediction JSON into sorted CandidateScore list."""
         predictions = resp.get("predictions", [])
         if not predictions:
-            if isinstance(resp, list):
-                items = resp
-            else:
-                items = []
+            items = resp if isinstance(resp, list) else []
         else:
             items = predictions[0] if isinstance(predictions[0], list) else predictions
 

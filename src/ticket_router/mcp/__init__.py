@@ -5,4 +5,4 @@ Implements REQ-AGENT-010: Typed JSON contracts, schema validation, and least-pri
 
 from __future__ import annotations
 
-__all__ = ["ticket_db", "order_lookup"]
+__all__ = ["order_lookup", "ticket_db"]

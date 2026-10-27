@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any, Callable, Dict, Optional, Protocol, runtime_checkable
 import uuid
+from typing import Any, Callable, Dict, Optional, Protocol, runtime_checkable
+
 import requests
 from requests.adapters import HTTPAdapter
 
@@ -169,7 +170,10 @@ class HttpTicketDbMcpClient:
             headers["Authorization"] = f"Bearer {token}"
 
         data_bytes = json.dumps(arguments).encode("utf-8")
-        resp = self.session.post(url, data=data_bytes, headers=headers, timeout=self.timeout_s)
+        if hasattr(self.session, "app"):
+            resp = self.session.post(url, content=data_bytes, headers=headers, timeout=self.timeout_s)
+        else:
+            resp = self.session.post(url, data=data_bytes, headers=headers, timeout=self.timeout_s)
         resp.raise_for_status()
         return resp.json()
 

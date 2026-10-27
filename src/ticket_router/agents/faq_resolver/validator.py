@@ -7,8 +7,8 @@ quote is verbatim present in the retrieved FAQ article text.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import re
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 
@@ -128,15 +128,11 @@ class CitationValidator:
             if isinstance(doc_data, str):
                 doc_text = doc_data
             elif isinstance(doc_data, dict):
-                parts = []
-                if "title" in doc_data and doc_data["title"]:
-                    parts.append(str(doc_data["title"]))
-                if "content" in doc_data and doc_data["content"]:
-                    parts.append(str(doc_data["content"]))
-                if "body" in doc_data and doc_data["body"]:
-                    parts.append(str(doc_data["body"]))
-                if "text" in doc_data and doc_data["text"]:
-                    parts.append(str(doc_data["text"]))
+                parts = [
+                    str(doc_data[k])
+                    for k in ("title", "content", "body", "text")
+                    if doc_data.get(k)
+                ]
                 doc_text = " ".join(parts) if parts else str(doc_data)
             else:
                 doc_text = str(doc_data)

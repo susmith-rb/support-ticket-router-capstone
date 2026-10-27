@@ -17,16 +17,16 @@ from ticket_router.store.models import (
 from ticket_router.store.postgres import PostgresOrderRepo, PostgresTicketRepo
 
 __all__ = [
-    "TicketCreate",
-    "Ticket",
-    "TicketEvent",
-    "Order",
-    "RedactionMap",
-    "TicketRepository",
-    "OrderRepository",
-    "FakeTicketRepo",
-    "FakeOrderRepo",
-    "PostgresTicketRepo",
-    "PostgresOrderRepo",
     "CloudSqlConnectionManager",
+    "FakeOrderRepo",
+    "FakeTicketRepo",
+    "Order",
+    "OrderRepository",
+    "PostgresOrderRepo",
+    "PostgresTicketRepo",
+    "RedactionMap",
+    "Ticket",
+    "TicketCreate",
+    "TicketEvent",
+    "TicketRepository",
 ]

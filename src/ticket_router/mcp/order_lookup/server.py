@@ -59,8 +59,8 @@ def get_order_repo(request: Request) -> OrderRepository:
     """Dependency retrieving configured OrderRepository from app state."""
     try:
         return request.app.state.order_repo
-    except AttributeError:
-        raise RuntimeError("OrderRepository not configured on app.state")
+    except AttributeError as err:
+        raise RuntimeError("OrderRepository not configured on app.state") from err
 
 
 @router.get("/health")
@@ -133,8 +133,8 @@ async def get_order_tool(
     body_bytes = await request.body()
     try:
         body_dict = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
 
     # Invariant: customer_id is never a tool parameter in formal MCP tool calls
     if "customer_id" in body_dict:

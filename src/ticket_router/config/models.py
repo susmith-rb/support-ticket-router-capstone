@@ -125,12 +125,10 @@ def get(role: str, env: Optional[str] = None, config_path: Optional[pathlib.Path
     if target_env:
         target_env = target_env.lower().strip()
 
-    if role not in models:
-        # Check if defined solely in env override
-        if not target_env or target_env not in envs or role not in envs[target_env]:
-            raise KeyError(
-                f"Unknown model role: '{role}'. Available roles: {sorted(models.keys())}"
-            )
+    if role not in models and (not target_env or target_env not in envs or role not in envs[target_env]):
+        raise KeyError(
+            f"Unknown model role: '{role}'. Available roles: {sorted(models.keys())}"
+        )
 
     # 1. Base config
     base = dict(models.get(role, {}))

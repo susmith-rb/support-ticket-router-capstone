@@ -12,8 +12,8 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 try:
-    from google.cloud.sql.connector import Connector, IPTypes
     import pg8000.dbapi
+    from google.cloud.sql.connector import Connector, IPTypes
 
     _HAS_CONNECTOR = True
 except ImportError:

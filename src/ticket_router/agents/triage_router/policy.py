@@ -7,9 +7,9 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
-import re
 from typing import Any, Callable, Dict, Optional
 
 from ticket_router.common.resilience import CircuitBreakerError

@@ -6,9 +6,9 @@ enforcing idempotent creation, atomic claims, and Postgres RLS for order isolati
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 from uuid import UUID, uuid4
 

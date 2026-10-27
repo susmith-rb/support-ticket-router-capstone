@@ -10,9 +10,9 @@ read access to tickets and redaction_maps, and column-level updates to status/no
 
 from __future__ import annotations
 
-from datetime import datetime
 import json
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -175,8 +175,8 @@ class HumanQueueAgent:
 
         try:
             target_uuid = UUID(str(ticket_id))
-        except ValueError:
-            raise KeyError(f"Ticket '{ticket_id}' not found.")
+        except ValueError as err:
+            raise KeyError(f"Ticket '{ticket_id}' not found.") from err
 
         ticket = self.repo.get_ticket(target_uuid)
         if ticket is None:

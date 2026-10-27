@@ -13,9 +13,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ticket_router.agents.faq_resolver.protocols import RerankerProtocol
 from ticket_router.common.resilience import (
+    LAYA_RERANK_TIMEOUT_S,
     CircuitBreaker,
     CircuitBreakerOpenError,
-    LAYA_RERANK_TIMEOUT_S,
 )
 from ticket_router.models.router_s1_client import RouterS1Client
 

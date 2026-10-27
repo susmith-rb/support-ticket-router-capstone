@@ -9,9 +9,9 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 
 from ticket_router.agents.human_queue.agent import HumanQueueAgent
 from ticket_router.store.interfaces import TicketRepository
@@ -41,8 +41,8 @@ def get_agent(request: Request) -> HumanQueueAgent:
     """Dependency retrieving configured HumanQueueAgent from app state."""
     try:
         return request.app.state.agent
-    except AttributeError:
-        raise RuntimeError("HumanQueueAgent not configured on app.state")
+    except AttributeError as err:
+        raise RuntimeError("HumanQueueAgent not configured on app.state") from err
 
 
 @router.get("/health")
@@ -128,9 +128,9 @@ def reidentify(
             operator_id=payload.operator_id,
         )
     except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 def create_app(

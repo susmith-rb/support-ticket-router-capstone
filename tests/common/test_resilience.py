@@ -5,17 +5,18 @@
 """
 
 import time
+
 import pytest
 
 from ticket_router.common.resilience import (
+    FAQ_OVERALL_BUDGET_S,
+    ROUTER_S1_TIMEOUT_S,
+    TIER2_FLASH_TIMEOUT_S,
+    TRIAGE_OVERALL_BUDGET_S,
     CircuitBreaker,
     CircuitBreakerOpenError,
     CircuitState,
-    FAQ_OVERALL_BUDGET_S,
-    ROUTER_S1_TIMEOUT_S,
     ServiceTimeoutError,
-    TIER2_FLASH_TIMEOUT_S,
-    TRIAGE_OVERALL_BUDGET_S,
     run_with_timeout,
 )
 
@@ -185,7 +186,24 @@ def test_latency_budgets_and_timeouts():
     result = run_with_timeout(lambda x: x * 2, timeout_s=0.200, x=21)
     assert result == 42
 
-    # Slow operation exceeding budget raises ServiceTimeoutError
+    # Slow operation exceeding budget raises ServiceTimeoutError without waiting for full task sleep
+    t0 = time.monotonic()
     with pytest.raises(ServiceTimeoutError) as exc_info:
-        run_with_timeout(_slow_task, timeout_s=0.050)
+        run_with_timeout(_slow_task, timeout_s=0.040)
+    elapsed = time.monotonic() - t0
     assert "exceeded latency budget" in str(exc_info.value)
+    assert elapsed < 0.200, f"run_with_timeout blocked on hung thread for {elapsed:.3f}s"
+
+    # CircuitBreaker.call_with_timeout records successes and timeout failures
+    cb = CircuitBreaker(name="timeout-cb", failure_threshold=2)
+    assert cb.call_with_timeout(lambda v: v + 1, 0.200, 41) == 42
+    assert cb.consecutive_failures == 0
+
+    with pytest.raises(ServiceTimeoutError):
+        cb.call_with_timeout(_slow_task, timeout_s=0.030)
+    assert cb.consecutive_failures == 1
+    assert cb.state == CircuitState.CLOSED
+
+    with pytest.raises(ServiceTimeoutError):
+        cb.call_with_timeout(_slow_task, timeout_s=0.030)
+    assert cb.state == CircuitState.OPEN

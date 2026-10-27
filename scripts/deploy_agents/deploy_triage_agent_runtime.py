@@ -14,12 +14,17 @@ Key deployment invariants:
    - ORDER_LOOKUP_MCP_URL, TICKET_DB_MCP_URL, HUMAN_QUEUE_URL
    - FAQ_RESOLVER_URL, FAQ_RESOLVER_AUDIENCE
    - ALLOWED_CALLERS, REQUIRE_REAL_DEPS=1, SERVICE=triage_router
-2. Pinned Runtime Dependencies: Requirements extracted from pyproject.toml
-   [agents, runtime] extras plus pinned cloudpickle, pydantic, and
-   google-cloud-aiplatform for container binary/schema compatibility.
-3. Extra Packages: Stages local package code (src/ticket_router).
-4. Service Account Association: Binds remote execution identity to sa-triage@.
-5. Staging Bucket: gs://susmith-fde-ticket-router-laya/agent-engine-staging.
+2. Control Plane Reserved Names: Filters out reserved names
+   (GOOGLE_CLOUD_PROJECT, GOOGLE_CLOUD_LOCATION, GOOGLE_CLOUD_REGION,
+   GOOGLE_CLOUD_AGENT_ENGINE*) from remote container env_vars to prevent
+   FAILED_PRECONDITION rejections.
+3. Pinned Runtime Dependencies: Requirements combine pyproject.toml [agents, runtime]
+   extras, pinned cloudpickle, pydantic>=2.0.0, google-adk>=2.2.0, and
+   google-cloud-aiplatform[agent_engines,adk]>=1.75.0.
+4. Extra Packages: Stages local package code (src/ticket_router).
+5. Service Account Association: Binds remote execution identity to sa-triage@.
+6. Staging Bucket: gs://susmith-fde-ticket-router-laya/agent-engine-staging.
+7. Support for in-place updates (--update <resource_name>).
 """
 
 from __future__ import annotations
@@ -27,8 +32,20 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+from pathlib import Path
 import sys
 from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SRC_DIR = REPO_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+VENV_SITE_PACKAGES = (
+    REPO_ROOT / ".venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+)
+if VENV_SITE_PACKAGES.is_dir() and str(VENV_SITE_PACKAGES) not in sys.path:
+    sys.path.insert(0, str(VENV_SITE_PACKAGES))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("deploy_triage_agent_runtime")
@@ -39,19 +56,16 @@ DEFAULT_STAGING_BUCKET = "gs://susmith-fde-ticket-router-laya/agent-engine-stagi
 DEFAULT_DISPLAY_NAME = "triage-router-agent"
 DEFAULT_SERVICE_ACCOUNT = "sa-triage@susmith-fde-ticket-router.iam.gserviceaccount.com"
 
-# Pinned runtime dependencies combining pyproject.toml [agents, runtime] extras
+# Pinned runtime dependencies for remote container unpickling and execution parity
 PINNED_REQUIREMENTS = [
-    "google-cloud-aiplatform>=1.60.0",
+    "google-cloud-aiplatform[agent_engines,adk]>=1.75.0",
+    "google-adk>=2.2.0",
     "cloudpickle==3.0.0",
     "pydantic>=2.0.0",
-    "google-auth>=2.0.0",
-    "requests>=2.28.0",
-    "pyyaml>=6.0",
-    "fastapi>=0.115.0",
-    "uvicorn>=0.30.0",
-    "google-adk>=0.1.0",
     "google-genai>=0.1.0",
-    "opentelemetry-api>=1.20.0",
+    "requests>=2.32.0",
+    "google-auth>=2.27.0",
+    "pyyaml>=6.0.1",
 ]
 
 DEFAULT_EXTRA_PACKAGES = ["src/ticket_router"]
@@ -66,8 +80,8 @@ DEFAULT_ROUTER_BASE_URL = (
 DEFAULT_TICKET_DB_URL = "https://ticket-db-mcp-34mwh7k34a-uc.a.run.app"
 DEFAULT_ORDER_LOOKUP_URL = "https://order-lookup-mcp-34mwh7k34a-uc.a.run.app"
 DEFAULT_HUMAN_QUEUE_URL = "https://human-queue-34mwh7k34a-uc.a.run.app"
-DEFAULT_FAQ_RESOLVER_URL = "https://faq.sslip.io"
-DEFAULT_FAQ_RESOLVER_AUDIENCE = "https://faq.sslip.io"
+DEFAULT_FAQ_RESOLVER_URL = "https://faq.8-232-184-225.sslip.io"
+DEFAULT_FAQ_RESOLVER_AUDIENCE = "https://faq.8-232-184-225.sslip.io"
 
 
 def prepare_environment(
@@ -117,36 +131,43 @@ def prepare_environment(
     return env_vars
 
 
-class StubTriageAgent:
-    """Hermetic runtime stub for packaging and serialization validation."""
-
-    def __init__(self, project_id: str, location: str):
-        self.project_id = project_id
-        self.location = location
-
-    def query(self, prompt: str) -> dict[str, str]:
-        return {"response": f"Stub triage response for {prompt}"}
+def filter_reserved_env_vars(env_dict: dict[str, str]) -> dict[str, str]:
+    """Filter out reserved environment variable names rejected by Vertex Agent Engine control plane."""
+    filtered: dict[str, str] = {}
+    for key, value in env_dict.items():
+        if key in ("GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION", "GOOGLE_CLOUD_REGION"):
+            continue
+        if key.startswith("GOOGLE_CLOUD_AGENT_ENGINE"):
+            continue
+        filtered[key] = value
+    return filtered
 
 
 def build_agent_app() -> Any:
-    """Instantiate the TriageRouter agent application.
+    """Instantiate the TriageRouter agent application from adk_agent.
 
-    Provides a fallback callable for testing and dry-run packaging when
-    full local dependencies are in stub mode.
+    Imports root_agent and AdkApp from ticket_router.agents.triage_router.adk_agent.
+    Fails loudly on ImportError without any mock or stub fallback.
     """
-    try:
-        from ticket_router.agents.triage_router import agent as triage_module  # noqa: F401
+    from ticket_router.agents.triage_router.adk_agent import app, root_agent
+    logger.info("Successfully imported ticket_router.agents.triage_router.adk_agent")
 
-        logger.info("Successfully imported ticket_router.agents.triage_router.agent")
-        return triage_module
-    except ImportError:
-        logger.warning(
-            "ticket_router package not importable in current environment; using mockable runtime entrypoint"
-        )
-        return StubTriageAgent(
-            project_id=os.environ.get("GOOGLE_CLOUD_PROJECT", DEFAULT_PROJECT),
-            location=os.environ.get("GOOGLE_CLOUD_LOCATION", DEFAULT_REGION),
-        )
+    if app is not None:
+        return app
+
+    try:
+        from vertexai.agent_engines.templates.adk import AdkApp
+        return AdkApp(agent=root_agent, enable_tracing=True)
+    except (ImportError, Exception):
+        pass
+
+    try:
+        from vertexai.preview.reasoning_engines import AdkApp
+        return AdkApp(agent=root_agent, enable_tracing=True)
+    except (ImportError, Exception):
+        pass
+
+    return root_agent
 
 
 def deploy_reasoning_engine(
@@ -158,14 +179,15 @@ def deploy_reasoning_engine(
     requirements: list[str] | None = None,
     extra_packages: list[str] | None = None,
     contract_vars: dict[str, str] | None = None,
+    update_resource_name: str | None = None,
     dry_run: bool = False,
 ) -> str | None:
-    """Package and deploy the TriageRouterAgent to Vertex AI Reasoning Engine."""
+    """Package and deploy or update TriageRouterAgent on Vertex AI Agent Engine."""
     reqs = requirements or PINNED_REQUIREMENTS
     pkgs = extra_packages or DEFAULT_EXTRA_PACKAGES
     contract = contract_vars or {}
 
-    prepare_environment(
+    raw_env_vars = prepare_environment(
         project=project,
         region=region,
         ticket_db_mcp_url=contract.get("TICKET_DB_MCP_URL", DEFAULT_TICKET_DB_URL),
@@ -175,8 +197,13 @@ def deploy_reasoning_engine(
         faq_resolver_audience=contract.get("FAQ_RESOLVER_AUDIENCE", DEFAULT_FAQ_RESOLVER_AUDIENCE),
         router_s1_endpoint=contract.get("ROUTER_S1_ENDPOINT", DEFAULT_ROUTER_ENDPOINT),
         router_s1_base_url=contract.get("ROUTER_S1_BASE_URL", DEFAULT_ROUTER_BASE_URL),
+        agent_search_location=contract.get("AGENT_SEARCH_LOCATION", "global"),
+        agent_search_engine_id=contract.get("AGENT_SEARCH_ENGINE_ID", "support-kb-search"),
         allowed_callers=contract.get("ALLOWED_CALLERS", service_account),
+        require_real_deps=contract.get("REQUIRE_REAL_DEPS", "1"),
+        service=contract.get("SERVICE", "triage_router"),
     )
+    remote_env_vars = filter_reserved_env_vars(raw_env_vars)
     agent_app = build_agent_app()
 
     logger.info("Target Project:        %s", project)
@@ -186,6 +213,8 @@ def deploy_reasoning_engine(
     logger.info("Service Account:       %s", service_account)
     logger.info("Extra Packages:        %s", pkgs)
     logger.info("Requirements:          %s", reqs)
+    logger.info("Remote Env Vars:       %d variables (reserved excluded)", len(remote_env_vars))
+    logger.info("Update Resource:       %s", update_resource_name or "None (Creating new)")
     logger.info("Dry Run:               %s", dry_run)
 
     if dry_run:
@@ -193,24 +222,82 @@ def deploy_reasoning_engine(
         return f"projects/{project}/locations/{region}/reasoningEngines/dry-run-sample-id"
 
     import vertexai
-    from vertexai.preview import reasoning_engines
-
     vertexai.init(project=project, location=region, staging_bucket=staging_bucket)
 
-    create_kwargs: dict[str, Any] = {
-        "reasoning_engine": agent_app,
-        "requirements": reqs,
-        "extra_packages": pkgs,
-        "display_name": display_name,
-        "description": "Support Ticket Router Triage Agent",
-    }
-    if service_account:
-        create_kwargs["service_account"] = service_account
+    has_agent_engines = False
+    try:
+        from vertexai import agent_engines
+        has_agent_engines = True
+    except (ImportError, AttributeError):
+        has_agent_engines = False
 
-    logger.info("Initiating ReasoningEngine.create deployment on Vertex AI...")
-    engine = reasoning_engines.ReasoningEngine.create(**create_kwargs)
-    logger.info("Reasoning Engine deployed successfully: %s", engine.resource_name)
-    return engine.resource_name
+    resource_name: str | None = None
+    if update_resource_name:
+        logger.info("Updating existing Agent Engine: %s", update_resource_name)
+        if has_agent_engines:
+            from vertexai import agent_engines
+            engine = agent_engines.update(
+                resource_name=update_resource_name,
+                agent_engine=agent_app,
+                requirements=reqs,
+                extra_packages=pkgs,
+                env_vars=remote_env_vars,
+                display_name=display_name,
+                description="Support Ticket Router Triage Agent",
+                service_account=service_account,
+                gcs_dir_name="agent_engine/triage_router",
+            )
+            resource_name = str(engine.resource_name)
+        else:
+            from vertexai.preview import reasoning_engines
+            target_engine = reasoning_engines.ReasoningEngine(update_resource_name)
+            target_engine.update(
+                reasoning_engine=agent_app,
+                requirements=reqs,
+                extra_packages=pkgs,
+                display_name=display_name,
+                description="Support Ticket Router Triage Agent",
+            )
+            resource_name = update_resource_name
+        logger.info("Agent Engine updated successfully: %s", resource_name)
+    else:
+        logger.info("Creating new Agent Engine on Vertex AI...")
+        if has_agent_engines:
+            from vertexai import agent_engines
+            engine = agent_engines.create(
+                agent_engine=agent_app,
+                requirements=reqs,
+                extra_packages=pkgs,
+                env_vars=remote_env_vars,
+                display_name=display_name,
+                description="Support Ticket Router Triage Agent",
+                service_account=service_account,
+                gcs_dir_name="agent_engine/triage_router",
+            )
+            resource_name = str(engine.resource_name)
+        else:
+            from vertexai.preview import reasoning_engines
+            create_kwargs: dict[str, Any] = {
+                "reasoning_engine": agent_app,
+                "requirements": reqs,
+                "extra_packages": pkgs,
+                "display_name": display_name,
+                "description": "Support Ticket Router Triage Agent",
+            }
+            if service_account:
+                create_kwargs["service_account"] = service_account
+            engine = reasoning_engines.ReasoningEngine.create(**create_kwargs)
+            resource_name = str(engine.resource_name)
+        logger.info("Agent Engine deployed successfully: %s", resource_name)
+
+    if resource_name:
+        query_cmd = (
+            f"python scripts/deploy_agents/query_triage_agent.py "
+            f"--resource-name {resource_name} --project {project} --region {region}"
+        )
+        logger.info("Query the deployed agent with:\n  %s", query_cmd)
+
+    return resource_name
 
 
 def parse_args(args: list[str] | None = None) -> argparse.Namespace:
@@ -284,6 +371,12 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         help=f"Extra local packages to upload (default: {DEFAULT_EXTRA_PACKAGES})",
     )
     parser.add_argument(
+        "--update",
+        metavar="RESOURCE_NAME",
+        default=None,
+        help="Existing reasoning engine resource name to update in place",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Validate packaging and environment isolation without deploying to GCP",
@@ -312,6 +405,7 @@ def main() -> None:
             requirements=PINNED_REQUIREMENTS,
             extra_packages=args.extra_packages,
             contract_vars=contract_vars,
+            update_resource_name=args.update,
             dry_run=args.dry_run,
         )
         logger.info("Deployment script completed. Output: %s", resource_name)

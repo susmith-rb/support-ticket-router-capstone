@@ -22,6 +22,7 @@ Hermetic tests validating:
 """
 
 from typing import Any, Dict, List, Optional
+
 import pytest
 
 from evals.ablation_eval import build_search_kwargs, get_ablation_configs
@@ -30,8 +31,8 @@ from ticket_router.agents.faq_resolver.a2a import (
     handle_a2a_request,
 )
 from ticket_router.agents.faq_resolver.agent import (
-    FaqResolverAgent,
     FakeLLMClient,
+    FaqResolverAgent,
     root_agent,
 )
 from ticket_router.agents.faq_resolver.app import create_app
@@ -48,6 +49,7 @@ from ticket_router.agents.faq_resolver.validator import (
     is_verbatim_citation,
     norm,
 )
+from ticket_router.common.resilience import CircuitBreaker, CircuitState
 from ticket_router.retrieval.search_client import SearchResult
 
 
@@ -698,4 +700,43 @@ def test_faq_resolver_startup_fails_fast_on_missing_env(monkeypatch):
     settings = Settings.from_env(env=bad_env)
     with pytest.raises(ValueError, match="Missing required environment variable"):
         create_faq_resolver_agent(settings)
+
+
+def test_faq_resolver_circuit_breaker_integration():
+    """Verify FaqResolverAgent executes search via CircuitBreaker.call_with_timeout and trips on failures."""
+    cb_ok = CircuitBreaker(name="agent_search", failure_threshold=3)
+    agent_ok = FaqResolverAgent(
+        search_client=FakeSearchClient(),
+        llm_client=FakeLLMClient(
+            default_answer="Returns are permitted within 30 days.",
+            default_doc_id="faq-returns-window",
+            default_quote="within 30 days of delivery",
+        ),
+        circuit_breaker=cb_ok,
+    )
+    res_ok = agent_ok.resolve(
+        ticket_id="t-cb-ok",
+        session_id="s-cb-ok",
+        message="What is the return policy?",
+        customer_id="cust-1",
+    )
+    assert res_ok.status == "AUTO_RESOLVED"
+    assert cb_ok.state == CircuitState.CLOSED
+
+    cb_fail = CircuitBreaker(name="agent_search_fail", failure_threshold=3)
+    agent_fail = FaqResolverAgent(
+        search_client=FakeSearchClient(fail=True),
+        circuit_breaker=cb_fail,
+    )
+    for i in range(3):
+        res_fail = agent_fail.resolve(
+            ticket_id=f"t-cb-fail-{i}",
+            session_id="s-cb-fail",
+            message="How long does shipping take?",
+            customer_id="cust-2",
+        )
+        assert res_fail.status == "ESCALATED"
+        assert res_fail.degraded is True
+    assert cb_fail.state == CircuitState.OPEN
+
 

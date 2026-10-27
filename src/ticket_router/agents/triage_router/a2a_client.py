@@ -5,9 +5,10 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import json
+from dataclasses import asdict, dataclass
 from typing import Any, Callable, Dict, Optional, Protocol, runtime_checkable
+
 import requests
 from requests.adapters import HTTPAdapter
 
@@ -85,7 +86,7 @@ class HttpA2AClient:
 
     def handoff(self, payload: A2AHandoffPayload) -> Dict[str, Any]:
         clean_endpoint = self.endpoint_url.rstrip("/")
-        if clean_endpoint.endswith("/a2a/handoff") or clean_endpoint.endswith("/a2a") or clean_endpoint.endswith("/resolve"):
+        if clean_endpoint.endswith(("/a2a/handoff", "/a2a", "/resolve")):
             url = clean_endpoint
         else:
             url = f"{clean_endpoint}/a2a/handoff"

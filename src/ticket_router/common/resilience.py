@@ -7,10 +7,10 @@
 from __future__ import annotations
 
 import concurrent.futures
-from enum import Enum
 import random
 import threading
 import time
+from enum import Enum
 from typing import Any, Callable, Optional, TypeVar
 
 T = TypeVar("T")
@@ -212,6 +212,16 @@ class CircuitBreaker:
             self.record_success()
             return result
 
+    def call_with_timeout(
+        self,
+        func: Callable[..., T],
+        timeout_s: float,
+        *args: Any,
+        **kwargs: Any,
+    ) -> T:
+        """Execute func through the circuit breaker enforcing a strict latency timeout budget."""
+        return self.call(run_with_timeout, func, timeout_s, *args, **kwargs)
+
 
 def run_with_timeout(
     func: Callable[..., T],
@@ -220,12 +230,14 @@ def run_with_timeout(
     **kwargs: Any,
 ) -> T:
     """Execute callable enforcing strict latency timeout budget (REQ-AGENT-012)."""
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(func, *args, **kwargs)
-        try:
-            return future.result(timeout=timeout_s)
-        except concurrent.futures.TimeoutError as exc:
-            future.cancel()
-            raise ServiceTimeoutError(
-                f"Execution exceeded latency budget of {timeout_s * 1000.0:.1f} ms"
-            ) from exc
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(func, *args, **kwargs)
+    try:
+        return future.result(timeout=timeout_s)
+    except concurrent.futures.TimeoutError as exc:
+        future.cancel()
+        raise ServiceTimeoutError(
+            f"Execution exceeded latency budget of {timeout_s * 1000.0:.1f} ms"
+        ) from exc
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)

@@ -5,12 +5,12 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from datetime import datetime, timezone
 import json
 import logging
 import re
 import secrets
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, Optional
 
 # Disallowed field names that could carry raw message text, customer PII, or credentials
@@ -186,9 +186,8 @@ def is_pii_clean(data: Dict[str, Any]) -> bool:
         if isinstance(val, dict):
             if not is_pii_clean(val):
                 return False
-        elif isinstance(val, str):
-            if _EMAIL_REGEX.search(val) or _CARD_REGEX.search(val):
-                return False
+        elif isinstance(val, str) and (_EMAIL_REGEX.search(val) or _CARD_REGEX.search(val)):
+            return False
     return True
 
 

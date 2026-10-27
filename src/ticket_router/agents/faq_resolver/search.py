@@ -8,8 +8,8 @@ page_size=10, fallback_min_results=2).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import time
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from ticket_router.agents.faq_resolver.protocols import SearchClientProtocol

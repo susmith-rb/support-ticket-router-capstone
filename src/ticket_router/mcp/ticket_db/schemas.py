@@ -6,6 +6,7 @@ Implements REQ-AGENT-010: Typed JSON contracts, schema validation, and error mod
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
+
 from pydantic import BaseModel, ConfigDict, Field
 
 

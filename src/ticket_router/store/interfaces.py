@@ -22,19 +22,16 @@ class TicketRepository(ABC):
 
         If a ticket with the given ticket_id already exists, returns the existing record.
         """
-        pass
 
     @abstractmethod
     def get_ticket(self, ticket_id: UUID | str) -> Optional[Ticket]:
         """Fetch ticket by ID."""
-        pass
 
     @abstractmethod
     def list_open_tickets(
         self, limit: int = 50, queue: Optional[str] = None
     ) -> List[Ticket]:
         """List open tickets eligible for human queue or automated pickup."""
-        pass
 
     @abstractmethod
     def claim_ticket(self, ticket_id: UUID | str, agent_id: str) -> bool:
@@ -43,7 +40,6 @@ class TicketRepository(ABC):
         Enforces optimistic concurrency: only transitions if current status is 'open'.
         Returns True if claimed successfully, False if already claimed or resolved.
         """
-        pass
 
     @abstractmethod
     def append_event(
@@ -54,12 +50,10 @@ class TicketRepository(ABC):
         payload: Optional[Dict[str, Any]] = None,
     ) -> TicketEvent:
         """Append an immutable audit event for a ticket."""
-        pass
 
     @abstractmethod
     def list_events(self, ticket_id: UUID | str) -> List[TicketEvent]:
         """List all audit events for a ticket in chronological order."""
-        pass
 
     @abstractmethod
     def update_ticket_status(
@@ -71,17 +65,14 @@ class TicketRepository(ABC):
         citations: Optional[List[Dict[str, Any]]] = None,
     ) -> Optional[Ticket]:
         """Update ticket status, resolution notes, and optional grounded answer."""
-        pass
 
     @abstractmethod
     def get_redaction_map(self, ticket_id: UUID | str) -> Optional[RedactionMap]:
         """Fetch redaction map for a ticket (held by queue_rw role)."""
-        pass
 
     @abstractmethod
     def save_redaction_map(self, redaction_map: RedactionMap) -> RedactionMap:
         """Store or insert customer PII redaction map with 30-day TTL."""
-        pass
 
 
 class OrderRepository(ABC):
@@ -96,11 +87,9 @@ class OrderRepository(ABC):
         If customer_id is provided, enforces tenant isolation (simulating Postgres RLS).
         Returns None if order does not exist or customer_id does not match.
         """
-        pass
 
     @abstractmethod
     def list_customer_orders(
         self, customer_id: str, limit: int = 10
     ) -> List[Order]:
         """List recent orders belonging to a customer."""
-        pass

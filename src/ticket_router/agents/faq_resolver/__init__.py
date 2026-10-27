@@ -10,8 +10,8 @@ from ticket_router.agents.faq_resolver.a2a import (
     handle_a2a_request,
 )
 from ticket_router.agents.faq_resolver.agent import (
-    FaqResolverAgent,
     FakeLLMClient,
+    FaqResolverAgent,
     ResolutionResult,
     root_agent,
 )
@@ -49,12 +49,13 @@ from ticket_router.agents.faq_resolver.validator import (
 )
 
 __all__ = [
+    "FAQ_RESOLVER_AGENT_CARD",
+    "PRODUCTION_CONFIG_NAME",
     "BolaViolationError",
     "Citation",
     "CitationValidator",
     "Clock",
     "ClockProtocol",
-    "FAQ_RESOLVER_AGENT_CARD",
     "FakeLLMClient",
     "FakeOrderLookupClient",
     "FakeReranker",
@@ -62,7 +63,6 @@ __all__ = [
     "HttpOrderLookupClient",
     "LLMClientProtocol",
     "OrderLookupProtocol",
-    "PRODUCTION_CONFIG_NAME",
     "RerankerProtocol",
     "ResolutionResult",
     "RetrievedDocument",

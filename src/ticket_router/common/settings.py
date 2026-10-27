@@ -6,8 +6,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from ticket_router.config.models import get_serving_config

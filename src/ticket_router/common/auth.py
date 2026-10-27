@@ -7,6 +7,7 @@ Avoids external subprocess invocation (such as gcloud CLI) in runtime services.
 from __future__ import annotations
 
 from typing import Optional, Sequence, Tuple
+
 import google.auth
 from google.auth.credentials import Credentials
 from google.auth.transport.requests import Request

@@ -17,10 +17,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import json
 import re
 import time
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
 from ticket_router.agents.faq_resolver.mcp_client import (
@@ -43,8 +43,8 @@ from ticket_router.agents.faq_resolver.search import (
 )
 from ticket_router.agents.faq_resolver.validator import CitationValidator
 from ticket_router.common.resilience import (
-    CircuitBreaker,
     FAQ_OVERALL_BUDGET_S,
+    CircuitBreaker,
 )
 from ticket_router.common.settings import Settings
 from ticket_router.config.models import model_id
@@ -308,6 +308,8 @@ class FaqResolverAgent:
                 location=settings.location,
                 model_role=self.model_role,
             )
+            if self.circuit_breaker is None:
+                self.circuit_breaker = CircuitBreaker(name="agent_search")
         else:
             if self.order_client is None:
                 self.order_client = FakeOrderLookupClient()
@@ -373,31 +375,35 @@ class FaqResolverAgent:
         order_info: Optional[Dict[str, Any]] = None
         order_id = self._extract_order_id(message)
 
-        if order_id and self.order_client is not None:
-            if tool_calls_count < self.max_tool_calls and not self._is_budget_exhausted(t_start):
-                tool_calls_count += 1
-                try:
-                    # BOLA / IDOR Protection: customer_id is verified session context
-                    order_info = self.order_client.get_order(
-                        order_id=order_id,
-                        customer_id=customer_id,
-                        untrusted_customer_id=untrusted_customer_id,
-                    )
-                except BolaViolationError:
-                    return ResolutionResult(
-                        status="ESCALATED",
-                        route="human",
-                        queue="human-standard",
-                        reason="bola_violation",
-                        degraded=False,
-                        message="Inquiry routed to human specialist for account verification.",
-                        tool_calls_count=tool_calls_count,
-                        retrieval_passes_count=0,
-                        regeneration_count=0,
-                        latency_ms=self._elapsed_ms(t_start),
-                    )
-                except LookupError:
-                    order_info = {"order_id": order_id, "status": "NOT_FOUND"}
+        if (
+            order_id
+            and self.order_client is not None
+            and tool_calls_count < self.max_tool_calls
+            and not self._is_budget_exhausted(t_start)
+        ):
+            tool_calls_count += 1
+            try:
+                # BOLA / IDOR Protection: customer_id is verified session context
+                order_info = self.order_client.get_order(
+                    order_id=order_id,
+                    customer_id=customer_id,
+                    untrusted_customer_id=untrusted_customer_id,
+                )
+            except BolaViolationError:
+                return ResolutionResult(
+                    status="ESCALATED",
+                    route="human",
+                    queue="human-standard",
+                    reason="bola_violation",
+                    degraded=False,
+                    message="Inquiry routed to human specialist for account verification.",
+                    tool_calls_count=tool_calls_count,
+                    retrieval_passes_count=0,
+                    regeneration_count=0,
+                    latency_ms=self._elapsed_ms(t_start),
+                )
+            except LookupError:
+                order_info = {"order_id": order_id, "status": "NOT_FOUND"}
 
         # -----------------------------------------------------------------
         # Step 2: Agent Search Retrieval Pass
@@ -405,51 +411,58 @@ class FaqResolverAgent:
         retrieved_docs_map: Dict[str, Dict[str, Any]] = {}
         ordered_doc_ids: List[str] = []
 
-        if self.search_client is not None:
-            if retrieval_passes_count < self.max_retrieval_passes and tool_calls_count < self.max_tool_calls:
-                retrieval_passes_count += 1
-                tool_calls_count += 1
+        if (
+            self.search_client is not None
+            and retrieval_passes_count < self.max_retrieval_passes
+            and tool_calls_count < self.max_tool_calls
+        ):
+            retrieval_passes_count += 1
+            tool_calls_count += 1
 
-                search_res = execute_faq_search(
-                    client=self.search_client,
-                    query=message,
-                    intent_family=predicted_intent,
-                    circuit_breaker=self.circuit_breaker,
+            search_res = execute_faq_search(
+                client=self.search_client,
+                query=message,
+                intent_family=predicted_intent,
+                circuit_breaker=self.circuit_breaker,
+            )
+
+            # Agent Search failure -> degraded escalation
+            if not search_res.success or search_res.degraded:
+                return ResolutionResult(
+                    status="ESCALATED",
+                    route="human",
+                    queue="human-standard",
+                    reason="search_failure",
+                    degraded=True,
+                    message="Our automated knowledge base is temporarily degraded. A support specialist will assist you.",
+                    tool_calls_count=tool_calls_count,
+                    retrieval_passes_count=retrieval_passes_count,
+                    regeneration_count=regeneration_count,
+                    latency_ms=self._elapsed_ms(t_start),
                 )
 
-                # Agent Search failure -> degraded escalation
-                if not search_res.success or search_res.degraded:
-                    return ResolutionResult(
-                        status="ESCALATED",
-                        route="human",
-                        queue="human-standard",
-                        reason="search_failure",
-                        degraded=True,
-                        message="Our automated knowledge base is temporarily degraded. A support specialist will assist you.",
-                        tool_calls_count=tool_calls_count,
-                        retrieval_passes_count=retrieval_passes_count,
-                        regeneration_count=regeneration_count,
-                        latency_ms=self._elapsed_ms(t_start),
-                    )
-
-                for doc_id, doc in search_res.documents.items():
-                    retrieved_docs_map[doc_id] = {
-                        "id": doc.id,
-                        "title": doc.title,
-                        "content": doc.content,
-                    }
-                ordered_doc_ids = list(search_res.document_ids)
+            for doc_id, doc in search_res.documents.items():
+                retrieved_docs_map[doc_id] = {
+                    "id": doc.id,
+                    "title": doc.title,
+                    "content": doc.content,
+                }
+            ordered_doc_ids = list(search_res.document_ids)
 
         # -----------------------------------------------------------------
         # Step 3: Candidate Reranking via router-s1
         # -----------------------------------------------------------------
-        if self.reranker is not None and retrieved_docs_map:
-            if tool_calls_count < self.max_tool_calls and not self._is_budget_exhausted(t_start):
-                tool_calls_count += 1
-                candidates = [retrieved_docs_map[did] for did in ordered_doc_ids if did in retrieved_docs_map]
-                reranked, _ = self.reranker.rerank(query=message, candidates=candidates)
-                if reranked:
-                    ordered_doc_ids = [r["id"] for r in reranked if "id" in r]
+        if (
+            self.reranker is not None
+            and retrieved_docs_map
+            and tool_calls_count < self.max_tool_calls
+            and not self._is_budget_exhausted(t_start)
+        ):
+            tool_calls_count += 1
+            candidates = [retrieved_docs_map[did] for did in ordered_doc_ids if did in retrieved_docs_map]
+            reranked, _ = self.reranker.rerank(query=message, candidates=candidates)
+            if reranked:
+                ordered_doc_ids = [r["id"] for r in reranked if "id" in r]
 
         # -----------------------------------------------------------------
         # Step 4: Grounded Answer Synthesis & Mandatory Citations
@@ -576,6 +589,7 @@ def create_faq_resolver_agent(settings: Optional[Settings] = None) -> FaqResolve
         reranker=reranker,
         order_client=order_client,
         llm_client=llm_client,
+        circuit_breaker=CircuitBreaker(name="agent_search"),
     )
 
 

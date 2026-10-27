@@ -9,17 +9,18 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any, Callable, Dict, Optional
 import urllib.error
 import urllib.request
+from typing import Any, Callable, Dict, Optional
+
 import requests
 from requests.adapters import HTTPAdapter
 
 from ticket_router.agents.faq_resolver.protocols import OrderLookupProtocol
 from ticket_router.common.idtoken import get_id_token
 from ticket_router.common.resilience import (
-    CircuitBreaker,
     ORDER_LOOKUP_MCP_TIMEOUT_S,
+    CircuitBreaker,
 )
 
 

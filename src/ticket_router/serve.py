@@ -88,7 +88,7 @@ def get_app(service_name: Optional[str] = None) -> FastAPI:
         ticket_repo = PostgresTicketRepo(connection_factory=conn_mgr.get_connection)
         return create_ticket_db_app(repo=ticket_repo)
 
-    elif svc == "order_lookup":
+    if svc == "order_lookup":
         from ticket_router.mcp.order_lookup.server import create_app as create_order_lookup_app
 
         if allow_fake:
@@ -102,7 +102,7 @@ def get_app(service_name: Optional[str] = None) -> FastAPI:
         order_repo = PostgresOrderRepo(connection_factory=conn_mgr.get_connection)
         return create_order_lookup_app(order_repo=order_repo)
 
-    elif svc == "human_queue":
+    if svc == "human_queue":
         from ticket_router.agents.human_queue.server import create_app as create_human_queue_app
 
         if allow_fake:
@@ -116,15 +116,14 @@ def get_app(service_name: Optional[str] = None) -> FastAPI:
         ticket_repo = PostgresTicketRepo(connection_factory=conn_mgr.get_connection)
         return create_human_queue_app(ticket_repo=ticket_repo)
 
-    elif svc in ("faq_resolver", "faq"):
+    if svc in ("faq_resolver", "faq"):
         from ticket_router.agents.faq_resolver.app import create_fastapi_app
 
         return create_fastapi_app()
 
-    else:
-        raise ValueError(
-            f"Unknown SERVICE '{svc}'. Must be one of: ticket_db, order_lookup, human_queue, faq_resolver"
-        )
+    raise ValueError(
+        f"Unknown SERVICE '{svc}'. Must be one of: ticket_db, order_lookup, human_queue, faq_resolver"
+    )
 
 
 def main() -> None:

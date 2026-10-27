@@ -10,15 +10,15 @@ Supports:
 - Precise client-side HTTP round-trip latency measurements (TDD §6.4)
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import json
 import pathlib
 import re
 import time
-from typing import Any, Dict, List, Optional, Sequence, Union
 import urllib.error
 import urllib.request
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from ticket_router.common.auth import get_access_token
 from ticket_router.config.models import model_id
