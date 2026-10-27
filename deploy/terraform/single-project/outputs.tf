@@ -52,3 +52,23 @@ output "scheduler_job_name" {
   description = "Name of the Cloud Scheduler job"
   value       = module.cloudbuild.scheduler_job_name
 }
+
+output "router_endpoint_id" {
+  description = "Resource ID of the router-s1 Vertex AI endpoint"
+  value       = module.router_endpoint.endpoint_id
+}
+
+output "router_endpoint_name" {
+  description = "Display name of the router-s1 Vertex AI endpoint"
+  value       = module.router_endpoint.endpoint_name
+}
+
+output "router_serving_service_account" {
+  description = "Email of the model serving service account"
+  value       = module.router_endpoint.service_account_email
+}
+
+output "serving_artifact_registry_repo" {
+  description = "Repository URL for serving container images in Artifact Registry"
+  value       = module.router_endpoint.artifact_registry_repository_url
+}

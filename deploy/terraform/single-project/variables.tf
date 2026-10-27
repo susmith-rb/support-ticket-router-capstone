@@ -71,3 +71,15 @@ variable "enable_ci_triggers" {
   type        = bool
   default     = true
 }
+
+variable "laya_region" {
+  description = "Region for router-s1 endpoint and serving Artifact Registry repository"
+  type        = string
+  default     = "us-central1"
+}
+
+variable "enable_router_endpoint" {
+  description = "Whether to deploy the Vertex AI router endpoint resource (empty endpoint is free)"
+  type        = bool
+  default     = true
+}

@@ -18,6 +18,7 @@ module "project_services" {
   services = [
     "discoveryengine.googleapis.com",
     "aiplatform.googleapis.com",
+    "artifactregistry.googleapis.com",
     "storage.googleapis.com",
     "iam.googleapis.com",
     "serviceusage.googleapis.com",
@@ -34,6 +35,18 @@ module "agent_search" {
   search_location = var.search_location
   search_tier     = var.search_tier
   search_add_ons  = var.search_add_ons
+
+  depends_on = [module.project_services]
+}
+
+module "router_endpoint" {
+  source                 = "./modules/router-endpoint"
+  project_id             = var.project_id
+  laya_region            = var.laya_region
+  corpus_bucket_name     = data.google_storage_bucket.corpus_bucket.name
+  enable_router_endpoint = var.enable_router_endpoint
+  labels                 = var.labels
+  cloudbuild_sa_email    = module.cloudbuild.cloudbuild_service_account
 
   depends_on = [module.project_services]
 }

@@ -1,0 +1,69 @@
+substitutions:
+  _REGION: 'us-central1'
+  _TAG: 'latest'
+  _MACHINE_TYPE: 'g2-standard-4'
+  _ACCELERATOR: 'NVIDIA_L4'
+  _ACCELERATOR_COUNT: '1'
+  _MIN_REPLICAS: '1'
+  _MAX_REPLICAS: '4'
+  _AUTOSCALING_METRIC_TARGET: '60'
+  _ROUTER_CKPT_URI: 'gs://susmith-fde-ticket-router-laya/checkpoints/router-s1/v2/'
+  _RERANKER_CKPT_URI: 'gs://susmith-fde-ticket-router-laya/rerank/v2/ckpt/'
+  _ENDPOINT_NAME: 'router-s1'
+  _MODEL_DISPLAY_NAME: 'router-s1-v2'
+  _SERVING_SA: 'ticket-router-serving@${PROJECT_ID}.iam.gserviceaccount.com'
+
+serviceAccount: 'projects/${PROJECT_ID}/serviceAccounts/ticket-router-build@${PROJECT_ID}.iam.gserviceaccount.com'
+
+steps:
+  # ---------------------------------------------------------------------------
+  # Step 1: Build unified Laya serving container
+  # ---------------------------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-serving-image'
+    args:
+      - 'build'
+      - '-f'
+      - 'serving/laya/Dockerfile'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/serving/laya-serving:${_TAG}'
+      - '.'
+
+  # ---------------------------------------------------------------------------
+  # Step 2: Push container image to Artifact Registry
+  # ---------------------------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-serving-image'
+    args:
+      - 'push'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/serving/laya-serving:${_TAG}'
+
+  # ---------------------------------------------------------------------------
+  # Step 3: Upload Model and Deploy to Vertex AI Endpoint
+  # ---------------------------------------------------------------------------
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'deploy-serving-model'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        PROJECT="${PROJECT_ID}" \
+        REGION="${_REGION}" \
+        IMAGE_URI="${_REGION}-docker.pkg.dev/${PROJECT_ID}/serving/laya-serving:${_TAG}" \
+        ENDPOINT_NAME="${_ENDPOINT_NAME}" \
+        MODEL_DISPLAY_NAME="${_MODEL_DISPLAY_NAME}" \
+        MACHINE_TYPE="${_MACHINE_TYPE}" \
+        ACCELERATOR="${_ACCELERATOR}" \
+        ACCELERATOR_COUNT="${_ACCELERATOR_COUNT}" \
+        MIN_REPLICAS="${_MIN_REPLICAS}" \
+        MAX_REPLICAS="${_MAX_REPLICAS}" \
+        AUTOSCALING_METRIC_TARGET="${_AUTOSCALING_METRIC_TARGET}" \
+        SERVING_SA="${_SERVING_SA}" \
+        ROUTER_CKPT_URI="${_ROUTER_CKPT_URI}" \
+        RERANKER_CKPT_URI="${_RERANKER_CKPT_URI}" \
+        bash serving/laya/deploy.sh
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitutionOption: 'ALLOW_LOOSE'

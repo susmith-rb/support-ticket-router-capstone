@@ -1,0 +1,17 @@
+# serving/laya/requirements.txt — Pinned dependencies matching laya-tune serving venv.
+# Core ML & Model Garden parity:
+# NOTE: PyTorch (torch==2.14.1+cu126) is installed in a dedicated Dockerfile RUN
+# using --index-url https://download.pytorch.org/whl/cu126 to prevent PyPI CUDA 13 fallback.
+transformers==5.20.2
+laya==0.3.20
+tokenizers==0.23.3
+safetensors==0.8.0
+huggingface_hub==2.2.0
+numpy==2.5.4
+
+# Serving runtime dependencies:
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+google-cloud-storage==2.19.0
+requests==2.32.3
