@@ -25,7 +25,15 @@ mkdir -p "${SCRATCH_DIR}"
 
 run_ssh() {
   local cmd="$1"
-  CLOUDSDK_CONTEXT_AWARE_USE_CLIENT_CERTIFICATE=false \
+  # Forward the caller's short-lived OAuth token over stdin (never argv/disk) so Terraform on the VM
+  # (google provider + GCS backend honor GOOGLE_OAUTH_ACCESS_TOKEN) does not depend on the VM's own
+  # ADC login, which expires with invalid_rapt. Disable with TF_VM_FORWARD_TOKEN=0.
+  local tok=""
+  if [ "${TF_VM_FORWARD_TOKEN:-1}" = "1" ]; then
+    tok="$(CLOUDSDK_CONTEXT_AWARE_USE_CLIENT_CERTIFICATE=false gcloud auth print-access-token 2>/dev/null || true)"
+    cmd="read -r GOOGLE_OAUTH_ACCESS_TOKEN; if [ -n \"\$GOOGLE_OAUTH_ACCESS_TOKEN\" ]; then export GOOGLE_OAUTH_ACCESS_TOKEN; else unset GOOGLE_OAUTH_ACCESS_TOKEN; fi; ${cmd}"
+  fi
+  printf '%s\n' "${tok}" | CLOUDSDK_CONTEXT_AWARE_USE_CLIENT_CERTIFICATE=false \
     gcloud compute ssh "${VM_NAME}" \
       --zone "${VM_ZONE}" \
       --project "${PROJECT_ID}" \

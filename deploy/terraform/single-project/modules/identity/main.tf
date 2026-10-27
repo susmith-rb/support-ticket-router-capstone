@@ -7,6 +7,10 @@ resource "google_identity_platform_config" "default" {
       enabled           = true
       password_required = true
     }
+    # Declared explicitly: the API returns phone_number { enabled = false } and the provider shows a permadiff otherwise.
+    phone_number {
+      enabled = false
+    }
   }
 
   authorized_domains = distinct(concat(
