@@ -106,6 +106,16 @@ models:
     checkpoint_uri: "gs://susmith-fde-ticket-router-laya/rerank/v2/ckpt/"
     notes: "Laya choice reranker v2 checkpoint"
 
+# Serving endpoint infrastructure defaults
+serving:
+  router_s1:
+    default_endpoint: "projects/susmith-fde-ticket-router/locations/us-central1/endpoints/router-s1"
+    dedicated_endpoint: "projects/susmith-fde-ticket-router/locations/us-central1/endpoints/router-s1-dedicated"
+    shared_base_url: "https://us-central1-aiplatform.googleapis.com"
+    dedicated_base_url: "https://router-s1-dedicated.us-central1-620485621180.prediction.vertexai.goog"
+    route_timeout_s: 0.5
+    rerank_timeout_s: 0.6
+
 # Environment overrides (dev / stg / prod)
 envs:
   dev: {}

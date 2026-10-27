@@ -196,3 +196,59 @@ def test_db_migration_script():
     assert "--database" in content
     assert "--dry-run" in content
     assert "--seed" in content
+
+
+# REQ-STORE-008
+def test_human_iam_database_access():
+    """Verify human IAM DB users, project roles, and 0002_human_access.sql migration.
+
+    Invariants:
+    1. modules/cloud-sql defines variable human_iam_users.
+    2. google_sql_user for each human user with type CLOUD_IAM_USER.
+    3. project IAM roles roles/cloudsql.instanceUser, roles/cloudsql.client, and roles/cloudsql.studioUser.
+    4. Root variables.tf defines cloud_sql_human_iam_users defaulting to susmith@gcp.altostrat.com.
+    5. 0002_human_access.sql defines analyst_ro role, grants SELECT on tickets, ticket_events, orders_mock.
+    6. Invariant: 0002_human_access.sql does NOT grant access to redaction_maps.
+    7. RLS policy analyst_read_all created on orders_mock for analyst_ro.
+    8. analyst_ro granted to all human IAM database users in Postgres.
+    """
+    main_tf = (CLOUD_SQL_MOD_DIR / "main.tf").read_text(encoding="utf-8")
+    vars_tf = (CLOUD_SQL_MOD_DIR / "variables.tf").read_text(encoding="utf-8")
+
+    # Cloud SQL module variables and resources
+    assert "variable \"human_iam_users\"" in vars_tf
+    assert 'resource "google_sql_user" "human_iam_users"' in main_tf
+    assert 'type     = "CLOUD_IAM_USER"' in main_tf
+
+    # Project IAM roles
+    assert "roles/cloudsql.studioUser" in main_tf
+    assert "roles/cloudsql.instanceUser" in main_tf
+    assert "roles/cloudsql.client" in main_tf
+    assert 'member   = "user:${each.value.user}"' in main_tf
+
+    # Root module wiring
+    root_vars = (TF_DIR / "variables.tf").read_text(encoding="utf-8")
+    root_main = (TF_DIR / "main.tf").read_text(encoding="utf-8")
+    assert "variable \"cloud_sql_human_iam_users\"" in root_vars
+    assert "susmith@gcp.altostrat.com" in root_vars
+    assert "human_iam_users     = var.cloud_sql_human_iam_users" in root_main
+
+    # Migration 0002_human_access.sql
+    mig_0002 = MIGRATIONS_DIR / "0002_human_access.sql"
+    assert mig_0002.is_file(), f"Missing {mig_0002}"
+    sql_text = mig_0002.read_text(encoding="utf-8")
+
+    # Role and permissions
+    assert "CREATE ROLE analyst_ro" in sql_text
+    assert "GRANT SELECT ON TABLE tickets, ticket_events, orders_mock TO analyst_ro;" in sql_text
+    assert "redaction_maps" not in sql_text or "NOT redaction_maps" in sql_text or "EXCLUDED" in sql_text
+
+    # RLS policy
+    assert "analyst_read_all" in sql_text
+    assert "CREATE POLICY analyst_read_all ON orders_mock" in sql_text
+    assert "TO analyst_ro" in sql_text
+
+    # Grant to human IAM users
+    assert "GRANT analyst_ro TO" in sql_text
+    assert "NOT LIKE 'sa-%'" in sql_text
+

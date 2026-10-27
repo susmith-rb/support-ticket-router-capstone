@@ -62,6 +62,8 @@ def _parse_yaml_fallback(text: str) -> Dict[str, Any]:
         root["models"] = {}
     if "envs" not in root:
         root["envs"] = {}
+    if "serving" not in root:
+        root["serving"] = {}
     return root
 
 
@@ -162,6 +164,13 @@ def list_roles(config_path: Optional[pathlib.Path] = None) -> Dict[str, str]:
     """Return dictionary of role -> resolved model ID."""
     data = load_registry(config_path=config_path)
     return {role: model_id(role, config_path=config_path) for role in data.get("models", {})}
+
+
+def get_serving_config(service: str = "router_s1", config_path: Optional[pathlib.Path] = None) -> Dict[str, Any]:
+    """Retrieve serving configuration section for a given service."""
+    data = load_registry(config_path=config_path)
+    serving = data.get("serving", {})
+    return dict(serving.get(service, {}))
 
 
 def main(argv: Optional[list[str]] = None) -> int:

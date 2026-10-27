@@ -69,3 +69,11 @@ Cloud SQL for PostgreSQL 16 serves as the authoritative system of record for sup
 - **Acceptance**: `manual: scripts/db_migrate.sh --help`
 - **Status**: done
 - **Owner**: store
+
+### REQ-STORE-008: Human Operator Read-Only Access via IAM Database Authentication
+- **Statement**: Human operators (including developers and analysts) MUST be provisioned with read-only access to Cloud SQL using Cloud IAM Database Authentication (`type = "CLOUD_IAM_USER"`). The Terraform module `cloud-sql` MUST configure `google_sql_user` for each user in `human_iam_users` (defaulting to `["susmith@gcp.altostrat.com"]` in root `cloud_sql_human_iam_users`), and grant project IAM roles `roles/cloudsql.instanceUser`, `roles/cloudsql.client`, and `roles/cloudsql.studioUser`. Database migration `0002_human_access.sql` MUST define role `analyst_ro` with SELECT grants on `tickets`, `ticket_events`, and `orders_mock` (strictly excluding `redaction_maps`), configure an RLS policy `analyst_read_all` on `orders_mock`, and grant `analyst_ro` to all human IAM database users. All administrative and write operations remain restricted to break-glass credentials.
+- **Rationale**: Enables human operators to inspect ticket status and query mock orders via Cloud SQL Studio in the Google Cloud Console or Cloud SQL Auth Proxy with `--auto-iam-authn`, while strictly protecting customer PII in `redaction_maps`.
+- **Acceptance**: `tests/infra/test_cloud_sql_static.py::test_human_iam_database_access`
+- **Status**: done
+- **Owner**: store
+

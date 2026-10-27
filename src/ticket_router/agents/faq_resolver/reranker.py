@@ -3,23 +3,21 @@
 REQ-AGENT-007, REQ-SERVE-004.
 Performs cross-encoder candidate scoring against the router-s1 Vertex Prediction endpoint
 using the 'task: rerank' contract, sorting candidates descending by score.
+Delegates to RouterS1Client for persistent keep-alive connection pooling and circuit breaking.
 """
 
 from __future__ import annotations
 
-import json
 import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
-import urllib.error
-import urllib.request
 
 from ticket_router.agents.faq_resolver.protocols import RerankerProtocol
-from ticket_router.common.auth import get_access_token
 from ticket_router.common.resilience import (
     CircuitBreaker,
     CircuitBreakerOpenError,
     LAYA_RERANK_TIMEOUT_S,
 )
+from ticket_router.models.router_s1_client import RouterS1Client
 
 
 class VertexLayaReranker(RerankerProtocol):
@@ -27,17 +25,33 @@ class VertexLayaReranker(RerankerProtocol):
 
     def __init__(
         self,
-        endpoint_url: str,
+        endpoint_url: str = "",
         project: str = "susmith-fde-ticket-router",
         location: str = "us-central1",
         timeout_s: float = LAYA_RERANK_TIMEOUT_S,
         circuit_breaker: Optional[CircuitBreaker] = None,
+        client: Optional[RouterS1Client] = None,
     ) -> None:
         self.endpoint_url = endpoint_url
         self.project = project
         self.location = location
         self.timeout_s = timeout_s
         self.circuit_breaker = circuit_breaker
+        if client is not None:
+            self._client = client
+        else:
+            base_url = (
+                endpoint_url
+                if (endpoint_url and "://" in endpoint_url and "projects/" not in endpoint_url)
+                else None
+            )
+            endpoint = endpoint_url if (endpoint_url and "projects/" in endpoint_url) else None
+            self._client = RouterS1Client(
+                endpoint=endpoint,
+                base_url=base_url,
+                rerank_timeout_s=timeout_s,
+                breaker=circuit_breaker,
+            )
 
     def rerank(
         self,
@@ -50,47 +64,35 @@ class VertexLayaReranker(RerankerProtocol):
             return [], 0.0
 
         cand_list = [dict(c) for c in candidates]
-        body = {
-            "instances": [
-                {
-                    "task": "rerank",
-                    "query": query,
-                    "candidates": cand_list,
-                    "top_n": top_n,
-                }
-            ]
-        }
-
-        def _do_http() -> Tuple[List[Dict[str, Any]], float]:
-            token = get_access_token()
-            req = urllib.request.Request(
-                self.endpoint_url,
-                data=json.dumps(body).encode("utf-8"),
-                method="POST",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                },
+        t0 = time.perf_counter()
+        try:
+            scores = self._client.rerank(
+                query=query,
+                candidates=cand_list,
+                timeout_s=self.timeout_s,
             )
-            t0 = time.perf_counter()
-            with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
             lat_ms = (time.perf_counter() - t0) * 1000.0
 
-            predictions = data.get("predictions", [])
-            if predictions and isinstance(predictions[0], list):
-                return predictions[0][:top_n], lat_ms
-            elif predictions and isinstance(predictions[0], dict):
-                ranked = predictions[0].get("ranked_candidates", [])
-                return ranked[:top_n], lat_ms
-            return cand_list[:top_n], lat_ms
+            by_id = {str(c.get("id", "")): dict(c) for c in cand_list}
+            ranked: List[Dict[str, Any]] = []
+            seen_ids = set()
+            for s in scores:
+                if s.id in by_id and s.id not in seen_ids:
+                    c = by_id[s.id]
+                    c["score"] = s.score
+                    ranked.append(c)
+                    seen_ids.add(s.id)
 
-        try:
-            if self.circuit_breaker is not None:
-                return self.circuit_breaker.call_with_timeout(_do_http, timeout_s=self.timeout_s)
-            return _do_http()
+            # Preserve any candidates omitted by reranker
+            for c in cand_list:
+                cid = str(c.get("id", ""))
+                if cid not in seen_ids:
+                    ranked.append(c)
+                    seen_ids.add(cid)
+
+            return ranked[:top_n], lat_ms
         except (CircuitBreakerOpenError, Exception):
-            # In case reranking fails, gracefully fall back to original candidates
+            # Graceful fallback to unranked candidates per REQ-AGENT-011
             return cand_list[:top_n], 0.0
 
 

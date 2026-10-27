@@ -128,6 +128,14 @@ To provide latency observability parity with `route` decisions (which return `la
   - `roles/logging.logWriter` (for Cloud Logging).
   - `roles/monitoring.metricWriter` (for Cloud Monitoring).
 
+### Client Connection Pooling & In-Region Measured Latency
+In-region client measurements from `laya-tune` (150 requests):
+- **Unpooled HTTPS (urllib)**: Shared endpoint p95 ~185 ms, dedicated endpoint p95 ~185 ms due to repeated TLS handshake overhead.
+- **Persistent Keep-Alive HTTPS (requests.Session + HTTPAdapter)**:
+  - Shared endpoint: p50 96 ms, p95 134 ms.
+  - Dedicated endpoint: p50 54 ms, p95 77 ms, p99 135 ms.
+Therefore, clients MUST maintain persistent pooled keep-alive connections (`requests.Session` with `HTTPAdapter(pool_connections=10, pool_maxsize=20, max_retries=0)`). Internal client timeouts are configured to 500 ms for route and 600 ms for rerank.
+
 ### Deployment Lifecycle: Traffic Split & Undeploy (`deploy.sh`)
 When rolling out updated serving containers to a Vertex AI Endpoint:
 - **100% Traffic Cutover**: Deploying a second model passes `--traffic-split=0=100` on `gcloud ai endpoints deploy-model` (where `0` targets the model being deployed), preventing the endpoint from remaining 100% routed to the previous model.

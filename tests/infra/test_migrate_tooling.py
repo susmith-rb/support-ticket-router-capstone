@@ -124,6 +124,7 @@ class FakeCursor:
             ("orders_ro",),
             ("ticket_rw",),
             ("queue_rw",),
+            ("analyst_ro",),
             ("sa-order-mcp@susmith-fde-ticket-router.iam",),
             ("sa-ticket-mcp@susmith-fde-ticket-router.iam",),
             ("sa-queue@susmith-fde-ticket-router.iam",),
@@ -228,3 +229,56 @@ def test_verify_database_missing_iam_membership_raises():
 
     with pytest.raises(RuntimeError, match="is not granted orders_ro"):
         verify_database(conn)
+
+
+# REQ-STORE-008
+def test_verify_database_human_iam_user_membership():
+    """Verify database check passes when human IAM user has analyst_ro grant."""
+    cursor = FakeCursor(
+        roles=[
+            ("orders_ro",),
+            ("ticket_rw",),
+            ("queue_rw",),
+            ("analyst_ro",),
+            ("sa-order-mcp@susmith-fde-ticket-router.iam",),
+            ("sa-ticket-mcp@susmith-fde-ticket-router.iam",),
+            ("sa-queue@susmith-fde-ticket-router.iam",),
+            ("susmith@gcp.altostrat.com",),
+        ],
+        memberships=[
+            ("orders_ro", "sa-order-mcp@susmith-fde-ticket-router.iam"),
+            ("ticket_rw", "sa-ticket-mcp@susmith-fde-ticket-router.iam"),
+            ("queue_rw", "sa-queue@susmith-fde-ticket-router.iam"),
+            ("analyst_ro", "susmith@gcp.altostrat.com"),
+        ],
+    )
+    conn = FakeConn(cursor)
+    report = verify_database(conn)
+    assert "susmith@gcp.altostrat.com" in report["memberships"]["analyst_ro"]
+
+
+# REQ-STORE-008
+def test_verify_database_human_iam_user_missing_analyst_ro_raises():
+    """Human IAM user without analyst_ro raises RuntimeError."""
+    cursor = FakeCursor(
+        roles=[
+            ("orders_ro",),
+            ("ticket_rw",),
+            ("queue_rw",),
+            ("analyst_ro",),
+            ("sa-order-mcp@susmith-fde-ticket-router.iam",),
+            ("sa-ticket-mcp@susmith-fde-ticket-router.iam",),
+            ("sa-queue@susmith-fde-ticket-router.iam",),
+            ("susmith@gcp.altostrat.com",),
+        ],
+        memberships=[
+            ("orders_ro", "sa-order-mcp@susmith-fde-ticket-router.iam"),
+            ("ticket_rw", "sa-ticket-mcp@susmith-fde-ticket-router.iam"),
+            ("queue_rw", "sa-queue@susmith-fde-ticket-router.iam"),
+            # Missing analyst_ro grant for susmith@gcp.altostrat.com
+        ],
+    )
+    conn = FakeConn(cursor)
+    with pytest.raises(RuntimeError, match="is not granted analyst_ro"):
+        verify_database(conn)
+

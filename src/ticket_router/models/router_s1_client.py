@@ -12,14 +12,33 @@ import json
 import os
 import re
 from typing import Any, Dict, List, Optional
+import requests
+from requests.adapters import HTTPAdapter
 
 from ticket_router.common.auth import get_access_token
 from ticket_router.common.resilience import (
+    LAYA_RERANK_TIMEOUT_S,
     ROUTER_S1_TIMEOUT_S,
     CircuitBreaker,
 )
+from ticket_router.config.models import get_serving_config
 
-DEFAULT_ENDPOINT_RESOURCE = "projects/susmith-fde-ticket-router/locations/us-central1/endpoints/router-s1"
+_SERVING_CFG = get_serving_config("router_s1")
+DEFAULT_ENDPOINT_RESOURCE = _SERVING_CFG.get(
+    "default_endpoint",
+    "projects/susmith-fde-ticket-router/locations/us-central1/endpoints/router-s1",
+)
+DEFAULT_ROUTE_TIMEOUT_S = float(_SERVING_CFG.get("route_timeout_s", ROUTER_S1_TIMEOUT_S))
+DEFAULT_RERANK_TIMEOUT_S = float(_SERVING_CFG.get("rerank_timeout_s", LAYA_RERANK_TIMEOUT_S))
+
+
+def _create_default_session() -> requests.Session:
+    """Create thread-safe requests session with keep-alive connection pooling."""
+    sess = requests.Session()
+    adapter = HTTPAdapter(pool_connections=10, pool_maxsize=20, max_retries=0)
+    sess.mount("https://", adapter)
+    sess.mount("http://", adapter)
+    return sess
 
 
 @dataclass(frozen=True)
@@ -51,21 +70,35 @@ class RouterS1Client:
 
     Follows AGENTS.md rule 4: calls :rawPredict on Vertex endpoints serving Laya.
     Protected by CircuitBreaker (REQ-AGENT-011) with strict timeout budget (REQ-AGENT-012).
+    Reuses persistent keep-alive HTTPS connections via requests.Session and HTTPAdapter.
     """
 
     def __init__(
         self,
         endpoint: Optional[str] = None,
         base_url: Optional[str] = None,
-        timeout_s: float = ROUTER_S1_TIMEOUT_S,
+        timeout_s: Optional[float] = None,
+        route_timeout_s: Optional[float] = None,
+        rerank_timeout_s: Optional[float] = None,
         breaker: Optional[CircuitBreaker] = None,
         session: Optional[Any] = None,
     ) -> None:
         self.endpoint_resource = endpoint or os.environ.get("ROUTER_S1_ENDPOINT", DEFAULT_ENDPOINT_RESOURCE)
         self.base_url = base_url or os.environ.get("ROUTER_S1_BASE_URL")
-        self.timeout_s = timeout_s
+
+        self.route_timeout_s = (
+            route_timeout_s
+            if route_timeout_s is not None
+            else (timeout_s if timeout_s is not None else DEFAULT_ROUTE_TIMEOUT_S)
+        )
+        self.rerank_timeout_s = (
+            rerank_timeout_s
+            if rerank_timeout_s is not None
+            else (timeout_s if timeout_s is not None else DEFAULT_RERANK_TIMEOUT_S)
+        )
+        self.timeout_s = self.route_timeout_s
         self.breaker = breaker or CircuitBreaker(name="router_s1")
-        self._session = session
+        self.session = session if session is not None else _create_default_session()
 
         # Resolve prediction URL
         self.predict_url = self._resolve_predict_url()
@@ -73,9 +106,14 @@ class RouterS1Client:
     def _resolve_predict_url(self) -> str:
         """Resolve full target URL using base_url or Vertex endpoint resource."""
         if self.base_url:
-            cleaned = self.base_url.rstrip("/")
+            cleaned = self.base_url.strip().rstrip("/")
+            if not cleaned.startswith("http://") and not cleaned.startswith("https://"):
+                cleaned = f"https://{cleaned}"
             if cleaned.endswith(":rawPredict") or cleaned.endswith(":predict") or cleaned.endswith("/predict"):
                 return cleaned
+            if self.endpoint_resource:
+                endpoint_path = self.endpoint_resource.lstrip("/")
+                return f"{cleaned}/v1/{endpoint_path}:rawPredict"
             return f"{cleaned}/predict"
 
         # Vertex AI endpoint format: projects/{project}/locations/{location}/endpoints/{endpoint_id}
@@ -90,6 +128,25 @@ class RouterS1Client:
         # Fallback if bare endpoint ID or relative path
         return f"https://us-central1-aiplatform.googleapis.com/v1/{self.endpoint_resource}:rawPredict"
 
+    def warm_connection(self) -> bool:
+        """Pre-warm HTTP keep-alive connection pool to eliminate TLS handshake latency."""
+        try:
+            if "/v1/" in self.predict_url:
+                health_url = f"{self.predict_url.split('/v1/')[0]}/healthz"
+            elif self.predict_url.endswith("/predict"):
+                health_url = f"{self.predict_url[:-8]}/healthz"
+            else:
+                health_url = self.predict_url
+            resp = self.session.get(health_url, timeout=0.5)
+            return resp.status_code == 200
+        except Exception:
+            return False
+
+    def close(self) -> None:
+        """Close the underlying HTTP session connection pool."""
+        if self.session is not None:
+            self.session.close()
+
     def _get_headers(self) -> Dict[str, str]:
         """Construct request headers including Google Cloud ADC bearer token."""
         headers = {
@@ -102,22 +159,11 @@ class RouterS1Client:
         return headers
 
     def _execute_request(self, payload: Dict[str, Any], timeout_s: float) -> Dict[str, Any]:
-        """Send HTTP POST request to endpoint."""
+        """Send HTTP POST request to endpoint via pooled session."""
         data_bytes = json.dumps(payload).encode("utf-8")
         headers = self._get_headers()
 
-        if self._session is not None:
-            resp = self._session.post(
-                self.predict_url,
-                data=data_bytes,
-                headers=headers,
-                timeout=timeout_s,
-            )
-            resp.raise_for_status()
-            return resp.json()
-
-        import requests
-        resp = requests.post(
+        resp = self.session.post(
             self.predict_url,
             data=data_bytes,
             headers=headers,
@@ -132,7 +178,7 @@ class RouterS1Client:
 
     def route(self, text: str, timeout_s: Optional[float] = None) -> RouterPrediction:
         """Evaluate text via router-s1 encoder heads (REQ-AGENT-002)."""
-        effective_timeout = timeout_s if timeout_s is not None else self.timeout_s
+        effective_timeout = timeout_s if timeout_s is not None else self.route_timeout_s
         payload = {
             "instances": [
                 {
@@ -151,7 +197,7 @@ class RouterS1Client:
         timeout_s: Optional[float] = None,
     ) -> List[CandidateScore]:
         """Score and rank candidates against query using choice reranker."""
-        effective_timeout = timeout_s if timeout_s is not None else self.timeout_s
+        effective_timeout = timeout_s if timeout_s is not None else self.rerank_timeout_s
         payload = {
             "instances": [
                 {

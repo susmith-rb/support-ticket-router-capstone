@@ -90,13 +90,19 @@ src/ticket_router/
 | `REQ-AGENT-006` | Inter-Agent A2A Handoff Protocol | `done` | `tests/agents/test_triage_router.py::test_a2a_handoff_protocol` |
 | `REQ-AGENT-007` | FaqResolver Bounded ReAct Loop, Search & Laya Rerank Integration | `done` | `tests/agents/test_faq_resolver.py::test_bounded_react_and_rerank` |
 | `REQ-AGENT-008` | Mandatory Grounded Citations with Non-Hallucination Fallback | `done` | `tests/agents/test_faq_resolver.py::test_mandatory_citations_or_escalate` |
-| `REQ-AGENT-009` | HumanQueue Workflow and Audited PII Re-Identification | `open` | `tests/agents/test_human_queue.py::test_queue_claim_and_pii_reid` |
-| `REQ-AGENT-010` | MCP Tool Contracts, JSON Schemas, and Role-Based DB Access | `open` | `tests/mcp/test_tool_contracts.py::test_schemas_and_roles` |
+| `REQ-AGENT-009` | HumanQueue Workflow and Audited PII Re-Identification | `done` | `tests/agents/test_human_queue.py::test_queue_claim_and_pii_reid` |
+| `REQ-AGENT-010` | MCP Tool Contracts, JSON Schemas, and Role-Based DB Access | `done` | `tests/mcp/test_tool_contracts.py::test_schemas_and_roles` |
 | `REQ-AGENT-011` | Distributed Circuit Breakers and Fallback Hierarchies | `done` | `tests/common/test_resilience.py::test_circuit_breakers_and_fallbacks` |
 | `REQ-AGENT-012` | Execution Budgets, Service Timeouts, and Latency SLAs | `done` | `tests/common/test_resilience.py::test_latency_budgets_and_timeouts` |
 | `REQ-AGENT-013` | Centralized Model Configuration Resolution | `open` | `tests/config/test_agent_models.py::test_model_registry_resolution` |
 | `REQ-AGENT-014` | Observability: Distributed Tracing & PII-Free Structured Logging | `done` | `tests/common/test_observability.py::test_otel_spans_and_pii_free_logs` |
 | `REQ-AGENT-015` | Test Strategy: Hermetic Unit Tests, Schema Contracts, and E2E Smoke | `open` | `tests/agents/test_agent_smoke.py::test_e2e_triage_smoke` |
+| `REQ-AGENT-016` | Dedicated Agent Service Accounts and Least-Privilege IAM | `done` | `tests/infra/test_agent_infra_static.py::test_agents_iam_least_privilege` |
+| `REQ-AGENT-017` | Agent Runtime Deployment for TriageRouterAgent | `done` | `tests/infra/test_agent_infra_static.py::test_triage_deployment_script` |
+| `REQ-AGENT-018` | GKE Autopilot Workload Identity & HPA for FaqResolverAgent | `done` | `tests/infra/test_agent_infra_static.py::test_faq_gke_manifests` |
+| `REQ-AGENT-019` | Cloud Run MCP Microservices with IAM Authentication and Zero Standby Cost | `done` | `tests/infra/test_agent_infra_static.py::test_cloud_run_services_iam_and_cost_posture` |
+| `REQ-AGENT-020` | Resilient Escalation Queue with Dead-Letter Handling | `done` | `tests/infra/test_agent_infra_static.py::test_pubsub_escalation_and_dlq` |
+
 
 ---
 
@@ -159,20 +165,20 @@ src/ticket_router/
 - **Owner**: agent-service
 
 ### REQ-AGENT-009: HumanQueue Workflow and Audited PII Re-Identification
-- **Statement**: `HumanQueueAgent` MUST provide operations to list queue depths, claim tickets, and resolve tickets. Customer PII unmasking from `redaction_maps` MUST be restricted exclusively to the human agent who has actively claimed the ticket. Every re-identification call MUST emit an immutable audit event to `ticket_events` logging `operator_id`, `ticket_id`, timestamp, and fields unmasked.
-- **Rationale**: Enforces strict customer data privacy, prevents unauthorized data browsing, and satisfies C3 confidential compliance (TDD §3.5, §5.2).
+- **Statement**: `HumanQueueAgent` MUST provide operations to list queue depths, claim tickets, and resolve tickets. Customer PII unmasking from `redaction_maps` MUST be executed by `HumanQueueAgent` under dedicated identity `sa-queue` holding Cloud SQL database role `queue_rw` (with `SELECT` grant on `redaction_maps`), and MUST be restricted exclusively to the human operator who has actively claimed the ticket. Every re-identification call MUST emit an immutable audit event to `ticket_events` logging `operator_id`, `ticket_id`, timestamp, and fields unmasked.
+- **Rationale**: Enforces strict customer data privacy and role separation: only `queue_rw` (`sa-queue`) has access to `redaction_maps`; `ticket_rw` (`sa-ticket-mcp`) has NO access to `redaction_maps`, preventing unauthorized data browsing and satisfying C3 confidential compliance (TDD §3.5, §5.2).
 - **Acceptance**: `tests/agents/test_human_queue.py::test_queue_claim_and_pii_reid`
-- **Status**: open
+- **Status**: done
 - **Owner**: agent-service
 
 ### REQ-AGENT-010: MCP Tool Contracts, JSON Schemas, and Role-Based DB Access
 - **Statement**: MCP servers MUST expose typed JSON contracts with strict input/output validation:
-  1. `ticket-db-mcp`: `upsert_ticket(idempotency_key, customer_id, channel, body_redacted, decision) -> {ticket_id, status}`, `claim_ticket(ticket_id, agent_id) -> {success}`, `resolve_ticket(ticket_id, agent_id, resolution_notes) -> {status}`, `reidentify_pii(ticket_id, agent_id) -> {unmasked_fields}`.
+  1. `ticket-db-mcp`: `upsert_ticket(idempotency_key, customer_id, channel, body_redacted, decision) -> {ticket_id, status}`, `claim_ticket(ticket_id, agent_id) -> {success}`, `resolve_ticket(ticket_id, agent_id, resolution_notes) -> {status}`, `reidentify_pii(ticket_id, agent_id) -> {unmasked_fields, error}` (denies with `forbidden_role_ticket_rw_cannot_access_redaction_maps_use_human_queue` because database role `ticket_rw` has no access to `redaction_maps`).
   2. `order-lookup-mcp`: `get_order(order_id) -> {order_id, status, items, tracking_number, promised_delivery, delivery_address_redacted}`.
-  Agents reach the database exclusively through MCP servers over Cloud Run HTTPS with OIDC auth (`roles/run.invoker`); agents (`sa-triage@`, `sa-faq@`) MUST NOT hold Cloud SQL client permissions or Postgres database roles. Dedicated Cloud SQL IAM database roles are held strictly by MCP and queue service accounts: `orders_ro` held by `sa-order-mcp@` (read-only `orders_mock` with Postgres RLS), `ticket_rw` held by `sa-ticket-mcp@` (read-write `tickets`, `ticket_events`), and `queue_rw` held by `sa-queue@` (`tickets`, `ticket_events`, decrypt `redaction_maps`). Customer ID MUST be extracted from verified session claims, never passed as an untrusted tool parameter.
+  Agents reach the database exclusively through MCP servers over Cloud Run HTTPS with OIDC auth (`roles/run.invoker`); agents (`sa-triage@`, `sa-faq@`) MUST NOT hold Cloud SQL client permissions or Postgres database roles. Dedicated Cloud SQL IAM database roles are held strictly by MCP and queue service accounts: `orders_ro` held by `sa-order-mcp@` (read-only `orders_mock` with Postgres RLS), `ticket_rw` held by `sa-ticket-mcp@` (read-write `tickets`, `ticket_events`; NO access to `redaction_maps`), and `queue_rw` held by `sa-queue@` (`tickets`, `ticket_events`, decrypt `redaction_maps`). Customer ID MUST be extracted from verified session claims, never passed as an untrusted tool parameter.
 - **Rationale**: Prevents BOLA/IDOR vulnerabilities (TDD §8.4; AGENTS.md rule 7) and enforces strict least-privilege database isolation without direct agent-to-DB coupling.
 - **Acceptance**: `tests/mcp/test_tool_contracts.py::test_schemas_and_roles`
-- **Status**: open
+- **Status**: done
 - **Owner**: agent-service
 
 ### REQ-AGENT-011: Distributed Circuit Breakers and Fallback Hierarchies
@@ -183,10 +189,11 @@ src/ticket_router/
 - **Owner**: agent-service
 
 ### REQ-AGENT-012: Execution Budgets, Service Timeouts, and Latency SLAs
-- **Statement**: Service calls MUST enforce strict timeout budgets:
-  - `TriageRouterAgent` overall turn budget: $\le 3,000\text{ ms}$. Tier 1 `router-s1` endpoint call timeout: 150 ms model budget (accommodating measured endpoint p95 of 59 ms server / ~189 ms client e2e); Tier 2 Flash fallback timeout: 1,500 ms.
-  - `FaqResolverAgent` overall turn budget: $\le 20,000\text{ ms}$. Agent Search query timeout: 800 ms; Laya rerank call timeout: 200 ms; `order-lookup-mcp` timeout: 300 ms; `ticket-db-mcp` timeout: 500 ms.
-- **Rationale**: Enforces customer-facing latency SLAs and prevents slow dependencies from exhausting connection pools (TDD §3.5, §10.1).
+- **Statement**: Service calls MUST enforce strict timeout budgets and connection pooling:
+  - Clients MUST reuse connections via persistent pooled keep-alive HTTPS sessions (`requests.Session` with `HTTPAdapter(pool_connections, pool_maxsize, max_retries=0)`). Unpooled HTTPS/urllib connections incur ~185 ms p95 TLS handshake overhead. Persistent keep-alive connections achieve shared endpoint latency of p50 96 ms / p95 134 ms, and dedicated endpoint latency of p50 54 ms / p95 77 ms / p99 135 ms.
+  - `TriageRouterAgent` overall turn budget: $\le 3,000\text{ ms}$. Tier 1 `router-s1` endpoint call HTTP timeout: 500 ms (protecting 150 ms model budget); Tier 2 Flash fallback timeout: 1,500 ms.
+  - `FaqResolverAgent` overall turn budget: $\le 20,000\text{ ms}$. Agent Search query timeout: 800 ms; Laya rerank call HTTP timeout: 600 ms (protecting 200 ms model budget); `order-lookup-mcp` timeout: 300 ms; `ticket-db-mcp` timeout: 500 ms.
+- **Rationale**: Enforces customer-facing latency SLAs and eliminates TLS connection setup overhead across repeated agent requests (TDD §3.5, §10.1).
 - **Acceptance**: `tests/common/test_resilience.py::test_latency_budgets_and_timeouts`
 - **Status**: done
 - **Owner**: agent-service
@@ -218,4 +225,44 @@ src/ticket_router/
 
 1. **GKE Autopilot vs. Cloud Run for FaqResolverAgent**: TDD §3.5 establishes GKE Autopilot as the primary target for `FaqResolverAgent` to support HPA autoscaling (2–10 pods) under high-throughput RAG search. In early dev/staging environments, deploying `FaqResolverAgent` to Cloud Run as a secondary target is permitted until GKE cluster provisioning is completed.
 2. **Cloud SQL Ticket Store Implementation Sync**: The Cloud SQL tables (`tickets`, `ticket_events`, `orders_mock`, `redaction_maps`) and Postgres IAM roles (`orders_ro`, `ticket_rw`, `queue_rw`) are being provisioned by worker T. `ticket-db-mcp` and `order-lookup-mcp` will initially test against in-memory SQLite mocks before binding to Cloud SQL Auth Proxy.
-3. **Endpoint Client Latency Headroom**: The measured server-side p95 for `router-s1` is 59 ms, but client end-to-end latency across shared endpoints averages ~189 ms due to HTTP/1.1 transport overhead. TriageRouter internal timeouts are tuned to 250 ms client-side to avoid false-positive breaker trips during network jitter while keeping model compute budget at 150 ms.
+3. **Endpoint Client Latency Headroom & Connection Pooling**: In-region live measurements from `laya-tune` (150 requests): unpooled HTTPS/urllib connection setup incurs ~185 ms p95 overhead. Persistent keep-alive HTTPS connections reduce shared endpoint latency to p50 96 ms / p95 134 ms, and dedicated endpoint latency to p50 54 ms / p95 77 ms / p99 135 ms. To satisfy customer SLAs while providing safe headroom against network jitter, client-side HTTP timeouts are set to 500 ms for route and 600 ms for rerank, and clients MUST maintain persistent pooled keep-alive connections via `requests.Session` with `HTTPAdapter`.
+
+---
+
+## Deployment (Terraform)
+
+### REQ-AGENT-016: Dedicated Agent Service Accounts and Least-Privilege IAM
+- **Statement**: The agent tier MUST use dedicated Google Cloud Service Accounts: `sa-triage` for TriageRouter and `sa-faq` for FaqResolver (via GKE Workload Identity `ksa-faq` in namespace `faq-resolver`). Permissions MUST follow strict least privilege: resource-level `roles/aiplatform.predictionUser` on `router-s1` endpoint, `roles/aiplatform.user` for Gemini calls, `roles/discoveryengine.viewer` for Agent Search (FaqResolver only), `roles/pubsub.publisher` on `human-queue` for TriageRouter, and `roles/pubsub.subscriber` on `human-queue-sub` for `sa-queue`. Neither agent SA may be granted database roles directly; all database access occurs via Cloud Run MCP microservices.
+- **Rationale**: Defense-in-depth isolation preventing agent prompt injection or model breakout from compromising customer order/ticket tables or unauthorized services.
+- **Acceptance**: `tests/infra/test_agent_infra_static.py::test_agents_iam_least_privilege`
+- **Status**: done
+- **Owner**: agent-service
+
+### REQ-AGENT-017: Agent Runtime Deployment for TriageRouterAgent
+- **Statement**: TriageRouterAgent is deployed to Vertex AI Agent Engine / Reasoning Engine via the Vertex AI SDK (`scripts/deploy_agents/deploy_triage_agent_runtime.py`) or Cloud Run fallback. The deployment packaging script MUST isolate execution environments by setting `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION` in-process before importing or serializing agent closures, preventing local workstation project names from baking into the pickled artifact, and pin runtime dependencies (`cloudpickle==3.0.0`, `pydantic>=2.0.0`, `google-adk>=0.1.0`). The Reasoning Engine service agent MUST be granted `roles/storage.objectViewer` on the staging bucket.
+- **Rationale**: Vertex AI Reasoning Engine manages serverless session state and Python code execution natively; isolation prevents deployment failure across dev/prod environments.
+- **Acceptance**: `tests/infra/test_agent_infra_static.py::test_triage_deployment_script`
+- **Status**: done
+- **Owner**: agent-service
+
+### REQ-AGENT-018: GKE Autopilot Workload Identity & HPA for FaqResolverAgent
+- **Statement**: FaqResolverAgent is deployed to a private GKE Autopilot cluster (`support-agents`) in `us-central1` on the `REGULAR` release channel, hosted on a dedicated VPC `support-vpc` and subnet `support-us-central1` (`10.10.0.0/20`, pods `10.20.0.0/14`, services `10.24.0.0/20`) with Private Google Access enabled. The deployment MUST use Kubernetes Workload Identity binding `ksa-faq` in namespace `faq-resolver` to `sa-faq@<project>.iam.gserviceaccount.com`. Pod scaling MUST be managed by HorizontalPodAutoscaler (`faq-resolver-hpa`) targeting 60% CPU utilization with minReplicas 1 and maxReplicas 10. Manifests MUST be applied via `scripts/deploy_agents/deploy_faq_gke.sh`. Cloud NAT is omitted as private worker nodes only communicate with Google APIs.
+- **Rationale**: High-throughput RAG search requires elastic horizontal pod autoscaling with zero node management overhead, isolated private networking, and secure token exchange via Workload Identity.
+- **Acceptance**: `tests/infra/test_agent_infra_static.py::test_faq_gke_manifests`
+- **Status**: done
+- **Owner**: agent-service
+
+### REQ-AGENT-019: Cloud Run MCP Microservices with IAM Authentication and Zero Standby Cost
+- **Statement**: Shared backend microservices (`ticket-db-mcp`, `order-lookup-mcp`, `human-queue`) MUST be deployed as Cloud Run v2 services (`google_cloud_run_v2_service`) with `min_instance_count = 0` (cost posture minimal) and `max_instance_count = 3`. Ingress MUST be configured to `INGRESS_TRAFFIC_ALL` with strict IAM authorization (`roles/run.invoker` granted exclusively to authorized caller SAs `sa-triage` and `sa-faq`); public unauthenticated invocation (`allUsers`) is strictly forbidden. If `agents_image` is empty, service creation is conditionally omitted (`count = 0`).
+- **Rationale**: Eliminates idle compute expenditure when no tickets are active while enforcing cryptographic identity checks on every tool call.
+- **Acceptance**: `tests/infra/test_agent_infra_static.py::test_cloud_run_services_iam_and_cost_posture`
+- **Status**: done
+- **Owner**: agent-service
+
+### REQ-AGENT-020: Resilient Escalation Queue with Dead-Letter Handling
+- **Statement**: Pub/Sub escalation infrastructure MUST provide a primary topic `human-queue`, a dead-letter topic `human-queue-dlq`, and a pull subscription `human-queue-sub` configured with a dead-letter policy (`max_delivery_attempts = 5`). Subscription retries MUST use exponential backoff (min 10s, max 600s). `sa-triage` is granted `roles/pubsub.publisher` on `human-queue` and `sa-queue` is granted `roles/pubsub.subscriber` on `human-queue-sub`.
+- **Rationale**: Guarantees that unprocessable escalation events are not lost or stuck in infinite retry loops, providing operators a DLQ for poison-pill diagnosis.
+- **Acceptance**: `tests/infra/test_agent_infra_static.py::test_pubsub_escalation_and_dlq`
+- **Status**: done
+- **Owner**: agent-service
+
