@@ -12,6 +12,10 @@ variable "services" {
     "storage.googleapis.com",
     "iam.googleapis.com",
     "serviceusage.googleapis.com",
-    "cloudresourcemanager.googleapis.com"
+    "cloudresourcemanager.googleapis.com",
+    "sqladmin.googleapis.com",
+    "run.googleapis.com",
+    "container.googleapis.com",
+    "secretmanager.googleapis.com"
   ]
 }

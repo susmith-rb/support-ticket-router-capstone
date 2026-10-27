@@ -9,6 +9,10 @@ terraform {
       source  = "hashicorp/google-beta"
       version = "~> 6.50.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = ">= 3.5.0"
+    }
   }
   backend "gcs" {
     bucket = "susmith-fde-ticket-router-tfstate"

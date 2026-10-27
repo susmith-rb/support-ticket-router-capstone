@@ -25,8 +25,23 @@ module "project_services" {
     "cloudresourcemanager.googleapis.com",
     "cloudbuild.googleapis.com",
     "cloudscheduler.googleapis.com",
-    "secretmanager.googleapis.com"
+    "secretmanager.googleapis.com",
+    "sqladmin.googleapis.com",
+    "run.googleapis.com",
+    "container.googleapis.com"
   ]
+}
+
+module "cloud_sql" {
+  source              = "./modules/cloud-sql"
+  project_id          = var.project_id
+  region              = var.region
+  tier                = var.cloud_sql_tier
+  availability_type   = var.cloud_sql_availability_type
+  deletion_protection = var.cloud_sql_deletion_protection
+  labels              = var.labels
+
+  depends_on = [module.project_services]
 }
 
 module "agent_search" {

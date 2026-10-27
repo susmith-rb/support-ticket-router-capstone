@@ -83,3 +83,22 @@ variable "enable_router_endpoint" {
   type        = bool
   default     = true
 }
+
+variable "cloud_sql_tier" {
+  description = "Machine type/tier for Cloud SQL PostgreSQL (db-custom-1-3840)"
+  type        = string
+  default     = "db-custom-1-3840"
+}
+
+variable "cloud_sql_availability_type" {
+  description = "Cloud SQL availability: ZONAL (cost-effective capstone default) or REGIONAL (production HA)"
+  type        = string
+  default     = "ZONAL"
+}
+
+variable "cloud_sql_deletion_protection" {
+  description = "Whether deletion protection is enabled on Cloud SQL instance"
+  type        = bool
+  default     = true
+}
+

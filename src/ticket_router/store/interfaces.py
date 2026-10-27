@@ -1,0 +1,96 @@
+"""Abstract repository interfaces for ticket and order stores.
+
+Implements REQ-STORE-006: Pure interface contracts separating business logic
+from storage backends (in-memory fakes vs Cloud SQL PostgreSQL).
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional
+from uuid import UUID
+
+from ticket_router.store.models import Order, Ticket, TicketCreate, TicketEvent
+
+
+class TicketRepository(ABC):
+    """Abstract interface for ticket lifecycle and audit event operations."""
+
+    @abstractmethod
+    def create_ticket(self, ticket_create: TicketCreate) -> Ticket:
+        """Create a new ticket idempotently.
+
+        If a ticket with the given ticket_id already exists, returns the existing record.
+        """
+        pass
+
+    @abstractmethod
+    def get_ticket(self, ticket_id: UUID | str) -> Optional[Ticket]:
+        """Fetch ticket by ID."""
+        pass
+
+    @abstractmethod
+    def list_open_tickets(
+        self, limit: int = 50, queue: Optional[str] = None
+    ) -> List[Ticket]:
+        """List open tickets eligible for human queue or automated pickup."""
+        pass
+
+    @abstractmethod
+    def claim_ticket(self, ticket_id: UUID | str, agent_id: str) -> bool:
+        """Atomically claim an open ticket for a human agent or workflow.
+
+        Enforces optimistic concurrency: only transitions if current status is 'open'.
+        Returns True if claimed successfully, False if already claimed or resolved.
+        """
+        pass
+
+    @abstractmethod
+    def append_event(
+        self,
+        ticket_id: UUID | str,
+        event_type: str,
+        actor: str,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> TicketEvent:
+        """Append an immutable audit event for a ticket."""
+        pass
+
+    @abstractmethod
+    def list_events(self, ticket_id: UUID | str) -> List[TicketEvent]:
+        """List all audit events for a ticket in chronological order."""
+        pass
+
+    @abstractmethod
+    def update_ticket_status(
+        self,
+        ticket_id: UUID | str,
+        status: str,
+        resolution_notes: Optional[str] = None,
+        answer_text: Optional[str] = None,
+        citations: Optional[List[Dict[str, Any]]] = None,
+    ) -> Optional[Ticket]:
+        """Update ticket status, resolution notes, and optional grounded answer."""
+        pass
+
+
+class OrderRepository(ABC):
+    """Abstract interface for customer order lookups (used by order-lookup MCP server)."""
+
+    @abstractmethod
+    def get_order(
+        self, order_id: str, customer_id: Optional[str] = None
+    ) -> Optional[Order]:
+        """Fetch an order by order_id.
+
+        If customer_id is provided, enforces tenant isolation (simulating Postgres RLS).
+        Returns None if order does not exist or customer_id does not match.
+        """
+        pass
+
+    @abstractmethod
+    def list_customer_orders(
+        self, customer_id: str, limit: int = 10
+    ) -> List[Order]:
+        """List recent orders belonging to a customer."""
+        pass

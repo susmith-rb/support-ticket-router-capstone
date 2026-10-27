@@ -72,3 +72,39 @@ output "serving_artifact_registry_repo" {
   description = "Repository URL for serving container images in Artifact Registry"
   value       = module.router_endpoint.artifact_registry_repository_url
 }
+
+output "cloud_sql_instance_name" {
+  description = "Cloud SQL instance identifier"
+  value       = module.cloud_sql.instance_name
+}
+
+output "cloud_sql_connection_name" {
+  description = "Cloud SQL connection name"
+  value       = module.cloud_sql.instance_connection_name
+}
+
+output "cloud_sql_database_name" {
+  description = "PostgreSQL support database name"
+  value       = module.cloud_sql.database_name
+}
+
+output "cloud_sql_sa_ticket_mcp_email" {
+  description = "Email of the sa-ticket-mcp service account"
+  value       = module.cloud_sql.sa_ticket_mcp_email
+}
+
+output "cloud_sql_sa_order_mcp_email" {
+  description = "Email of the sa-order-mcp service account"
+  value       = module.cloud_sql.sa_order_mcp_email
+}
+
+output "cloud_sql_sa_queue_email" {
+  description = "Email of the sa-queue service account"
+  value       = module.cloud_sql.sa_queue_email
+}
+
+output "cloud_sql_admin_secret_id" {
+  description = "Secret Manager secret ID for break-glass admin password"
+  value       = module.cloud_sql.admin_secret_id
+}
+
