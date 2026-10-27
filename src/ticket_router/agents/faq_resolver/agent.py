@@ -348,7 +348,9 @@ class FaqResolverAgent:
         ticket_id: str,
         session_id: str,
         message: str,
-        customer_id: str,
+        customer_id: Optional[str] = None,
+        customer_verified: Optional[bool] = None,
+        identity_issuer: Optional[str] = None,
         predicted_intent: Optional[str] = None,
         memory_summary: Optional[str] = None,
         traceparent: Optional[str] = None,
@@ -377,44 +379,80 @@ class FaqResolverAgent:
                 latency_ms=self._elapsed_ms(t_start),
             )
 
+        # Determine verification status (REQ-IDENT-004, REQ-IDENT-005)
+        is_verified = (
+            customer_verified
+            if customer_verified is not None
+            else bool(customer_id and not str(customer_id).startswith("anon:"))
+        )
+
         # -----------------------------------------------------------------
         # Step 1: Order Lookup (if inquiry requires order status)
         # -----------------------------------------------------------------
         order_info: Optional[Dict[str, Any]] = None
         order_id = self._extract_order_id(message)
+        is_order_specific = bool(order_id) or (
+            predicted_intent is not None
+            and predicted_intent in ("shipping", "refund", "order_status")
+            and any(
+                kw in message.lower()
+                for kw in ("order", "package", "tracking", "status", "delivery", "item", "where is", "track")
+            )
+        )
 
-        if (
-            order_id
-            and self.order_client is not None
-            and tool_calls_count < self.max_tool_calls
-            and not self._is_budget_exhausted(t_start)
-        ):
-            tool_calls_count += 1
-            try:
-                # BOLA / IDOR Protection: customer_id is verified session context
-                order_info = self.order_client.get_order(
-                    order_id=order_id,
-                    customer_id=customer_id,
-                    untrusted_customer_id=untrusted_customer_id,
-                )
-            except BolaViolationError:
+        if not is_verified:
+            if is_order_specific:
+                # REQ-IDENT-004, REQ-IDENT-005: Unverified customer attempting order-specific inquiry
+                # Never invoke order lookup; return polite sign-in prompt with human handoff option
                 return ResolutionResult(
-                    status="ESCALATED",
-                    route="human",
-                    queue="human-standard",
-                    reason="bola_violation",
+                    status="AUTO_RESOLVED",
+                    route="resolved",
+                    answer=(
+                        "Please sign in to check your order details and track shipments. "
+                        "If you need further assistance, I can also connect you with a human support specialist."
+                    ),
+                    citations=[],
                     degraded=False,
-                    message="Inquiry routed to human specialist for account verification.",
-                    tool_calls_count=tool_calls_count,
+                    tool_calls_count=0,
                     retrieval_passes_count=0,
                     regeneration_count=0,
                     latency_ms=self._elapsed_ms(t_start),
                 )
-            except LookupError:
-                order_info = {"order_id": order_id, "status": "NOT_FOUND"}
-            except Exception as exc:
-                logger.warning("Order lookup failed gracefully: %s", exc)
-                order_info = {"order_id": order_id, "status": "UNAVAILABLE"}
+            # If not order-specific, unverified customer continues to Step 2 for generic FAQ answers
+        else:
+            # Verified customer: invoke order lookup if order_id present
+            if (
+                order_id
+                and self.order_client is not None
+                and tool_calls_count < self.max_tool_calls
+                and not self._is_budget_exhausted(t_start)
+            ):
+                tool_calls_count += 1
+                try:
+                    # BOLA / IDOR Protection: customer_id is verified session context
+                    order_info = self.order_client.get_order(
+                        order_id=order_id,
+                        customer_id=customer_id or "",
+                        untrusted_customer_id=untrusted_customer_id,
+                    )
+                except BolaViolationError:
+                    return ResolutionResult(
+                        status="ESCALATED",
+                        route="human",
+                        queue="human-standard",
+                        reason="bola_violation",
+                        degraded=False,
+                        message="Inquiry routed to human specialist for account verification.",
+                        tool_calls_count=tool_calls_count,
+                        retrieval_passes_count=0,
+                        regeneration_count=0,
+                        latency_ms=self._elapsed_ms(t_start),
+                    )
+                except LookupError:
+                    order_info = {"order_id": order_id, "status": "NOT_FOUND"}
+                except Exception as exc:
+                    logger.warning("Order lookup failed gracefully: %s", exc)
+                    order_info = {"order_id": order_id, "status": "UNAVAILABLE"}
 
         # -----------------------------------------------------------------
         # Step 2: Agent Search Retrieval Pass

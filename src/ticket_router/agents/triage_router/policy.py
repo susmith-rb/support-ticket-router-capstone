@@ -79,6 +79,9 @@ class RouterDecision:
     calming_ack: Optional[str] = None
     latency_ms: float = 0.0
     details: Dict[str, Any] = field(default_factory=dict)
+    customer_verified: bool = False
+    identity_issuer: Optional[str] = None
+    identity_reason: str = "missing_token"
 
 
 # -----------------------------------------------------------------------------

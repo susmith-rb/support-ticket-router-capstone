@@ -24,12 +24,14 @@ FAQ_RESOLVER_AGENT_CARD: Dict[str, Any] = {
     ],
     "input_schema": {
         "type": "object",
-        "required": ["ticket_id", "session_id", "redacted_message", "customer_id"],
+        "required": ["ticket_id", "session_id", "redacted_message"],
         "properties": {
             "ticket_id": {"type": "string", "description": "Unique ticket UUID"},
             "session_id": {"type": "string", "description": "Authenticated dialogue session ID"},
             "redacted_message": {"type": "string", "description": "PII-redacted customer message"},
-            "customer_id": {"type": "string", "description": "Verified customer ID from session claims"},
+            "customer_id": {"type": ["string", "null"], "description": "Verified customer ID from session claims or null"},
+            "customer_verified": {"type": "boolean", "description": "True if customer identity was cryptographically verified"},
+            "identity_issuer": {"type": ["string", "null"], "description": "Identity issuer of verified token"},
             "predicted_intent": {"type": "string", "description": "Intent predicted by router-s1"},
             "memory_summary": {"type": "string", "description": "Compact Memory Bank customer profile"},
         },
@@ -79,19 +81,23 @@ def handle_a2a_request(
     session_id = str(payload.get("session_id", ""))
     # Accept either redacted_message or message
     message = str(payload.get("redacted_message") or payload.get("message") or "")
-    customer_id = str(payload.get("customer_id", ""))
+    customer_id_raw = payload.get("customer_id")
+    customer_id = str(customer_id_raw) if customer_id_raw is not None else None
+    customer_verified = bool(payload.get("customer_verified", False))
+    identity_issuer_raw = payload.get("identity_issuer")
+    identity_issuer = str(identity_issuer_raw) if identity_issuer_raw is not None else None
     predicted_intent = payload.get("predicted_intent")
     memory_summary = payload.get("memory_summary")
     traceparent = payload.get("traceparent")
     untrusted_customer_id = payload.get("untrusted_customer_id")
 
-    if not ticket_id or not message or not customer_id:
+    if not ticket_id or not message:
         return {
             "status": "ESCALATED",
             "route": "human",
             "queue": "human-standard",
             "reason": "invalid_a2a_payload",
-            "message": "Missing required A2A fields (ticket_id, message, customer_id).",
+            "message": "Missing required A2A fields (ticket_id, message).",
             "degraded": False,
         }
 
@@ -100,6 +106,8 @@ def handle_a2a_request(
         session_id=session_id,
         message=message,
         customer_id=customer_id,
+        customer_verified=customer_verified,
+        identity_issuer=identity_issuer,
         predicted_intent=predicted_intent,
         memory_summary=memory_summary,
         traceparent=traceparent,

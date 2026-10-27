@@ -111,6 +111,8 @@ class HttpOrderLookupClient(OrderLookupProtocol):
                 f"BOLA/IDOR violation detected: untrusted tool argument '{untrusted_customer_id}' "
                 f"does not match verified session customer '{customer_id}'."
             )
+        if not customer_id or customer_id.startswith("anon:"):
+            raise BolaViolationError("Anonymous or unverified customer cannot access order lookup.")
 
         url = f"{self.base_url}/get_order"
         body = {
@@ -120,6 +122,7 @@ class HttpOrderLookupClient(OrderLookupProtocol):
         headers = {
             "Content-Type": "application/json",
             "X-Customer-ID": customer_id,  # Verified customer context header
+            "X-Customer-Verified": "true",
         }
 
         token = None
@@ -172,6 +175,10 @@ class FakeOrderLookupClient(OrderLookupProtocol):
             "order_id": order_id,
             "customer_id": customer_id,
             "untrusted_customer_id": untrusted_customer_id,
+            "headers": {
+                "X-Customer-ID": customer_id,
+                "X-Customer-Verified": "true",
+            },
             "timestamp": time.time(),
         })
 
@@ -181,6 +188,8 @@ class FakeOrderLookupClient(OrderLookupProtocol):
                 f"BOLA/IDOR attempt: untrusted arg customer_id='{untrusted_customer_id}' "
                 f"rejected; verified session customer_id='{customer_id}'."
             )
+        if not customer_id or customer_id.startswith("anon:"):
+            raise BolaViolationError("Anonymous or unverified customer cannot access order lookup.")
 
         order = self.orders.get(order_id)
         if not order:

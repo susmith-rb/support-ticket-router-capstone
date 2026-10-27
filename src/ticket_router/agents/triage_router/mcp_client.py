@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from typing import Any, Callable, Dict, Optional, Protocol, runtime_checkable
+from typing import Any, Callable, Dict, Optional, Protocol, Tuple, runtime_checkable
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -65,6 +65,10 @@ class TicketDbMcpClientProtocol(Protocol):
         """Audited customer PII unmasking for claimed ticket. Returns {unmasked_fields}."""
         ...
 
+    def resolve_customer(self, issuer: str, subject: str) -> Dict[str, Any]:
+        """Resolve IdP identity (issuer, subject) to customer record."""
+        ...
+
 
 class InMemoryTicketDbMcpClient:
     """In-memory hermetic implementation of ticket-db-mcp client for unit testing."""
@@ -73,6 +77,28 @@ class InMemoryTicketDbMcpClient:
         self.tickets: Dict[str, Dict[str, Any]] = {}  # ticket_id -> ticket
         self.by_idempotency_key: Dict[str, str] = {}  # idempotency_key -> ticket_id
         self.events: list[Dict[str, Any]] = []
+        self.identities: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+    def register_identity(
+        self,
+        issuer: str,
+        subject: str,
+        customer_id: Optional[str],
+        status: str = "active",
+        linked: bool = True,
+    ) -> None:
+        """Register mock customer identity for testing."""
+        self.identities[(issuer, subject)] = {
+            "customer_id": customer_id,
+            "status": status,
+            "linked": linked,
+        }
+
+    def resolve_customer(self, issuer: str, subject: str) -> Dict[str, Any]:
+        """Resolve IdP identity to customer record."""
+        if (issuer, subject) in self.identities:
+            return dict(self.identities[(issuer, subject)])
+        return {"customer_id": None, "status": "unlinked", "linked": False}
 
     def upsert_ticket(
         self,
@@ -216,3 +242,6 @@ class HttpTicketDbMcpClient:
 
     def reidentify_pii(self, ticket_id: str, agent_id: str) -> Dict[str, Any]:
         return self._post_tool("reidentify_pii", {"ticket_id": ticket_id, "agent_id": agent_id})
+
+    def resolve_customer(self, issuer: str, subject: str) -> Dict[str, Any]:
+        return self._post_tool("resolve_customer", {"issuer": issuer, "subject": subject})

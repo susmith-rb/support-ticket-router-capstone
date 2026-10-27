@@ -14,7 +14,7 @@ from typing import Any
 from ticket_router.agents.triage_router.a2a_client import InMemoryA2AClient
 from ticket_router.agents.triage_router.adk_agent import (
     TriageRouterAdkAgent,
-    extract_customer_id,
+    extract_caller_user_id_for_audit,
     extract_session_id,
     extract_text_from_context,
     root_agent,
@@ -57,12 +57,12 @@ def test_context_extraction_helpers():
     ctx = DummyContext("Hello support", "sess-123", "cust-456", "inv-999")
     assert extract_text_from_context(ctx) == "Hello support"
     assert extract_session_id(ctx) == "sess-123"
-    assert extract_customer_id(ctx) == "cust-456"
+    assert extract_caller_user_id_for_audit(ctx) == "cust-456"
 
     # Fallbacks on empty / None
     assert extract_text_from_context(None) == ""
     assert extract_session_id(None) == "default_session"
-    assert extract_customer_id(None) == "cust_anon"
+    assert extract_caller_user_id_for_audit(None) == "anon"
 
 
 def test_lazy_initialization_no_env_at_instantiation(monkeypatch):
@@ -202,11 +202,13 @@ def test_adk_agent_run_async_escalation_route():
 
     text = extract_event_text(event)
     assert "ticket" in text.lower() or "support team" in text.lower() or "representative" in text.lower()
-    # Verify ticket upserted
+    # Verify ticket upserted with anonymous fail-closed customer_id (REQ-IDENT-003, REQ-IDENT-004)
     assert len(in_mem_mcp.tickets) == 1
     upserted = list(in_mem_mcp.tickets.values())[0]
     assert upserted["decision"]["decision"] == "escalate"
-    assert upserted["customer_id"] == "c-esc-1"
+    assert upserted["customer_id"] == "anon:s-esc-1"
+    assert upserted["decision"]["customer_verified"] is False
+    assert upserted["decision"]["identity_reason"] == "missing_token"
 
 
 def test_exported_root_agent():

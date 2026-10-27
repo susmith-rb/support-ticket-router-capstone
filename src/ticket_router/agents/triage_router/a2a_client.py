@@ -32,7 +32,9 @@ class A2AHandoffPayload:
     predicted_intent: str
     redacted_message: str
     memory_summary: str = ""
-    customer_id: str = ""
+    customer_id: Optional[str] = None
+    customer_verified: bool = False
+    identity_issuer: Optional[str] = None
 
 
 @runtime_checkable

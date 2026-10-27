@@ -91,7 +91,7 @@ def test_all_ident_requirements_defined_and_open():
     assert req["statement"], f"Missing statement in {req_id}"
     assert req["rationale"], f"Missing rationale in {req_id}"
     assert req["acceptance"], f"Missing acceptance in {req_id}"
-    assert req["status"] == "open", f"Expected status 'open' in {req_id}, got '{req['status']}'"
+    assert req["status"] in ("open", "done"), f"Expected status 'open' or 'done' in {req_id}, got '{req['status']}'"
     assert req["owner"] in {"identity", "store", "triage-router", "agent-service"}, (
         f"Unexpected owner '{req['owner']}' in {req_id}"
     )

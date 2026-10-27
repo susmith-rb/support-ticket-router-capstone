@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Callable, Dict, Optional
@@ -41,7 +42,10 @@ from ticket_router.common.observability import (
 )
 from ticket_router.common.settings import Settings
 from ticket_router.config.models import model_id
+from ticket_router.identity import resolve_identity
 from ticket_router.models.router_s1_client import RouterPrediction, RouterS1Client
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -278,8 +282,9 @@ class TriageRouterAgent:
     def triage(
         self,
         session_id: str,
-        customer_id: str,
-        message_text: str,
+        customer_id: Optional[str] = None,
+        message_text: str = "",
+        customer_id_token: Optional[str] = None,
         verified_facts: Optional[VerifiedFacts] = None,
         channel: str = "web",
         ticket_id: Optional[str] = None,
@@ -292,14 +297,33 @@ class TriageRouterAgent:
         traceparent = generate_traceparent()
         idempotency_key = compute_idempotency_key(session_id, message_text)
 
+        if customer_id is not None:
+            logger.warning(
+                "customer_id argument is deprecated and ignored; pass customer_id_token instead."
+            )
+
+        # Resolve customer identity from token via ticket-db-mcp (REQ-IDENT-003, REQ-IDENT-004)
+        cust_ctx = resolve_identity(token=customer_id_token, ticket_db_client=self.mcp_client)
+        ticket_customer_id = cust_ctx.customer_id if cust_ctx.verified else f"anon:{session_id}"
+        customer_verified = cust_ctx.verified
+        identity_issuer = cust_ctx.issuer if cust_ctx.verified else None
+        identity_reason = cust_ctx.reason
+
         with start_span("triage_router_turn", attributes={"session_id": session_id}, traceparent=traceparent):
             # 1. Evaluate tiered policy
             decision = self.policy.evaluate(
                 text=message_text,
                 session_id=session_id,
-                customer_id=customer_id,
+                customer_id=ticket_customer_id,
                 verified_facts=verified_facts,
                 ticket_id=t_id,
+            )
+            # Attach verified customer identity claims to decision payload (no token, no email)
+            decision = replace(
+                decision,
+                customer_verified=customer_verified,
+                identity_issuer=identity_issuer,
+                identity_reason=identity_reason,
             )
 
             calming_ack: Optional[str] = None
@@ -315,7 +339,7 @@ class TriageRouterAgent:
 
                 self.mcp_client.upsert_ticket(
                     idempotency_key=idempotency_key,
-                    customer_id=customer_id,
+                    customer_id=ticket_customer_id,
                     channel=channel,
                     body_redacted=message_text,
                     decision=asdict(decision),
@@ -323,7 +347,7 @@ class TriageRouterAgent:
             else:
                 self.mcp_client.upsert_ticket(
                     idempotency_key=idempotency_key,
-                    customer_id=customer_id,
+                    customer_id=ticket_customer_id,
                     channel=channel,
                     body_redacted=message_text,
                     decision=asdict(decision),
@@ -335,7 +359,9 @@ class TriageRouterAgent:
                     predicted_intent=decision.predicted_intent,
                     redacted_message=message_text,
                     memory_summary=memory_summary,
-                    customer_id=customer_id,
+                    customer_id=cust_ctx.customer_id if cust_ctx.verified else None,
+                    customer_verified=customer_verified,
+                    identity_issuer=identity_issuer,
                 )
                 try:
                     handoff_resp = self.a2a_client.handoff(payload)
@@ -369,7 +395,7 @@ class TriageRouterAgent:
                     try:
                         self.mcp_client.upsert_ticket(
                             idempotency_key=f"{idempotency_key}:a2a_degraded",
-                            customer_id=customer_id,
+                            customer_id=ticket_customer_id,
                             channel=channel,
                             body_redacted=message_text,
                             decision=asdict(decision),
@@ -416,9 +442,23 @@ class _AdkAgentShim:
         self.instruction = instruction
         self.triage_handler = triage_handler
 
-    def query(self, query: str, session_id: str = "default_session", customer_id: str = "cust_anon") -> Dict[str, Any]:
+    def query(
+        self,
+        query: str,
+        session_id: str = "default_session",
+        customer_id_token: Optional[str] = None,
+        customer_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Synchronous query entrypoint."""
-        res = self.triage_handler.triage(session_id=session_id, customer_id=customer_id, message_text=query)
+        if customer_id is not None:
+            logger.warning(
+                "customer_id kwarg is deprecated and ignored; pass customer_id_token instead."
+            )
+        res = self.triage_handler.triage(
+            session_id=session_id,
+            message_text=query,
+            customer_id_token=customer_id_token,
+        )
         return {
             "ticket_id": res.ticket_id,
             "decision": res.decision.decision,
@@ -427,9 +467,20 @@ class _AdkAgentShim:
             "intent": res.decision.predicted_intent,
         }
 
-    def stream_query(self, query: str, session_id: str = "default_session", customer_id: str = "cust_anon"):
+    def stream_query(
+        self,
+        query: str,
+        session_id: str = "default_session",
+        customer_id_token: Optional[str] = None,
+        customer_id: Optional[str] = None,
+    ):
         """Generator stream query entrypoint for Gemini Enterprise compatibility."""
-        yield self.query(query, session_id=session_id, customer_id=customer_id)
+        yield self.query(
+            query,
+            session_id=session_id,
+            customer_id_token=customer_id_token,
+            customer_id=customer_id,
+        )
 
     def triage(self, *args: Any, **kwargs: Any) -> TriageResult:
         """Direct triage delegation."""

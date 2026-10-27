@@ -8,12 +8,15 @@ Fulfills REQ-AGENT-001, REQ-AGENT-017:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncGenerator, Iterator
 from typing import Any, Optional
 
 from pydantic import PrivateAttr
 
 from ticket_router.agents.triage_router.agent import TriageResult, TriageRouterAgent
+
+logger = logging.getLogger(__name__)
 
 try:
     from google.adk.agents.base_agent import BaseAgent
@@ -97,8 +100,15 @@ def extract_session_id(ctx: Any) -> str:
     return "default_session"
 
 
-def extract_customer_id(ctx: Any) -> str:
-    """Extract customer / user ID safely from invocation context without reflection."""
+def extract_caller_user_id_for_audit(ctx: Any) -> str:
+    """Extract caller-asserted user ID from invocation context for audit logging ONLY.
+
+    Security Invariant (REQ-IDENT-007):
+    This value is non-authoritative and caller-asserted. It MUST NEVER be used for
+    authorization, row-level security, ticket attribution, or customer identity resolution.
+    """
+    if ctx is None:
+        return "anon"
     try:
         session = ctx.session
         return str(session.user_id)
@@ -108,7 +118,57 @@ def extract_customer_id(ctx: Any) -> str:
         return str(ctx.user_id)
     except AttributeError:
         pass
-    return "cust_anon"
+    return "anon"
+
+
+def extract_customer_id_token(ctx: Any) -> Optional[str]:
+    """Extract raw customer ID token from session state or message metadata.
+
+    Security Invariant (REQ-IDENT-003, REQ-IDENT-007):
+    Token is read ONLY from session state key 'customer_id_token' or message metadata.
+    Caller-asserted session user_id or any client-asserted claim in state is NEVER trusted as verified identity.
+    """
+    if ctx is None:
+        return None
+
+    # 1. Check session state (ADK ctx.session.state)
+    try:
+        session = getattr(ctx, "session", None)
+        if session is not None:
+            state = getattr(session, "state", None)
+            if isinstance(state, dict):
+                token = state.get("customer_id_token")
+                if token and isinstance(token, str) and token.strip():
+                    return token.strip()
+            elif hasattr(state, "get"):
+                token = state.get("customer_id_token")
+                if token and isinstance(token, str) and token.strip():
+                    return token.strip()
+    except Exception:
+        pass
+
+    # 2. Check message metadata
+    try:
+        meta = getattr(ctx, "metadata", None)
+        if isinstance(meta, dict):
+            token = meta.get("customer_id_token")
+            if token and isinstance(token, str) and token.strip():
+                return token.strip()
+    except Exception:
+        pass
+
+    try:
+        user_content = getattr(ctx, "user_content", None)
+        if user_content is not None:
+            meta = getattr(user_content, "metadata", None)
+            if isinstance(meta, dict):
+                token = meta.get("customer_id_token")
+                if token and isinstance(token, str) and token.strip():
+                    return token.strip()
+    except Exception:
+        pass
+
+    return None
 
 
 def extract_answer_from_result(result: TriageResult) -> str:
@@ -203,13 +263,13 @@ class TriageRouterAdkAgent(BaseAgent):
         """Execute async agent invocation yielding final response event."""
         message = extract_text_from_context(ctx)
         session_id = extract_session_id(ctx)
-        customer_id = extract_customer_id(ctx)
+        customer_id_token = extract_customer_id_token(ctx)
 
         router = self._get_router()
         result = router.triage(
             session_id=session_id,
-            customer_id=customer_id,
             message_text=message,
+            customer_id_token=customer_id_token,
         )
         final_text = extract_answer_from_result(result)
 
@@ -238,14 +298,19 @@ class TriageRouterAdkAgent(BaseAgent):
         self,
         message: str,
         session_id: str = "default_session",
-        customer_id: str = "cust_anon",
+        customer_id_token: Optional[str] = None,
+        customer_id: Optional[str] = None,
     ) -> dict[str, Any]:
         """Direct synchronous query entrypoint for local execution and smoke tests."""
+        if customer_id is not None:
+            logger.warning(
+                "customer_id argument is deprecated and ignored; pass customer_id_token instead."
+            )
         router = self._get_router()
         result = router.triage(
             session_id=session_id,
-            customer_id=customer_id,
             message_text=message,
+            customer_id_token=customer_id_token,
         )
         answer = extract_answer_from_result(result)
         return {
@@ -263,10 +328,16 @@ class TriageRouterAdkAgent(BaseAgent):
         self,
         message: str,
         session_id: str = "default_session",
-        customer_id: str = "cust_anon",
+        customer_id_token: Optional[str] = None,
+        customer_id: Optional[str] = None,
     ) -> Iterator[dict[str, Any]]:
         """Streaming query generator for compatibility with ReasoningEngine interfaces."""
-        yield self.query(message=message, session_id=session_id, customer_id=customer_id)
+        yield self.query(
+            message=message,
+            session_id=session_id,
+            customer_id_token=customer_id_token,
+            customer_id=customer_id,
+        )
 
     def triage(self, *args: Any, **kwargs: Any) -> TriageResult:
         """Direct delegation to underlying TriageRouterAgent."""

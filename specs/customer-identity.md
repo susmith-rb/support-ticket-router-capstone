@@ -74,21 +74,21 @@ Migration `db/migrations/0003_customer_identity.sql` establishes relational mapp
 - **Statement**: `TriageRouter` MUST cryptographically verify customer ID tokens on every inbound request using `google.oauth2.id_token.verify_firebase_token` validating signature, `iss`, `aud`, `exp`, and `iat`; the identity key is (`iss`, `sub`) — `email_verified` is recorded for audit but NOT required (email/password demo accounts are unverified at signUp). Inbound tokens MUST be extracted from session state key `customer_id_token` or message metadata; caller-asserted `session.user_id` MUST NEVER be trusted as `customer_id`. Verified `(issuer, subject)` pairs MUST be resolved to `customer_id` via `ticket-db-mcp` tool `resolve_customer(issuer, subject)`. Agent runtimes MUST NOT hold direct database credentials. Verified identity mappings MAY be cached ONLY in server-side process memory keyed by SHA-256(token) with TTL ≤ token `exp`; any `customer_id` or verification result found in caller-writable session state or message metadata MUST be ignored — only the raw token is read from there.
 - **Rationale**: Eliminates caller-asserted identity spoofing while upholding REQ-AGENT-010 (agents hold no direct database credentials).
 - **Acceptance**: `tests/identity/test_token_verification.py::test_verify_and_resolve_customer`
-- **Status**: open
+- **Status**: done
 - **Owner**: triage-router
 
 ### REQ-IDENT-004: Fail-Closed Anonymous Fallback & Authorization Boundaries
 - **Statement**: If a customer ID token is missing, expired, cryptographically invalid, or maps to an unlinked identity or suspended customer (`status != 'active'`), the system MUST fail closed: set `customer_id = None`, set `customer_verified = false`, and store ticket customer ID as `'anon:' || session_id` to satisfy schema `NOT NULL` constraints. Unauthenticated sessions MAY receive generic RAG FAQ answers, but MUST be strictly denied order lookups, personal PII, or customer ticket history. Tier 0 safety rules and human queue escalations MUST continue to execute fully, preserving the add-only escalation invariant (`REQ-AGENT-003`).
 - **Rationale**: Enforces least privilege and prevents unauthorized data exposure without dropping distressed anonymous customer interactions.
 - **Acceptance**: `tests/identity/test_token_verification.py::test_fail_closed_anonymous_fallback`
-- **Status**: open
+- **Status**: done
 - **Owner**: triage-router
 
 ### REQ-IDENT-005: Cryptographic Trust Chain Propagation across A2A & MCP
 - **Statement**: When `TriageRouter` dispatches an inquiry to `FaqResolver` via A2A, the payload MUST explicitly propagate `{customer_id, customer_verified: bool, identity_issuer: str | None}` signed with the caller's target-scoped OIDC token (`sa-triage@`). `FaqResolver` MUST trust verified customer identity exclusively from authorized callers (`ALLOWED_CALLERS`). When `FaqResolver` invokes `order-lookup-mcp`, it MUST propagate `X-Customer-ID` authenticated by its own service account token (`sa-faq@`). `order-lookup-mcp` MUST reject requests where `customer_verified` is false or `X-Customer-ID` starts with `'anon:'`.
 - **Rationale**: Guarantees end-to-end cryptographic provenance and non-repudiation across multi-agent boundaries (TDD §3.3, §4, §5.1, REQ-AGENT-006).
 - **Acceptance**: `tests/agents/test_a2a_identity_propagation.py::test_identity_trust_chain`
-- **Status**: open
+- **Status**: done
 - **Owner**: agent-service
 
 ### REQ-IDENT-006: Administrative Account Linking & Deterministic Demo Seeding
@@ -102,7 +102,7 @@ Migration `db/migrations/0003_customer_identity.sql` establishes relational mapp
 - **Statement**: The identity subsystem MUST explicitly mitigate: (1) Caller-asserted identity spoofing by requiring server-side JWT verification; (2) Cross-project token replay by enforcing `aud = "susmith-fde-ticket-router"`; (3) Insecure Direct Object References (IDOR) by deriving database RLS keys strictly from verified JWT claims; and (4) Stale or revoked authorizations by querying `customers.status` upon resolution and rejecting suspended accounts (`status = 'suspended'`).
 - **Rationale**: Addresses critical attack vectors in enterprise support platforms (TDD §5.2 threat model).
 - **Acceptance**: `tests/identity/test_token_verification.py::test_threat_mitigations`
-- **Status**: open
+- **Status**: done
 - **Owner**: identity
 
 ### REQ-IDENT-008: Verification Test Suite (Unit, Contract, Migration, Live E2E)
