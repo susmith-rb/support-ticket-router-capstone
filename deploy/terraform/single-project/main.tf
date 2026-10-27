@@ -30,7 +30,9 @@ module "project_services" {
     "run.googleapis.com",
     "container.googleapis.com",
     "pubsub.googleapis.com",
-    "compute.googleapis.com"
+    "compute.googleapis.com",
+    "identitytoolkit.googleapis.com",
+    "apikeys.googleapis.com"
   ]
 }
 
@@ -168,4 +170,13 @@ module "cloud_run_services" {
 
   depends_on = [module.project_services, module.cloud_sql, module.agents_iam]
 }
+
+module "identity" {
+  source     = "./modules/identity"
+  project_id = var.project_id
+  labels     = var.labels
+
+  depends_on = [module.project_services]
+}
+
 

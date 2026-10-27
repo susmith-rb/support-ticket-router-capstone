@@ -207,6 +207,12 @@ output "router_s1_dedicated_base_url" {
   value       = "https://${module.router_endpoint.dedicated_endpoint_dns}"
 }
 
+output "identity_web_api_key_secret_id" {
+  description = "Secret Manager secret ID for Identity Platform Web API key"
+  value       = module.identity.identity_web_api_key_secret_id
+}
+
+
 
 
 

@@ -10,7 +10,16 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from ticket_router.store.models import Order, RedactionMap, Ticket, TicketCreate, TicketEvent
+from ticket_router.store.models import (
+    Customer,
+    CustomerResolution,
+    IdentityEvent,
+    Order,
+    RedactionMap,
+    Ticket,
+    TicketCreate,
+    TicketEvent,
+)
 
 
 class TicketRepository(ABC):
@@ -93,3 +102,54 @@ class OrderRepository(ABC):
         self, customer_id: str, limit: int = 10
     ) -> List[Order]:
         """List recent orders belonging to a customer."""
+
+
+class CustomerRepository(ABC):
+    """Abstract interface for customer identity resolution and lifecycle operations."""
+
+    @abstractmethod
+    def resolve(self, issuer: str, subject: str) -> CustomerResolution:
+        """Resolve an IdP (issuer, subject) identity pair to a customer_id and verify active status.
+
+        Returns CustomerResolution with:
+        - customer_id: str or None
+        - status: "active", "suspended", or "unlinked"
+        - linked: bool (True if mapping exists)
+        - email_verified: bool
+        Never raises for unlinked identities.
+        """
+
+    @abstractmethod
+    def append_identity_event(
+        self,
+        customer_id: Optional[str],
+        issuer: Optional[str],
+        event_type: str,
+        actor: str,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> IdentityEvent:
+        """Append an immutable audit event for customer identity lifecycle."""
+
+    @abstractmethod
+    def link_identity(
+        self,
+        issuer: str,
+        subject: str,
+        customer_id: str,
+        actor: str,
+        email_verified: bool = False,
+    ) -> None:
+        """Administratively link an IdP (issuer, subject) to a customer_id and log audit event."""
+
+    @abstractmethod
+    def unlink_identity(self, issuer: str, subject: str, actor: str) -> bool:
+        """Administratively unlink an IdP identity mapping and log audit event."""
+
+    @abstractmethod
+    def suspend_customer(self, customer_id: str, actor: str) -> bool:
+        """Administratively suspend a customer account and log audit event."""
+
+    @abstractmethod
+    def get_customer(self, customer_id: str) -> Optional[Customer]:
+        """Fetch customer master record by customer_id."""
+

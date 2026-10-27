@@ -122,6 +122,7 @@ async def get_order_tool(
     request: Request,
     x_customer_id: Optional[str] = Header(None, alias="X-Customer-ID"),
     x_verified_customer_id: Optional[str] = Header(None, alias="X-Verified-Customer-Id"),
+    x_customer_verified: Optional[str] = Header(None, alias="X-Customer-Verified"),
     authorization: Optional[str] = Header(None),
     x_serverless_authorization: Optional[str] = Header(None),
     repo: OrderRepository = Depends(get_order_repo),
@@ -150,6 +151,29 @@ async def get_order_tool(
             detail="Missing verified customer context header (X-Customer-ID / X-Verified-Customer-Id).",
         )
 
+    # Customer Identity Guard (REQ-IDENT-004, REQ-IDENT-005):
+    if verified_customer.startswith("anon:"):
+        logger.warning("Rejected unverified anonymous customer lookup: customer_id=%s caller=%s", verified_customer, caller)
+        raise HTTPException(
+            status_code=403,
+            detail="unverified_customer",
+        )
+
+    is_verified = (x_customer_verified or "").strip().lower() == "true"
+    if x_customer_verified is not None and not is_verified:
+        logger.warning("Rejected unverified customer (X-Customer-Verified=%s) customer_id=%s caller=%s", x_customer_verified, verified_customer, caller)
+        raise HTTPException(
+            status_code=403,
+            detail="unverified_customer",
+        )
+    require_verified_header = bool(request.app.state.require_verified_header)
+    if require_verified_header and not is_verified:
+        logger.warning("Rejected customer lookup without required X-Customer-Verified: true header customer_id=%s caller=%s", verified_customer, caller)
+        raise HTTPException(
+            status_code=403,
+            detail="unverified_customer",
+        )
+
     order_id = body_dict.get("order_id")
     if not order_id:
         raise HTTPException(status_code=400, detail="Field 'order_id' is required.")
@@ -160,8 +184,10 @@ async def get_order_tool(
 @router.post("/get_order", response_model=GetOrderResponse)
 async def get_order_http(
     req: GetOrderHttpRequest,
+    request: Request,
     x_customer_id: Optional[str] = Header(None, alias="X-Customer-ID"),
     x_verified_customer_id: Optional[str] = Header(None, alias="X-Verified-Customer-Id"),
+    x_customer_verified: Optional[str] = Header(None, alias="X-Customer-Verified"),
     authorization: Optional[str] = Header(None),
     x_serverless_authorization: Optional[str] = Header(None),
     repo: OrderRepository = Depends(get_order_repo),
@@ -193,10 +219,36 @@ async def get_order_http(
             )
         effective_customer = req.customer_id
 
+    # Customer Identity Guard (REQ-IDENT-004, REQ-IDENT-005):
+    if effective_customer.startswith("anon:"):
+        logger.warning("Rejected unverified anonymous customer lookup: customer_id=%s caller=%s", effective_customer, caller)
+        raise HTTPException(
+            status_code=403,
+            detail="unverified_customer",
+        )
+
+    is_verified = (x_customer_verified or "").strip().lower() == "true"
+    if x_customer_verified is not None and not is_verified:
+        logger.warning("Rejected unverified customer (X-Customer-Verified=%s) customer_id=%s caller=%s", x_customer_verified, effective_customer, caller)
+        raise HTTPException(
+            status_code=403,
+            detail="unverified_customer",
+        )
+    require_verified_header = bool(request.app.state.require_verified_header)
+    if require_verified_header and not is_verified:
+        logger.warning("Rejected customer lookup without required X-Customer-Verified: true header customer_id=%s caller=%s", effective_customer, caller)
+        raise HTTPException(
+            status_code=403,
+            detail="unverified_customer",
+        )
+
     return _lookup_order_for_customer(repo, req.order_id, effective_customer)
 
 
-def create_app(order_repo: Optional[OrderRepository] = None) -> FastAPI:
+def create_app(
+    order_repo: Optional[OrderRepository] = None,
+    require_verified_header: bool = False,
+) -> FastAPI:
     """Create and configure FastAPI application for order-lookup-mcp."""
     if order_repo is None:
         allow_fake = os.getenv("ALLOW_FAKE_REPOS", "").lower() in ("1", "true")
@@ -214,6 +266,7 @@ def create_app(order_repo: Optional[OrderRepository] = None) -> FastAPI:
         description="MCP server for read-only order lookups with Postgres RLS customer isolation.",
     )
     application.state.order_repo = order_repo
+    application.state.require_verified_header = require_verified_header
     application.include_router(router)
     return application
 

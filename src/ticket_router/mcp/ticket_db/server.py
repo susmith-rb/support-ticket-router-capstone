@@ -28,13 +28,15 @@ from ticket_router.mcp.ticket_db.schemas import (
     ClaimTicketResponse,
     ReidentifyPiiRequest,
     ReidentifyPiiResponse,
+    ResolveCustomerRequest,
+    ResolveCustomerResponse,
     ResolveTicketRequest,
     ResolveTicketResponse,
     UpsertTicketRequest,
     UpsertTicketResponse,
     get_tool_schemas,
 )
-from ticket_router.store.interfaces import TicketRepository
+from ticket_router.store.interfaces import CustomerRepository, TicketRepository
 from ticket_router.store.models import TicketCreate
 
 logger = logging.getLogger("ticket_router.mcp.ticket_db")
@@ -73,6 +75,14 @@ def get_ticket_repo(request: Request) -> TicketRepository:
         return request.app.state.ticket_repo
     except AttributeError as err:
         raise RuntimeError("TicketRepository not configured on app.state") from err
+
+
+def get_customer_repo(request: Request) -> CustomerRepository:
+    """Dependency retrieving configured CustomerRepository from app state."""
+    try:
+        return request.app.state.customer_repo
+    except AttributeError as err:
+        raise RuntimeError("CustomerRepository not configured on app.state") from err
 
 
 @router.get("/health")
@@ -236,20 +246,63 @@ async def reidentify_pii(
     )
 
 
+@router.post("/tools/resolve_customer", response_model=ResolveCustomerResponse)
+@router.post("/resolve_customer", response_model=ResolveCustomerResponse)
+async def resolve_customer(
+    req: ResolveCustomerRequest,
+    authorization: Optional[str] = Header(None),
+    x_serverless_authorization: Optional[str] = Header(None),
+    customer_repo: CustomerRepository = Depends(get_customer_repo),
+) -> ResolveCustomerResponse:
+    caller = _extract_caller_identity(authorization, x_serverless_authorization)
+    logger.info("resolve_customer called by caller=%s issuer=%s", caller, req.issuer)
+
+    res = customer_repo.resolve(req.issuer, req.subject)
+
+    if res.linked:
+        event_type = "resolve_ok" if res.status == "active" else "resolve_suspended"
+    else:
+        event_type = "resolve_unlinked"
+
+    customer_repo.append_identity_event(
+        customer_id=res.customer_id,
+        issuer=req.issuer,
+        event_type=event_type,
+        actor=caller,
+        payload={"subject": req.subject},
+    )
+
+    return ResolveCustomerResponse(
+        customer_id=res.customer_id,
+        status=res.status,
+        linked=res.linked,
+    )
+
+
 def create_app(
     repo: Optional[TicketRepository] = None,
     redaction_store: Optional[Dict[str, Dict[str, Any]]] = None,
+    customer_repo: Optional[CustomerRepository] = None,
 ) -> FastAPI:
     """Create and configure FastAPI application for ticket-db-mcp."""
     if repo is None:
         allow_fake = os.getenv("ALLOW_FAKE_REPOS", "").lower() in ("1", "true")
         if allow_fake:
-            from ticket_router.store.fake import FakeTicketRepo
+            from ticket_router.store.fake import FakeCustomerRepo, FakeTicketRepo
+
             repo = FakeTicketRepo()
+            if customer_repo is None:
+                customer_repo = FakeCustomerRepo()
         else:
             raise RuntimeError(
                 "TicketRepository is required to create ticket-db-mcp app (or set ALLOW_FAKE_REPOS=1)"
             )
+    elif customer_repo is None:
+        allow_fake = os.getenv("ALLOW_FAKE_REPOS", "").lower() in ("1", "true")
+        if allow_fake or (repo is not None and repo.__class__.__name__ == "FakeTicketRepo"):
+            from ticket_router.store.fake import FakeCustomerRepo
+
+            customer_repo = FakeCustomerRepo()
 
     application = FastAPI(
         title="ticket-db-mcp",
@@ -257,6 +310,7 @@ def create_app(
         description="MCP server for ticket persistence, lifecycle events, and audited PII re-identification.",
     )
     application.state.ticket_repo = repo
+    application.state.customer_repo = customer_repo
     application.state.pii_store = redaction_store if redaction_store is not None else {}
     application.include_router(router)
     return application

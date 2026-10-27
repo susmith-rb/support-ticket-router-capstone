@@ -86,3 +86,46 @@ class RedactionMap:
     key_id: str = "secret-manager-v1"
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: Optional[datetime] = None
+
+
+@dataclass
+class Customer:
+    """Master customer record in customers table."""
+
+    customer_id: str
+    status: str = "active"
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+@dataclass
+class CustomerIdentity:
+    """Identity Platform identity mapping in customer_identities table."""
+
+    issuer: str
+    subject: str
+    customer_id: str
+    email_verified: bool = False
+    linked_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+@dataclass
+class IdentityEvent:
+    """Immutable audit event in identity_events table."""
+
+    event_id: UUID
+    customer_id: Optional[str]
+    issuer: Optional[str]
+    event_type: str
+    actor: str
+    payload: Optional[Dict[str, Any]] = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+@dataclass
+class CustomerResolution:
+    """Resolution result of an IdP identity mapping to a customer record."""
+
+    customer_id: Optional[str]
+    status: str  # "active" | "suspended" | "unlinked"
+    linked: bool
+    email_verified: bool = False

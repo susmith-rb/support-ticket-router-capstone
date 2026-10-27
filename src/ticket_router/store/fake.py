@@ -8,11 +8,25 @@ from __future__ import annotations
 
 import threading
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 
-from ticket_router.store.interfaces import OrderRepository, TicketRepository
-from ticket_router.store.models import Order, RedactionMap, Ticket, TicketCreate, TicketEvent
+from ticket_router.store.interfaces import (
+    CustomerRepository,
+    OrderRepository,
+    TicketRepository,
+)
+from ticket_router.store.models import (
+    Customer,
+    CustomerIdentity,
+    CustomerResolution,
+    IdentityEvent,
+    Order,
+    RedactionMap,
+    Ticket,
+    TicketCreate,
+    TicketEvent,
+)
 
 
 class FakeTicketRepo(TicketRepository):
@@ -220,3 +234,164 @@ class FakeOrderRepo(OrderRepository):
             ]
             orders.sort(key=lambda x: x.created_at, reverse=True)
             return orders[:limit]
+
+
+class FakeCustomerRepo(CustomerRepository):
+    """In-memory fake implementing CustomerRepository for testing."""
+
+    def __init__(
+        self,
+        customers: Optional[List[Customer]] = None,
+        identities: Optional[List[CustomerIdentity]] = None,
+    ) -> None:
+        self._lock = threading.Lock()
+        self._customers: Dict[str, Customer] = {}
+        self._identities: Dict[Tuple[str, str], CustomerIdentity] = {}
+        self._events: List[IdentityEvent] = []
+
+        if customers:
+            for c in customers:
+                self._customers[c.customer_id] = c
+        if identities:
+            for i in identities:
+                self._identities[(i.issuer, i.subject)] = i
+
+    def add_customer(self, customer: Customer) -> None:
+        with self._lock:
+            self._customers[customer.customer_id] = customer
+
+    def add_identity(self, identity: CustomerIdentity) -> None:
+        with self._lock:
+            self._identities[(identity.issuer, identity.subject)] = identity
+
+    def resolve(self, issuer: str, subject: str) -> CustomerResolution:
+        with self._lock:
+            ident = self._identities.get((issuer, subject))
+            if ident is None:
+                return CustomerResolution(
+                    customer_id=None,
+                    status="unlinked",
+                    linked=False,
+                    email_verified=False,
+                )
+            cust = self._customers.get(ident.customer_id)
+            if cust is None:
+                return CustomerResolution(
+                    customer_id=None,
+                    status="unlinked",
+                    linked=False,
+                    email_verified=False,
+                )
+            return CustomerResolution(
+                customer_id=cust.customer_id,
+                status=cust.status,
+                linked=True,
+                email_verified=ident.email_verified,
+            )
+
+    def append_identity_event(
+        self,
+        customer_id: Optional[str],
+        issuer: Optional[str],
+        event_type: str,
+        actor: str,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> IdentityEvent:
+        with self._lock:
+            now = datetime.now(timezone.utc)
+            event = IdentityEvent(
+                event_id=uuid4(),
+                customer_id=customer_id,
+                issuer=issuer,
+                event_type=event_type,
+                actor=actor,
+                payload=payload or {},
+                created_at=now,
+            )
+            self._events.append(event)
+            return event
+
+    def link_identity(
+        self,
+        issuer: str,
+        subject: str,
+        customer_id: str,
+        actor: str,
+        email_verified: bool = False,
+    ) -> None:
+        with self._lock:
+            now = datetime.now(timezone.utc)
+            if customer_id not in self._customers:
+                self._customers[customer_id] = Customer(
+                    customer_id=customer_id,
+                    status="active",
+                    created_at=now,
+                )
+            self._identities[(issuer, subject)] = CustomerIdentity(
+                issuer=issuer,
+                subject=subject,
+                customer_id=customer_id,
+                email_verified=email_verified,
+                linked_at=now,
+            )
+            self._events.append(
+                IdentityEvent(
+                    event_id=uuid4(),
+                    customer_id=customer_id,
+                    issuer=issuer,
+                    event_type="identity_linked",
+                    actor=actor,
+                    payload={"subject": subject, "email_verified": email_verified},
+                    created_at=now,
+                )
+            )
+
+    def unlink_identity(self, issuer: str, subject: str, actor: str) -> bool:
+        with self._lock:
+            ident = self._identities.pop((issuer, subject), None)
+            if ident is None:
+                return False
+            now = datetime.now(timezone.utc)
+            self._events.append(
+                IdentityEvent(
+                    event_id=uuid4(),
+                    customer_id=ident.customer_id,
+                    issuer=issuer,
+                    event_type="identity_unlinked",
+                    actor=actor,
+                    payload={"subject": subject},
+                    created_at=now,
+                )
+            )
+            return True
+
+    def suspend_customer(self, customer_id: str, actor: str) -> bool:
+        with self._lock:
+            cust = self._customers.get(customer_id)
+            if cust is None:
+                return False
+            cust.status = "suspended"
+            now = datetime.now(timezone.utc)
+            self._events.append(
+                IdentityEvent(
+                    event_id=uuid4(),
+                    customer_id=customer_id,
+                    issuer=None,
+                    event_type="customer_suspended",
+                    actor=actor,
+                    payload={},
+                    created_at=now,
+                )
+            )
+            return True
+
+    def get_customer(self, customer_id: str) -> Optional[Customer]:
+        with self._lock:
+            return self._customers.get(customer_id)
+
+    def list_events(self, customer_id: Optional[str] = None) -> List[IdentityEvent]:
+        with self._lock:
+            if customer_id is None:
+                return list(self._events)
+            return [e for e in self._events if e.customer_id == customer_id]
+

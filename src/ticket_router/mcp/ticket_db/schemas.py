@@ -78,6 +78,23 @@ class ReidentifyPiiResponse(BaseModel):
     error: Optional[str] = Field(default=None, description="Error reason if unmasking failed")
 
 
+class ResolveCustomerRequest(BaseModel):
+    """Input payload for resolve_customer tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    issuer: str = Field(..., description="OIDC token issuer URL (e.g. https://securetoken.google.com/<project>)")
+    subject: str = Field(..., description="IdP subject identifier (localId / uid)")
+
+
+class ResolveCustomerResponse(BaseModel):
+    """Output payload for resolve_customer tool."""
+
+    customer_id: Optional[str] = Field(default=None, description="Mapped internal customer ID, or null if unlinked")
+    status: str = Field(..., description="Customer status: active, suspended, or unlinked")
+    linked: bool = Field(..., description="True if identity is mapped to a customer account")
+
+
 def get_tool_schemas() -> Dict[str, Any]:
     """Return JSON schemas for ticket-db-mcp tools per REQ-AGENT-010."""
     return {
@@ -104,5 +121,11 @@ def get_tool_schemas() -> Dict[str, Any]:
             "description": "Audited customer PII unmasking restricted strictly to the claimed ticket operator.",
             "parameters": ReidentifyPiiRequest.model_json_schema(),
             "returns": ReidentifyPiiResponse.model_json_schema(),
+        },
+        "resolve_customer": {
+            "name": "resolve_customer",
+            "description": "Resolve an IdP (issuer, subject) identity pair to an internal customer ID.",
+            "parameters": ResolveCustomerRequest.model_json_schema(),
+            "returns": ResolveCustomerResponse.model_json_schema(),
         },
     }

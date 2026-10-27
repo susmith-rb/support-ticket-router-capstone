@@ -78,15 +78,19 @@ def get_app(service_name: Optional[str] = None) -> FastAPI:
         from ticket_router.mcp.ticket_db.server import create_app as create_ticket_db_app
 
         if allow_fake:
-            from ticket_router.store.fake import FakeTicketRepo
+            from ticket_router.store.fake import FakeCustomerRepo, FakeTicketRepo
 
-            return create_ticket_db_app(repo=FakeTicketRepo())
+            return create_ticket_db_app(
+                repo=FakeTicketRepo(),
+                customer_repo=FakeCustomerRepo(),
+            )
 
         conn_mgr = build_connection_manager()
-        from ticket_router.store.postgres import PostgresTicketRepo
+        from ticket_router.store.postgres import PostgresCustomerRepo, PostgresTicketRepo
 
         ticket_repo = PostgresTicketRepo(connection_factory=conn_mgr.get_connection)
-        return create_ticket_db_app(repo=ticket_repo)
+        customer_repo = PostgresCustomerRepo(connection_factory=conn_mgr.get_connection)
+        return create_ticket_db_app(repo=ticket_repo, customer_repo=customer_repo)
 
     if svc == "order_lookup":
         from ticket_router.mcp.order_lookup.server import create_app as create_order_lookup_app
@@ -94,13 +98,19 @@ def get_app(service_name: Optional[str] = None) -> FastAPI:
         if allow_fake:
             from ticket_router.store.fake import FakeOrderRepo
 
-            return create_order_lookup_app(order_repo=FakeOrderRepo())
+            return create_order_lookup_app(
+                order_repo=FakeOrderRepo(),
+                require_verified_header=True,
+            )
 
         conn_mgr = build_connection_manager()
         from ticket_router.store.postgres import PostgresOrderRepo
 
         order_repo = PostgresOrderRepo(connection_factory=conn_mgr.get_connection)
-        return create_order_lookup_app(order_repo=order_repo)
+        return create_order_lookup_app(
+            order_repo=order_repo,
+            require_verified_header=True,
+        )
 
     if svc == "human_queue":
         from ticket_router.agents.human_queue.server import create_app as create_human_queue_app

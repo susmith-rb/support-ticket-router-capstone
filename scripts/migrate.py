@@ -252,6 +252,53 @@ def verify_database(conn) -> Dict[str, Any]:
                 if user not in memberships["analyst_ro"]:
                     raise RuntimeError(f"Human IAM user {user} is not granted analyst_ro!")
 
+        # 6. Customer identity schema & permissions verification (0003_customer_identity)
+        identity_tables = {"customers", "customer_identities", "identity_events"}
+        if identity_tables.issubset(tables) or "customers" in tables or "customer_identities" in tables:
+            missing_identity = identity_tables - tables
+            if missing_identity:
+                raise RuntimeError(f"Missing required customer identity table(s): {missing_identity}")
+
+            report["identity_tables"] = sorted(identity_tables)
+            logger.info("Customer identity tables verified: %s", report["identity_tables"])
+
+            # Verify zero email storage invariant (no email columns in identity tables)
+            cursor.execute("""
+                SELECT table_name, column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name IN ('customers', 'customer_identities', 'identity_events')
+                  AND column_name IN ('email', 'email_address', 'customer_email', 'user_email');
+            """)
+            forbidden_cols = cursor.fetchall()
+            if forbidden_cols:
+                raise RuntimeError(f"PII violation: forbidden email column(s) detected: {forbidden_cols}")
+            logger.info("Zero email storage invariant verified (no email columns).")
+
+            # Verify ticket_rw grants on customer identity tables
+            cursor.execute("SELECT has_table_privilege('ticket_rw', 'customers', 'SELECT');")
+            row = cursor.fetchone()
+            if not (row and row[0]):
+                raise RuntimeError("Role ticket_rw is not granted SELECT on customers")
+
+            cursor.execute("SELECT has_table_privilege('ticket_rw', 'customer_identities', 'SELECT');")
+            row = cursor.fetchone()
+            if not (row and row[0]):
+                raise RuntimeError("Role ticket_rw is not granted SELECT on customer_identities")
+
+            cursor.execute("SELECT has_table_privilege('ticket_rw', 'identity_events', 'INSERT');")
+            row = cursor.fetchone()
+            if not (row and row[0]):
+                raise RuntimeError("Role ticket_rw is not granted INSERT on identity_events")
+            logger.info("ticket_rw permissions on customer identity tables verified.")
+
+            # Row count on customers (backfill check)
+            cursor.execute("SELECT count(*) FROM customers;")
+            row = cursor.fetchone()
+            cust_count = row[0] if row else 0
+            report["customers_count"] = cust_count
+            logger.info("customers row count: %d", cust_count)
+
         logger.info("Verification passed: all tables, roles, RLS, and memberships are valid.")
         return report
     finally:

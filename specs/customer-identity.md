@@ -60,14 +60,14 @@ Migration `db/migrations/0003_customer_identity.sql` establishes relational mapp
 - **Statement**: Customer authentication MUST be managed by Google Cloud Identity Platform (`identitytoolkit.googleapis.com`) provisioned via Terraform (`google_identity_platform_config`) with email/password sign-in enabled, authorized domains configured, and multi-tenancy disabled. Customer ID tokens MUST be Firebase-format JWTs where `iss = "https://securetoken.google.com/susmith-fde-ticket-router"`, `aud = "susmith-fde-ticket-router"`, and `sub` contains the unique Identity Platform user identifier (UID).
 - **Rationale**: TDD §5.1 and §5.2. Offloads credential storage and token issuance to a managed GCP IdP without custom auth servers.
 - **Acceptance**: `tests/identity/test_token_verification.py::test_idp_token_claims_and_format`
-- **Status**: open
+- **Status**: done
 - **Owner**: identity
 
 ### REQ-IDENT-002: Relational Customer Identity Schema & Migration 0003
 - **Statement**: Migration `db/migrations/0003_customer_identity.sql` MUST idempotently create tables `customers` (backfilled from `orders_mock` for `cust_1001`..`cust_1050`), `customer_identities` (indexed on `customer_id`), and `identity_events`. Foreign keys MUST enforce referential integrity (`ON DELETE CASCADE`). Table permissions MUST grant `SELECT ON customers, customer_identities TO ticket_rw`, while write permissions remain restricted to administrative break-glass roles. PII protection MUST be strictly enforced: real email addresses MUST NOT be stored in Postgres columns (subject UID only).
 - **Rationale**: TDD §3, §5.1, and §5.2. Provides relational integrity and auditability while upholding C2/C3 zero-PII storage invariants.
 - **Acceptance**: `tests/infra/test_migration_0003.py::test_customer_identity_schema`
-- **Status**: open
+- **Status**: done
 - **Owner**: store
 
 ### REQ-IDENT-003: Server-Side JWT Verification & Identity Resolution via ticket-db-mcp
@@ -95,7 +95,7 @@ Migration `db/migrations/0003_customer_identity.sql` establishes relational mapp
 - **Statement**: Customer account linking MUST be managed administratively via CLI script `scripts/link_customer_identity.py` executing with Cloud SQL IAM break-glass credentials to map `(issuer, subject)` to a known `customer_id` and log an event in `identity_events`. Automated test suites and demo environments MUST provision at least 2 deterministic Identity Platform test accounts (via REST API `identitytoolkit.googleapis.com/v1/accounts:signUp` using a Terraform-provisioned restricted API key) and link them to `cust_1001` and `cust_1002`. Automatic just-in-time account creation upon token presentation is strictly prohibited in v1.
 - **Rationale**: Prevents account takeover, prevents unverified linkage of arbitrary emails to existing customer order history, and provides repeatable end-to-end evaluation seeds.
 - **Acceptance**: `tests/infra/test_link_identity_script.py::test_account_linking_and_seeding`
-- **Status**: open
+- **Status**: done
 - **Owner**: identity
 
 ### REQ-IDENT-007: Identity Threat Mitigations (Anti-Spoofing, Replay, IDOR, Suspension)

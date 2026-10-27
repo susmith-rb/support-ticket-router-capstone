@@ -12,8 +12,17 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 from uuid import UUID, uuid4
 
-from ticket_router.store.interfaces import OrderRepository, TicketRepository
-from ticket_router.store.models import Order, RedactionMap, Ticket, TicketCreate, TicketEvent
+from ticket_router.store.interfaces import CustomerRepository, OrderRepository, TicketRepository
+from ticket_router.store.models import (
+    Customer,
+    CustomerResolution,
+    IdentityEvent,
+    Order,
+    RedactionMap,
+    Ticket,
+    TicketCreate,
+    TicketEvent,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -559,3 +568,237 @@ class PostgresOrderRepo(OrderRepository):
         finally:
             cursor.close()
             conn.close()
+
+
+class PostgresCustomerRepo(CustomerRepository):
+    """PostgreSQL implementation of CustomerRepository for identity mapping and audit trail."""
+
+    def __init__(self, connection_factory: Callable[[], Any]) -> None:
+        self._connection_factory = connection_factory
+
+    def resolve(self, issuer: str, subject: str) -> CustomerResolution:
+        """Resolve an IdP (issuer, subject) identity pair to a customer_id and verify active status.
+
+        Joins customer_identities -> customers.
+        Never raises for unlinked identities.
+        """
+        query = """
+        SELECT ci.customer_id, c.status, ci.email_verified
+        FROM customer_identities ci
+        JOIN customers c ON ci.customer_id = c.customer_id
+        WHERE ci.issuer = %s AND ci.subject = %s;
+        """
+        conn = self._connection_factory()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(query, (issuer, subject))
+            row = cursor.fetchone()
+            if row is None:
+                return CustomerResolution(
+                    customer_id=None,
+                    status="unlinked",
+                    linked=False,
+                    email_verified=False,
+                )
+
+            customer_id = str(row[0])
+            status = str(row[1]).lower() if row[1] else "active"
+            email_verified = bool(row[2])
+            return CustomerResolution(
+                customer_id=customer_id,
+                status=status,
+                linked=True,
+                email_verified=email_verified,
+            )
+        finally:
+            cursor.close()
+            conn.close()
+
+    def append_identity_event(
+        self,
+        customer_id: Optional[str],
+        issuer: Optional[str],
+        event_type: str,
+        actor: str,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> IdentityEvent:
+        """Append an immutable audit event for customer identity lifecycle."""
+        event_id = uuid4()
+        payload_json = json.dumps(payload or {})
+        query = """
+        INSERT INTO identity_events (
+            event_id, customer_id, issuer, event_type, actor, payload, created_at
+        ) VALUES (
+            %s, %s, %s, %s, %s, %s::jsonb, CURRENT_TIMESTAMP
+        )
+        RETURNING event_id, customer_id, issuer, event_type, actor, payload, created_at;
+        """
+        conn = self._connection_factory()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                query,
+                (
+                    str(event_id),
+                    customer_id,
+                    issuer,
+                    event_type,
+                    actor,
+                    payload_json,
+                ),
+            )
+            conn.commit()
+            row = cursor.fetchone()
+            if row is None:
+                raise RuntimeError("Failed to insert identity event row")
+            return IdentityEvent(
+                event_id=UUID(str(row[0])),
+                customer_id=str(row[1]) if row[1] else None,
+                issuer=str(row[2]) if row[2] else None,
+                event_type=str(row[3]),
+                actor=str(row[4]),
+                payload=_decode_json(row[5]) or {},
+                created_at=_parse_datetime(row[6]),
+            )
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
+            conn.close()
+
+    def link_identity(
+        self,
+        issuer: str,
+        subject: str,
+        customer_id: str,
+        actor: str,
+        email_verified: bool = False,
+    ) -> None:
+        """Administratively link an IdP (issuer, subject) to a customer_id, upserting customer record and logging audit event."""
+        upsert_customer_sql = """
+        INSERT INTO customers (customer_id, status, created_at)
+        VALUES (%s, 'active', CURRENT_TIMESTAMP)
+        ON CONFLICT (customer_id) DO NOTHING;
+        """
+        upsert_identity_sql = """
+        INSERT INTO customer_identities (issuer, subject, customer_id, email_verified, linked_at)
+        VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+        ON CONFLICT (issuer, subject) DO UPDATE
+        SET customer_id = EXCLUDED.customer_id,
+            email_verified = EXCLUDED.email_verified,
+            linked_at = CURRENT_TIMESTAMP;
+        """
+        conn = self._connection_factory()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(upsert_customer_sql, (customer_id,))
+            cursor.execute(
+                upsert_identity_sql,
+                (issuer, subject, customer_id, email_verified),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
+            conn.close()
+
+        # Write identity event with no token/PII
+        self.append_identity_event(
+            customer_id=customer_id,
+            issuer=issuer,
+            event_type="link_identity",
+            actor=actor,
+            payload={"subject": subject, "email_verified": email_verified},
+        )
+
+    def unlink_identity(self, issuer: str, subject: str, actor: str) -> bool:
+        """Administratively unlink an IdP identity mapping and log audit event."""
+        delete_sql = """
+        DELETE FROM customer_identities
+        WHERE issuer = %s AND subject = %s
+        RETURNING customer_id;
+        """
+        conn = self._connection_factory()
+        cursor = conn.cursor()
+        deleted_cust_id: Optional[str] = None
+        try:
+            cursor.execute(delete_sql, (issuer, subject))
+            row = cursor.fetchone()
+            if row:
+                deleted_cust_id = str(row[0])
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
+            conn.close()
+
+        if deleted_cust_id is not None:
+            self.append_identity_event(
+                customer_id=deleted_cust_id,
+                issuer=issuer,
+                event_type="unlink_identity",
+                actor=actor,
+                payload={"subject": subject},
+            )
+            return True
+        return False
+
+    def suspend_customer(self, customer_id: str, actor: str) -> bool:
+        """Administratively suspend a customer account and log audit event."""
+        update_sql = """
+        UPDATE customers
+        SET status = 'suspended'
+        WHERE customer_id = %s
+        RETURNING customer_id;
+        """
+        conn = self._connection_factory()
+        cursor = conn.cursor()
+        suspended: bool = False
+        try:
+            cursor.execute(update_sql, (customer_id,))
+            row = cursor.fetchone()
+            if row:
+                suspended = True
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
+            conn.close()
+
+        if suspended:
+            self.append_identity_event(
+                customer_id=customer_id,
+                issuer=None,
+                event_type="suspend_customer",
+                actor=actor,
+                payload={"customer_id": customer_id},
+            )
+            return True
+        return False
+
+    def get_customer(self, customer_id: str) -> Optional[Customer]:
+        """Fetch customer master record by customer_id."""
+        query = "SELECT customer_id, status, created_at FROM customers WHERE customer_id = %s;"
+        conn = self._connection_factory()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(query, (customer_id,))
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            return Customer(
+                customer_id=str(row[0]),
+                status=str(row[1]),
+                created_at=_parse_datetime(row[2]),
+            )
+        finally:
+            cursor.close()
+            conn.close()
+
