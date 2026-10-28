@@ -153,7 +153,7 @@ def test_faq_gke_manifests():
     3. All 14 contract environment variables defined in deployment.yaml.
     4. Probes configured on /healthz.
     5. HPA targets 60% CPU utilization with minReplicas 1 and maxReplicas 10.
-    6. deploy_faq_gke.sh is executable and supports --dry-run.
+    6. Manifests are applied by the CD pipeline (cicd/cloudbuild-deploy.yaml, REQ-CD-005).
     """
     gke_mod_dir = MOD_DIR / "gke-autopilot"
     assert gke_mod_dir.is_dir()
@@ -282,19 +282,12 @@ def test_faq_gke_manifests():
     assert hpa_data["spec"]["maxReplicas"] == 10
     assert hpa_data["spec"]["metrics"][0]["resource"]["target"]["averageUtilization"] == 60
 
-    # Shell script
-    deploy_sh = SCRIPTS_DIR / "deploy_faq_gke.sh"
-    assert deploy_sh.is_file()
-    assert os.access(deploy_sh, os.X_OK)
-    sh_content = deploy_sh.read_text(encoding="utf-8")
-    assert "gcloud container clusters get-credentials" in sh_content
-    assert "kubectl apply" in sh_content
-    assert "ManagedCertificate" in sh_content
     assert "faq-resolver-backend-config" in (K8S_DIR / "backendconfig.yaml").read_text(encoding="utf-8")
 
-    # Shell script dry-run execution
-    dry_run_res = subprocess.run([str(deploy_sh), "--dry-run"], capture_output=True, text=True, check=False)
-    assert dry_run_res.returncode == 0, f"deploy_faq_gke.sh --dry-run failed: {dry_run_res.stderr}"
+    # Manifests are rolled out by CD (manual deploy_faq_gke.sh removed 2026-10-28)
+    cd_yaml = (REPO_ROOT / "cicd" / "cloudbuild-deploy.yaml").read_text(encoding="utf-8")
+    assert "kubectl apply -f /workspace/k8s-render/" in cd_yaml
+    assert "DOMAIN_PLACEHOLDER" in cd_yaml  # placeholders rendered before apply
 
 
 def test_dedicated_router_endpoint_and_static_ip_terraform():

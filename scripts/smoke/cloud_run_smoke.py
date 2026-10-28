@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cloud Run MCP Services Live Smoke Test Suite.
 
-Port of operator Cloud Run smoke test (/scratch/smoke_cloudrun.sh).
+Port of the former operator Cloud Run smoke script (removed once CD was verified).
 Implements REQ-CD-007: Post-deploy smoke gates for Cloud Run microservices:
 1. /health 200 on all 3 services (ticket-db-mcp, order-lookup-mcp, human-queue)
 2. Unauthenticated request rejected with 403 Forbidden
