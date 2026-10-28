@@ -18,6 +18,7 @@ CD never runs `terraform`.
 | `REQ-CD-008` | Rollback + last-good record | done | `tests/infra/test_cd_pipeline_static.py::test_cd_rollback_and_last_good` |
 | `REQ-CD-009` | Least-privilege CD service account (Terraform) | done | `tests/infra/test_cd_pipeline_static.py::test_cd_service_account_roles` |
 | `REQ-CD-010` | Terraform/CD ownership split (no drift fights) | done | `tests/infra/test_cd_pipeline_static.py::test_terraform_ignores_cd_owned_fields` |
+| `REQ-CD-011` | Change-aware Agent Engine update | done | `tests/infra/test_ae_fingerprint.py::test_fingerprint_change_detection` |
 
 ---
 
@@ -137,3 +138,10 @@ CD never runs `terraform`.
 
 ### Execution graph (2026-10-28)
 `require-ci-green` ∥ `build-and-push-image` ∥ `prepare-python` (shared venv) → `fetch-last-good` (needs CI green + image) → `deploy-cloud-run` ∥ `deploy-gke` ∥ `deploy-agent-engine` → `post-deploy-smoke` → `rollback-if-failed` → `record-last-good`. Serial run d8317336 took 699 s (deploys 76 + 54 + 210 s back to back); deploys now overlap so wall time is bounded by Agent Engine (~210 s). Parallel failures append to `/workspace/FAILED`.
+
+### REQ-CD-011: Change-aware Agent Engine update
+- **Statement**: `deploy-agent-engine` MUST skip the Agent Engine update when the TriageRouter package fingerprint equals the fingerprint of what is actually deployed. Fingerprint = SHA-256 over sorted (relative path, bytes) of: `src/ticket_router/**` excluding `agents/faq_resolver/**`, `agents/human_queue/**`, `mcp/**`, `store/**`, `retrieval/**`, `serve.py`, `__pycache__/`, `*.pyc`; plus `scripts/deploy_agents/deploy_triage_agent_runtime.py` and `pyproject.toml`. (TriageRouter imports none of the excluded packages — verified 2026-10-28.) The deployed fingerprint is stored in `gs://$PROJECT_ID-laya/cd/agent_engine_deployed.json` and written **immediately after a successful update** (not at the end of the build), so it reflects the live engine even if later smoke fails and Cloud Run/GKE roll back. Missing/unreadable record ⇒ deploy. Substitution `_FORCE_AGENT_ENGINE=true` forces the update.
+- **Rationale**: Agent Engine update is ~210 s of a ~470 s run; most commits don't touch TriageRouter.
+- **Acceptance**: `tests/infra/test_ae_fingerprint.py::test_fingerprint_change_detection`
+- **Status**: done
+- **Owner**: platform

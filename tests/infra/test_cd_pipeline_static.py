@@ -216,6 +216,38 @@ def test_cd_updates_agent_engine():
     assert "--update" in script
 
 
+# REQ-CD-011
+def test_cd_agent_engine_step_is_change_aware():
+    """Verify deploy-agent-engine step implements REQ-CD-011 change awareness.
+
+    Invariants:
+    1. cloudbuild-deploy.yaml defines _FORCE_AGENT_ENGINE substitution defaulting to false.
+    2. Step deploy-agent-engine invokes ae_fingerprint.py should-deploy with --bucket and --force.
+    3. Handles exit code 3 (SKIP) by exiting 0 without deploying.
+    4. On exit code 0, invokes deploy_triage_agent_runtime.py --update followed by ae_fingerprint.py record.
+    5. Fails closed on any unexpected exit code from should-deploy.
+    """
+    with open(DEPLOY_YAML, encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+
+    substitutions = config.get("substitutions", {})
+    assert "_FORCE_AGENT_ENGINE" in substitutions
+    assert substitutions["_FORCE_AGENT_ENGINE"] == "false"
+
+    ae_step = next((s for s in config.get("steps", []) if s.get("id") == "deploy-agent-engine"), None)
+    assert ae_step is not None, "Missing step 'deploy-agent-engine'"
+
+    script = " ".join(ae_step.get("args", []))
+    assert "ae_fingerprint.py should-deploy" in script
+    assert "--force" in script
+    assert "_FORCE_AGENT_ENGINE" in script
+    assert "3" in script  # Checks exit code 3 for skip
+    assert "deploy_triage_agent_runtime.py" in script
+    assert "ae_fingerprint.py record" in script
+    assert "--sha" in script
+
+
+
 # REQ-CD-007
 def test_cd_post_deploy_smoke():
     """Verify post-deploy smoke gate scripts and execution in CD pipeline.

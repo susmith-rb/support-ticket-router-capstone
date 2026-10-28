@@ -22,6 +22,7 @@ substitutions:
   _REGION: 'us-central1'
   _GKE_CLUSTER: 'support-agents'
   _FAQ_DOMAIN: 'faq.8-232-184-225.sslip.io'
+  _FORCE_AGENT_ENGINE: 'false'
 
 steps:
   # ===========================================================================
@@ -212,7 +213,7 @@ steps:
           kubectl rollout status deployment/faq-resolver -n faq-resolver --timeout=300s
 
   # ===========================================================================
-  # Step 6: Deploy / Update Agent Engine Runtime (REQ-CD-006)
+  # Step 6: Deploy / Update Agent Engine Runtime (REQ-CD-006, REQ-CD-011)
   # ===========================================================================
   - name: 'python:3.11-slim'
     id: 'deploy-agent-engine'
@@ -224,8 +225,23 @@ steps:
         [ -f /workspace/FAILED ] && { echo "Skipping: earlier failure"; exit 0; }
         set -euo pipefail
         trap 'echo "deploy-agent-engine" >> /workspace/FAILED; exit 0' ERR
-          /workspace/.venv/bin/python scripts/deploy_agents/deploy_triage_agent_runtime.py \
+        PY=/workspace/.venv/bin/python
+        RC=0
+        $${PY} scripts/deploy_agents/ae_fingerprint.py should-deploy \
+          --bucket "${_CORPUS_BUCKET}" \
+          --force "${_FORCE_AGENT_ENGINE}" || RC=$$?
+        if [ "$${RC}" -eq 3 ]; then
+          echo "Skipping Agent Engine update (fingerprint unchanged)."
+          exit 0
+        elif [ "$${RC}" -eq 0 ]; then
+          $${PY} scripts/deploy_agents/deploy_triage_agent_runtime.py \
             --update "${_TRIAGE_RESOURCE}" --project "${PROJECT_ID}" --region "${_REGION}"
+          $${PY} scripts/deploy_agents/ae_fingerprint.py record \
+            --bucket "${_CORPUS_BUCKET}" --sha "${SHORT_SHA}"
+        else
+          echo "ERROR: ae_fingerprint should-deploy failed with exit code $${RC}"
+          false
+        fi
 
   # ===========================================================================
   # Step 7: Post-Deploy Smoke Verification (REQ-CD-007)
