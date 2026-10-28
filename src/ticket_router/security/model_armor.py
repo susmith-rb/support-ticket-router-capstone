@@ -39,6 +39,8 @@ DEFAULT_MODEL_ARMOR_BASE_URL: str = (
     "https://modelarmor.us-central1.rep.googleapis.com/v1"
 )
 DEFAULT_TIMEOUT_S: float = 0.700  # REQ-MA-005: max(500 ms, p99 x 1.5); p99 457.7 ms measured from laya-tune 2026-10-28
+# Egress screens full FAQ answers (longer text, off the 3 s triage path, inside the 20 s FAQ budget).
+DEFAULT_EGRESS_TIMEOUT_S: float = 2.500
 
 
 @dataclass(frozen=True)
@@ -311,10 +313,12 @@ class ModelArmorClient(ModelArmorClientProtocol):
         session: Optional[requests.Session] = None,
         token_provider: Optional[Callable[[], str]] = None,
         logger: Optional[StructuredJsonLogger] = None,
+        egress_timeout_s: float = DEFAULT_EGRESS_TIMEOUT_S,
     ) -> None:
         self.template = template
         self.endpoint_base_url = endpoint_base_url.rstrip("/")
         self.timeout_s = timeout_s
+        self.egress_timeout_s = egress_timeout_s
         self.circuit_breaker = circuit_breaker or CircuitBreaker(
             name="model_armor",
             failure_threshold=3,
@@ -343,8 +347,14 @@ class ModelArmorClient(ModelArmorClientProtocol):
     def session(self) -> requests.Session:
         return self._session
 
-    def _call_api(self, rpc_name: str, request_body: Dict[str, Any]) -> ModelArmorVerdict:
+    def _call_api(
+        self,
+        rpc_name: str,
+        request_body: Dict[str, Any],
+        timeout_s: Optional[float] = None,
+    ) -> ModelArmorVerdict:
         """Execute Model Armor REST RPC within circuit breaker and timeout guards."""
+        budget_s = self.timeout_s if timeout_s is None else timeout_s
         url = f"{self.endpoint_base_url}/{self.template}:{rpc_name}"
         start_t = time.monotonic()
 
@@ -358,12 +368,12 @@ class ModelArmorClient(ModelArmorClientProtocol):
                 url,
                 json=request_body,
                 headers=headers,
-                timeout=self.timeout_s,
+                timeout=budget_s,
             )
 
         try:
             resp: requests.Response = self.circuit_breaker.call_with_timeout(
-                _do_post, self.timeout_s
+                _do_post, budget_s
             )
             latency_ms = (time.monotonic() - start_t) * 1000.0
             if resp.status_code != 200:
@@ -391,7 +401,8 @@ class ModelArmorClient(ModelArmorClientProtocol):
             Exception,
         ) as exc:
             latency_ms = (time.monotonic() - start_t) * 1000.0
-            self.circuit_breaker.record_failure()
+            # CircuitBreaker.call() already recorded this failure; recording again
+            # would halve the effective failure_threshold.
             reason_msg = f"Model Armor call failed ({type(exc).__name__}): {exc}"
             self._emit_degraded(reason_msg)
             return ModelArmorVerdict(
@@ -423,7 +434,7 @@ class ModelArmorClient(ModelArmorClientProtocol):
     def sanitize_model_response(self, text: str) -> ModelArmorVerdict:
         """Sanitize outbound model response via Model Armor sanitizeModelResponse."""
         body = {"model_response_data": {"text": text}}
-        return self._call_api("sanitizeModelResponse", body)
+        return self._call_api("sanitizeModelResponse", body, timeout_s=self.egress_timeout_s)
 
 
 class FakeModelArmorClient(ModelArmorClientProtocol):
