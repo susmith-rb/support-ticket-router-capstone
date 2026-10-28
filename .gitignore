@@ -28,3 +28,6 @@ override.tf.json
 
 .cache/routing_eval/
 
+
+# Small test fixtures (tests/evals/routing) are required by CI
+!tests/evals/routing/fixtures/*.csv

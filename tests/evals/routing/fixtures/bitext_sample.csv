@@ -1,0 +1,31 @@
+flags,instruction,category,intent,response
+B,question about cancelling order {{Order Number}},ORDER,cancel_order,I can help you cancel order {{Order Number}}.
+Q,can u cancel my order {{Order Number}},ORDER,cancel_order,Sure I will help cancel your order {{Order Number}}.
+Z,how do i cancil order {{Order Number}},ORDER,cancel_order,You can cancel order {{Order Number}} online.
+K,cancel order {{Order Number}},ORDER,cancel_order,Order {{Order Number}} cancellation initiated.
+P,could you please help me track order {{Order Number}},ORDER,track_order,Tracking details for order {{Order Number}} are on your dashboard.
+B,where is my order {{Order Number}},ORDER,track_order,Here is the current status of order {{Order Number}}.
+Q,wher is order {{Order Number}},ORDER,track_order,Checking status of order {{Order Number}}.
+W,where the hell is order {{Order Number}},ORDER,track_order,I understand you are waiting for order {{Order Number}}.
+B,how long does delivery take for order {{Order Number}},ORDER,delivery_period,Delivery typically takes 3 to 5 business days.
+P,what are the delivery options available to {{Delivery City}},DELIVERY,delivery_options,We offer standard and express delivery options.
+B,can I change my shipping address to {{Delivery City}},SHIPPING_ADDRESS,change_shipping_address,You can change the shipping address in your settings.
+B,how do I set up shipping address in {{Profile}},SHIPPING_ADDRESS,set_up_shipping_address,Navigate to {{Settings}} to set up your shipping address.
+B,I want to request a refund for {{Order Number}},REFUND,get_refund,You can request a refund through our returns center.
+P,could you check the refund status for {{Order Number}},REFUND,track_refund,Your refund for {{Order Number}} is being processed.
+B,what is your return and refund policy,REFUND,check_refund_policy,Items can be returned within 30 days of receipt.
+B,is there a cancellation fee for {{Order Number}},CANCELLATION_FEE,check_cancellation_fee,There is no cancellation fee if canceled within 24 hours.
+B,what payment methods do you accept,PAYMENT,check_payment_methods,We accept major credit cards and PayPal.
+W,my card was charged twice for payment {{Online Payment Interaction}},PAYMENT,payment_issue,We apologize for the billing issue and are investigating.
+B,how can I download my invoice for {{Date}},INVOICE,get_invoice,You can download your invoice from {{Settings}}.
+B,how do I create an account,ACCOUNT,create_account,Click register to create your new account.
+B,how do I reset or recover password,ACCOUNT,recover_password,Click forgot password to recover your account password.
+B,I want to speak with a human agent,FEEDBACK,contact_human_agent,Transferring you to a human support representative.
+B,how can I contact customer service,FEEDBACK,contact_customer_service,You can reach customer support via phone or email.
+W,I want to file a formal complaint about terrible service,FEEDBACK,complaint,We are escalating your complaint to our management team.
+B,where can I leave a product review,FEEDBACK,review,You can write a review on the product page.
+B,how do I unsubscribe from the newsletter,NEWSLETTER,newsletter_subscription,Click unsubscribe at the bottom of the email newsletter.
+B,I would like to place an order for new shoes,ORDER,place_order,Please visit our online store to place your order.
+B,how do I switch account profile,ACCOUNT,switch_account,Go to {{Profile}} to switch profiles.
+B,how do I delete my account,ACCOUNT,delete_account,You can request account deletion in {{Settings}}.
+B,having trouble with registration problems,ACCOUNT,registration_problems,Please ensure your email address is valid when registering.
