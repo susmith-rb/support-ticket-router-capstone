@@ -41,6 +41,35 @@ def clear_id_token_cache() -> None:
         _ID_TOKEN_CACHE.clear()
 
 
+_METADATA_SA = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts"
+
+
+def _fetch_id_token_with_fallback(req: Any, audience: str, fetch: Callable[[Any, str], str]) -> str:
+    """fetch_id_token, retrying with the explicit SA email when `default` is refused.
+
+    Cloud Build's metadata server returns 404 "please provide a user-specified
+    service account" for .../service-accounts/default/identity when the build
+    runs as a user-specified SA; the same call by email succeeds.
+    """
+    try:
+        return fetch(req, audience)
+    except Exception as exc:  # google.auth.exceptions.DefaultCredentialsError / TransportError
+        if "user-specified service account" not in str(exc):
+            raise
+    import requests
+
+    headers = {"Metadata-Flavor": "Google"}
+    email = requests.get(f"{_METADATA_SA}/default/email", headers=headers, timeout=5).text.strip()
+    resp = requests.get(
+        f"{_METADATA_SA}/{email}/identity",
+        params={"audience": audience, "format": "full"},
+        headers=headers,
+        timeout=5,
+    )
+    resp.raise_for_status()
+    return resp.text.strip()
+
+
 def get_id_token(
     audience: str,
     request: Optional[Any] = None,
@@ -64,7 +93,7 @@ def get_id_token(
     from google.oauth2 import id_token as google_id_token
 
     req = request if request is not None else GoogleAuthRequest()
-    token = google_id_token.fetch_id_token(req, audience)
+    token = _fetch_id_token_with_fallback(req, audience, google_id_token.fetch_id_token)
 
     exp = _extract_jwt_exp(token)
     if exp is not None:

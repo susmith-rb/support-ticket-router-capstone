@@ -25,7 +25,7 @@ import os
 import sys
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 import requests
 
@@ -48,12 +48,9 @@ class SmokeCheck:
 
 def get_authenticated_session(audience: str) -> requests.Session:
     """Create a requests session with Google OIDC ID token for the given audience."""
-    import google.auth
-    import google.auth.transport.requests
-    from google.oauth2 import id_token
+    from ticket_router.common.idtoken import get_id_token
 
-    auth_req = google.auth.transport.requests.Request()
-    token = id_token.fetch_id_token(auth_req, audience=audience)
+    token = get_id_token(audience)
     session = requests.Session()
     session.headers.update(
         {
@@ -146,6 +143,7 @@ def run_smoke_checks(
         results.append(SmokeCheck("ticket-db-mcp idempotent upsert dedup", False, 0, str(exc), latency))
 
     # 4. get_order own order (cust_1001 ORD-10001)
+    ol_session: Optional[requests.Session] = None
     t0 = time.perf_counter()
     try:
         ol_session = get_authenticated_session(order_lookup_url)
@@ -168,7 +166,7 @@ def run_smoke_checks(
     t0 = time.perf_counter()
     try:
         headers_cust2 = {"X-Customer-ID": "cust_1002"}
-        resp_other = ol_session.post(
+        resp_other = (ol_session or get_authenticated_session(order_lookup_url)).post(
             f"{order_lookup_url}/tools/get_order",
             headers=headers_cust2,
             json={"order_id": "ORD-10001"},
@@ -185,7 +183,7 @@ def run_smoke_checks(
     # 6. get_order body customer_id (must be rejected with HTTP 400)
     t0 = time.perf_counter()
     try:
-        resp_body_cid = ol_session.post(
+        resp_body_cid = (ol_session or get_authenticated_session(order_lookup_url)).post(
             f"{order_lookup_url}/tools/get_order",
             headers=headers_cust1,
             json={"order_id": "ORD-10001", "customer_id": "cust_1002"},
