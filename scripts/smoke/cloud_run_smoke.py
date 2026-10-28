@@ -7,7 +7,7 @@ Implements REQ-CD-007: Post-deploy smoke gates for Cloud Run microservices:
 2. Unauthenticated request rejected with 403 Forbidden
 3. Idempotent upsert dedup on ticket-db-mcp
 4. get_order own order returns 200
-5. get_order other customer order rejected (404/denied)
+5. get_order with caller-asserted X-Customer-ID refused (403 unverified_customer)
 6. get_order with customer_id in body rejected (400)
 7. human-queue /queue listing returns 200
 
@@ -142,7 +142,9 @@ def run_smoke_checks(
         latency = (time.perf_counter() - t0) * 1000
         results.append(SmokeCheck("ticket-db-mcp idempotent upsert dedup", False, 0, str(exc), latency))
 
-    # 4. get_order own order (cust_1001 ORD-10001)
+    # 4. get_order with only a caller-asserted X-Customer-ID (no verified identity token)
+    #    must fail closed: 403 unverified_customer (REQ-IDENT-*). Verified-owner lookups are
+    #    covered end-to-end by scripts/e2e_identity_check.py.
     ol_session: Optional[requests.Session] = None
     t0 = time.perf_counter()
     try:
@@ -155,14 +157,14 @@ def run_smoke_checks(
             timeout=timeout_s,
         )
         latency = (time.perf_counter() - t0) * 1000
-        passed = resp_own.status_code == 200
-        details = "HTTP 200 order retrieved" if passed else f"Expected 200, got {resp_own.status_code}: {resp_own.text[:100]}"
-        results.append(SmokeCheck("order-lookup-mcp get_order own (cust_1001)", passed, resp_own.status_code, details, latency))
+        passed = resp_own.status_code == 403 and "unverified_customer" in resp_own.text
+        details = "HTTP 403 unverified_customer (asserted id refused)" if passed else f"Expected 403 unverified_customer, got {resp_own.status_code}: {resp_own.text[:100]}"
+        results.append(SmokeCheck("order-lookup-mcp asserted-id own order refused", passed, resp_own.status_code, details, latency))
     except Exception as exc:
         latency = (time.perf_counter() - t0) * 1000
-        results.append(SmokeCheck("order-lookup-mcp get_order own (cust_1001)", False, 0, str(exc), latency))
+        results.append(SmokeCheck("order-lookup-mcp asserted-id own order refused", False, 0, str(exc), latency))
 
-    # 5. get_order other customer's order (cust_1002 requesting ORD-10001 -> expect 404)
+    # 5. cross-customer request with asserted id: also refused before any lookup (403)
     t0 = time.perf_counter()
     try:
         headers_cust2 = {"X-Customer-ID": "cust_1002"}
@@ -173,8 +175,8 @@ def run_smoke_checks(
             timeout=timeout_s,
         )
         latency = (time.perf_counter() - t0) * 1000
-        passed = resp_other.status_code == 404
-        details = f"HTTP {resp_other.status_code} denied across customer boundary" if passed else f"Expected 404, got {resp_other.status_code}"
+        passed = resp_other.status_code == 403
+        details = f"HTTP {resp_other.status_code} denied (no verified identity)" if passed else f"Expected 403, got {resp_other.status_code}"
         results.append(SmokeCheck("order-lookup-mcp get_order other customer (cust_1002)", passed, resp_other.status_code, details, latency))
     except Exception as exc:
         latency = (time.perf_counter() - t0) * 1000
