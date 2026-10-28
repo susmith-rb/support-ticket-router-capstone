@@ -408,3 +408,22 @@ def test_cloudbuild_yaml_has_no_unescaped_shell_vars():
                 continue
             bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}: ${name}")
     assert not bad, "Unescaped shell vars (use $$VAR):\n" + "\n".join(bad)
+
+
+def test_image_build_uses_layer_cache():
+    # REQ-CD-003
+    # Dependencies must install from pyproject.toml alone BEFORE the source is copied,
+    # otherwise every commit invalidates the dependency layer and the cache is useless.
+    dockerfile = (Path(__file__).resolve().parents[2] / "services" / "Dockerfile").read_text(encoding="utf-8")
+    deps_at = dockerfile.index("pip install --no-cache-dir -r /tmp/requirements.txt")
+    src_at = dockerfile.index("COPY src/ /app/src/")
+    assert deps_at < src_at
+    assert "pip install --no-cache-dir --no-deps ." in dockerfile
+
+    with open(DEPLOY_YAML, encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+    build = next(s for s in config["steps"] if s["id"] == "build-and-push-image")
+    script = " ".join(build["args"])
+    assert "--cache-from" in script and "agents:cache" in script
+    assert "BUILDKIT_INLINE_CACHE=1" in script
+    assert 'docker push "$${CACHE_TAG}"' in script

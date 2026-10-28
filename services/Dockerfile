@@ -27,8 +27,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN groupadd -g 10001 appgroup && \
     useradd -u 10001 -g appgroup -s /bin/bash -m appuser
 
-# Copy packaging configuration and core sources
+# Layer-cache friendly install (REQ-CD-003): dependencies come only from pyproject.toml,
+# so this layer is reused across commits until dependencies change; source copies follow.
 COPY pyproject.toml README.md /app/
+COPY services/requirements_from_pyproject.py /tmp/
+RUN python /tmp/requirements_from_pyproject.py /app/pyproject.toml > /tmp/requirements.txt \
+    && pip install --no-cache-dir -r /tmp/requirements.txt
+
 COPY src/ /app/src/
 # pyproject declares these offline packages too; setuptools needs them present to build (not imported at runtime)
 COPY evals/ /app/evals/
@@ -36,8 +41,8 @@ COPY corpus/ /app/corpus/
 COPY experiments/ /app/experiments/
 COPY training/ /app/training/
 
-# Install package with runtime, db, and agents extras
-RUN pip install --no-cache-dir .[runtime,db,agents]
+# Install the package itself (dependencies already satisfied by the cached layer above)
+RUN pip install --no-cache-dir --no-deps .
 
 # Build-time import check: fail image build immediately if any service import is broken
 RUN python -c "import ticket_router.serve, ticket_router.mcp.ticket_db, ticket_router.mcp.order_lookup, ticket_router.agents.human_queue, ticket_router.agents.faq_resolver.app; print('All agent & MCP services import cleanly')"

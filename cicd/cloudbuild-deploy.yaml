@@ -85,10 +85,18 @@ steps:
       - |
         set -euo pipefail
         IMAGE_TAG="${_REGION}-docker.pkg.dev/${PROJECT_ID}/serving/agents:${SHORT_SHA}"
+        CACHE_TAG="${_REGION}-docker.pkg.dev/${PROJECT_ID}/serving/agents:cache"
+        # Layer cache: BuildKit inline cache metadata on :cache, reused via --cache-from.
+        # Dependency layer (pyproject-only) is reused until dependencies change.
+        docker pull "$${CACHE_TAG}" || echo "No cache image yet (first build)"
         echo "=== Building unified agent container image: $${IMAGE_TAG} ==="
-        docker build -f services/Dockerfile -t "$${IMAGE_TAG}" .
+        DOCKER_BUILDKIT=1 docker build -f services/Dockerfile \
+          --build-arg BUILDKIT_INLINE_CACHE=1 \
+          --cache-from "$${CACHE_TAG}" \
+          -t "$${IMAGE_TAG}" -t "$${CACHE_TAG}" .
         echo "=== Pushing image to Artifact Registry ==="
         docker push "$${IMAGE_TAG}"
+        docker push "$${CACHE_TAG}"
 
   # ===========================================================================
   # Step 2b: Shared Python venv for Agent Engine deploy + smoke (parallel)
