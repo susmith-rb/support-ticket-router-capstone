@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import subprocess
+import sys
+import types
 from unittest.mock import MagicMock, patch
 
 from scripts.deploy_agents.query_triage_agent import (
@@ -162,7 +164,7 @@ def test_run_query_dry_run():
     assert "delivered" in result["answer"].lower() or "transit" in result["answer"].lower()
 
 
-def test_run_query_live_authenticated_mocked():
+def test_run_query_live_authenticated_mocked(monkeypatch):
     """Verify run_query passes customer_id_token in session state to Agent Engine."""
     mock_engine = MagicMock()
     mock_session = {"id": "sess-live-42"}
@@ -172,52 +174,66 @@ def test_run_query_live_authenticated_mocked():
         {"output": {"ticket_id": "TICK-LIVE-1", "decision": "auto_rag", "queue": "automated"}},
     ]
 
-    with patch("vertexai.init") as mock_vinit, patch("vertexai.agent_engines.get", return_value=mock_engine) as mock_eget:
-        res = run_query(
-            resource_name="projects/test/locations/us-central1/reasoningEngines/123",
-            message="Check my order ORD-10001",
-            session_id="sess-custom-1",
-            customer_id_token="valid.customer.jwt",
-            user_id="caller-id-test",
-            project="test-proj",
-            region="us-central1",
-            dry_run=False,
-        )
+    mock_vertexai = types.ModuleType("vertexai")
+    mock_agent_engines = types.ModuleType("vertexai.agent_engines")
+    mock_vertexai.init = MagicMock()
+    mock_vertexai.agent_engines = mock_agent_engines
+    mock_agent_engines.get = MagicMock(return_value=mock_engine)
 
-        mock_vinit.assert_called_once_with(project="test-proj", location="us-central1")
-        mock_eget.assert_called_once_with("projects/test/locations/us-central1/reasoningEngines/123")
+    monkeypatch.setitem(sys.modules, "vertexai", mock_vertexai)
+    monkeypatch.setitem(sys.modules, "vertexai.agent_engines", mock_agent_engines)
 
-        # Invariant: session must be created with customer_id_token in state dictionary
-        mock_engine.create_session.assert_called_once_with(
-            user_id="caller-id-test",
-            session_id="sess-custom-1",
-            state={"customer_id_token": "valid.customer.jwt"},
-        )
+    res = run_query(
+        resource_name="projects/test/locations/us-central1/reasoningEngines/123",
+        message="Check my order ORD-10001",
+        session_id="sess-custom-1",
+        customer_id_token="valid.customer.jwt",
+        user_id="caller-id-test",
+        project="test-proj",
+        region="us-central1",
+        dry_run=False,
+    )
 
-        mock_engine.stream_query.assert_called_once_with(
-            message="Check my order ORD-10001",
-            user_id="caller-id-test",
-            session_id="sess-live-42",
-        )
+    mock_vertexai.init.assert_called_once_with(project="test-proj", location="us-central1")
+    mock_agent_engines.get.assert_called_once_with("projects/test/locations/us-central1/reasoningEngines/123")
 
-        assert res["text"] == "Your package has been delivered."
-        assert res["ticket_id"] == "TICK-LIVE-1"
-        assert res["decision"] == "auto_rag"
-        assert res["queue"] == "automated"
-        assert res["session_id"] == "sess-live-42"
-        assert res["status"] == "COMPLETED"
+    # Invariant: session must be created with customer_id_token in state dictionary
+    mock_engine.create_session.assert_called_once_with(
+        user_id="caller-id-test",
+        session_id="sess-custom-1",
+        state={"customer_id_token": "valid.customer.jwt"},
+    )
+
+    mock_engine.stream_query.assert_called_once_with(
+        message="Check my order ORD-10001",
+        user_id="caller-id-test",
+        session_id="sess-live-42",
+    )
+
+    assert res["text"] == "Your package has been delivered."
+    assert res["ticket_id"] == "TICK-LIVE-1"
+    assert res["decision"] == "auto_rag"
+    assert res["queue"] == "automated"
+    assert res["session_id"] == "sess-live-42"
+    assert res["status"] == "COMPLETED"
 
 
-def test_run_query_demo_user_resolves_token():
+def test_run_query_demo_user_resolves_token(monkeypatch):
     """Verify run_query automatically mints demo token if customer_id_token is omitted."""
     mock_engine = MagicMock()
     mock_engine.create_session.return_value = {"id": "sess-demo"}
     mock_engine.stream_query.return_value = [{"content": {"parts": [{"text": "OK"}]}}]
 
-    with patch("scripts.deploy_agents.query_triage_agent.resolve_demo_user_token", return_value="minted.demo.token") as mock_resolve, \
-         patch("vertexai.init"), \
-         patch("vertexai.agent_engines.get", return_value=mock_engine):
+    mock_vertexai = types.ModuleType("vertexai")
+    mock_agent_engines = types.ModuleType("vertexai.agent_engines")
+    mock_vertexai.init = MagicMock()
+    mock_vertexai.agent_engines = mock_agent_engines
+    mock_agent_engines.get = MagicMock(return_value=mock_engine)
 
+    monkeypatch.setitem(sys.modules, "vertexai", mock_vertexai)
+    monkeypatch.setitem(sys.modules, "vertexai.agent_engines", mock_agent_engines)
+
+    with patch("scripts.deploy_agents.query_triage_agent.resolve_demo_user_token", return_value="minted.demo.token") as mock_resolve:
         res = run_query(
             resource_name="dummy-engine",
             message="Hello",

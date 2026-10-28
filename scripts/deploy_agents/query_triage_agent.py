@@ -42,12 +42,6 @@ SRC_DIR = REPO_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-VENV_SITE_PACKAGES = (
-    REPO_ROOT / ".venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
-)
-if VENV_SITE_PACKAGES.is_dir() and str(VENV_SITE_PACKAGES) not in sys.path:
-    sys.path.insert(0, str(VENV_SITE_PACKAGES))
-
 DEFAULT_PROJECT = "susmith-fde-ticket-router"
 DEFAULT_REGION = "us-central1"
 DEFAULT_USER_ID = "caller-client"
@@ -179,6 +173,15 @@ def extract_ticket_fields_from_event(event: Any) -> Dict[str, Any]:
     return fields
 
 
+def _get_agent_engine(resource_name: str, project: str, region: str) -> Any:
+    """Initialize Vertex AI and retrieve Agent Engine instance."""
+    import vertexai
+    from vertexai import agent_engines
+
+    vertexai.init(project=project, location=region)
+    return agent_engines.get(resource_name)
+
+
 def run_query(
     resource_name: str,
     message: str,
@@ -227,11 +230,7 @@ def run_query(
         }
         return simulated_response
 
-    import vertexai
-    from vertexai import agent_engines
-
-    vertexai.init(project=project, location=region)
-    engine = agent_engines.get(resource_name)
+    engine = _get_agent_engine(resource_name, project, region)
 
     initial_state: Dict[str, Any] = {}
     if effective_token:
