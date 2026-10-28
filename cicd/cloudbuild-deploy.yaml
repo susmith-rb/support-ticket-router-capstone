@@ -245,8 +245,13 @@ steps:
           $${PY} scripts/smoke/cloud_run_smoke.py
           echo "=== 2. Model Armor functional smoke ==="
           $${PY} scripts/model_armor_smoke.py --timeout-s 5
-          echo "=== 3. Live identity e2e (Agent Engine warm-up, one retry) ==="
-          sleep 30
+          echo "=== 3. Live identity e2e ==="
+          # Warm-up pass (result ignored): right after a parallel rollout every tier is
+          # cold (FAQ pod, Agent Engine, Cloud Run order-lookup's 0.3 s budget), and FAQ
+          # answers hit the 20 s A2A cutoff -> human fallback. Seen on run b78696a7.
+          $${PY} scripts/e2e_identity_check.py --resource-name "${_TRIAGE_RESOURCE}" \
+              --project "${PROJECT_ID}" --region "${_REGION}" >/dev/null 2>&1 || true
+          sleep 15
           $${PY} scripts/e2e_identity_check.py --resource-name "${_TRIAGE_RESOURCE}" \
               --project "${PROJECT_ID}" --region "${_REGION}" \
             || { echo "e2e failed once; retrying after 30 s"; sleep 30; \
