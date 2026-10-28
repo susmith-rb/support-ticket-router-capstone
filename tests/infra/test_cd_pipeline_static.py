@@ -342,3 +342,28 @@ def test_terraform_ignores_cd_owned_fields():
     assert "laya-tune" in runbook_text
     assert "Terraform" in runbook_text
     assert "rollback" in runbook_text.lower()
+
+
+def test_cloudbuild_yaml_has_no_unescaped_shell_vars():
+    # REQ-CD-003
+    # Cloud Build rejects any $VAR that is not a built-in or _USER substitution
+    # ("key in the template ... is not a valid built-in substitution"); shell vars
+    # must be written $$VAR. Caught live on the first CD run (2026-10-28).
+    import re
+
+    builtin = {
+        "PROJECT_ID", "PROJECT_NUMBER", "BUILD_ID", "LOCATION", "TRIGGER_NAME",
+        "COMMIT_SHA", "SHORT_SHA", "REVISION_ID", "BRANCH_NAME", "TAG_NAME",
+        "REPO_NAME", "REPO_FULL_NAME", "REF_NAME", "TRIGGER_BUILD_CONFIG_PATH",
+        "SERVICE_ACCOUNT_EMAIL", "SERVICE_ACCOUNT",
+    }
+    cicd = Path(__file__).resolve().parents[2] / "cicd"
+    bad = []
+    for path in sorted(cicd.glob("*.yaml")):
+        text = path.read_text(encoding="utf-8")
+        for m in re.finditer(r"(?<!\$)\$\{?([A-Za-z_][A-Za-z0-9_]*)", text):
+            name = m.group(1)
+            if name in builtin or name.startswith("_"):
+                continue
+            bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}: ${name}")
+    assert not bad, "Unescaped shell vars (use $$VAR):\n" + "\n".join(bad)

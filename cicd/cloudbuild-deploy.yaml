@@ -44,8 +44,8 @@ steps:
         TIMEOUT=1800 # 30 min cap
 
         while true; do
-          ELAPSED=$(( $(date +%s) - START_TIME ))
-          if [ $ELAPSED -ge $TIMEOUT ]; then
+          ELAPSED=$$(( $$(date +%s) - START_TIME ))
+          if [ $${ELAPSED} -ge $${TIMEOUT} ]; then
             echo "ERROR: Timed out after 30 minutes waiting for CI build on commit ${SHORT_SHA}"
             exit 1
           fi
@@ -272,7 +272,7 @@ steps:
         import datetime, json, os, subprocess
         data = {
             "sha": "${SHORT_SHA}",
-            "image": "${IMAGE_TAG}",
+            "image": "$${IMAGE_TAG}",
             "build_id": "${BUILD_ID}",
             "time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }
