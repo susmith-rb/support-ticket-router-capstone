@@ -15,6 +15,7 @@ import collections
 import csv
 import json
 import pathlib
+import random
 import re
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
@@ -507,3 +508,236 @@ def sample_inbound_parquet(
 
     cases.sort(key=lambda c: c.ticket_id)
     return cases
+
+
+# Alias for PII scrubber
+scrub_pii = scrub_text
+
+_NON_EN_CHARS = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\u0600-\u06ff\u0400-\u04ff\u0590-\u05ff]")
+_NON_EN_WORDS = {
+    "je", "tu", "il", "elle", "nous", "vous", "ils", "elles", "le", "la", "les", "du", "des",
+    "est", "sont", "pas", "pour", "avec", "dans", "sur", "mais", "que", "qui", "mon", "ma", "mes",
+    "el", "los", "las", "un", "una", "unos", "unas", "del", "al", "es", "son", "por", "para",
+    "con", "sin", "sobre", "pero", "como", "mas", "más", "este", "esta", "estos", "estas", "mi", "mis",
+    "und", "der", "die", "das", "ein", "eine", "einer", "eines", "nicht", "ist", "sind", "mit", "zu",
+    "auf", "für", "von", "den", "dem", "sich", "aber", "auch", "nach", "aus", "wenn", "oder", "bei",
+}
+_EN_COMMON = {
+    "the", "be", "to", "of", "and", "a", "in", "that", "have", "i", "it",
+    "for", "not", "on", "with", "he", "as", "you", "do", "at", "this",
+    "but", "his", "by", "from", "they", "we", "say", "her", "she", "or",
+    "an", "will", "my", "one", "all", "would", "there", "their", "what",
+    "so", "up", "out", "if", "about", "who", "get", "which", "go", "me",
+    "when", "make", "can", "like", "time", "no", "just", "him", "know",
+    "take", "into", "your", "good", "some", "could", "them", "see", "other",
+    "than", "then", "now", "look", "only", "come", "its", "over", "think",
+    "also", "back", "after", "use", "two", "how", "our", "work", "first",
+    "well", "way", "even", "new", "want", "because", "any", "these", "give",
+    "day", "most", "us", "please", "help", "order", "refund", "delivery",
+    "shipping", "package", "service", "account", "is", "are", "was", "am",
+}
+
+
+def _is_english(text: str) -> bool:
+    """Heuristic check for English text."""
+    if _NON_EN_CHARS.search(text):
+        return False
+    words = re.findall(r"[a-zA-Záéíóúñüßàâçèêëîïôûù]+", text.lower())
+    if not words:
+        return True
+    non_en_count = sum(1 for w in words if w in _NON_EN_WORDS)
+    en_count = sum(1 for w in words if w in _EN_COMMON)
+    if non_en_count > en_count:
+        return False
+    if non_en_count >= 2 and non_en_count * 2 >= en_count:
+        return False
+    return True
+
+
+def sample_fresh_threads(
+    threads_jsonl: pathlib.Path | str,
+    n: int = 320,
+    seed: int = 20261028,
+    exclude_hashes: Optional[Set[str]] = None,
+    dataset_version: str = "routing_v1.0.0",
+) -> List[RoutingCase]:
+    """Sample fresh first-turn tweets from raw threads.jsonl.
+
+    - Excludes content hashes in exclude_hashes (e.g. Laya train/val + test, or existing pool).
+    - Runs PII scrubber (scrub_text) on text.
+    - Preserves ~8% non-English tweets (scenario 'ood', language 'other').
+    - English tweets get scenario 'normal', language 'en'.
+    - Stratified by length bucket.
+    - Placeholder expected labels are provisional rule-derived ('other', 'escalate', 'human-standard').
+    - Cases tagged with notes='fresh_unlabeled'.
+    - Returns deterministically sorted list of RoutingCase.
+    """
+    if n <= 0:
+        return []
+
+    path = pathlib.Path(threads_jsonl)
+    if not path.exists():
+        raise FileNotFoundError(f"threads.jsonl not found at: {path}")
+
+    exclude = set(exclude_hashes or ())
+    seen_hashes: Set[str] = set()
+
+    candidates_en: Dict[str, List[Tuple[Any, str, str, str]]] = collections.defaultdict(list)
+    candidates_non_en: Dict[str, List[Tuple[Any, str, str, str]]] = collections.defaultdict(list)
+
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            data = json.loads(stripped)
+            turns = [t for t in data.get("turns", []) if t.get("role") == "customer"]
+            if not turns:
+                continue
+            raw_text = turns[0].get("text", "")
+            if not raw_text.strip():
+                continue
+            scrubbed = scrub_text(raw_text)
+            if not scrubbed.strip():
+                continue
+
+            c_hash = compute_content_hash(subject=None, description=scrubbed)
+            raw_hash = compute_content_hash(subject=None, description=raw_text)
+            if c_hash in exclude or raw_hash in exclude or c_hash in seen_hashes:
+                continue
+            seen_hashes.add(c_hash)
+
+            bucket = _compute_length_bucket(scrubbed)
+            tid = data.get("thread_id")
+            entry = (tid, scrubbed, c_hash, bucket)
+            if _is_english(scrubbed):
+                candidates_en[bucket].append(entry)
+            else:
+                candidates_non_en[bucket].append(entry)
+
+    rng = random.Random(seed)
+
+    all_non_en: List[Tuple[Any, str, str, str]] = []
+    for b_list in candidates_non_en.values():
+        all_non_en.extend(b_list)
+    all_non_en.sort(key=lambda x: x[2])  # deterministic ordering by hash
+
+    target_non_en = min(round(n * 0.08), len(all_non_en))
+    sampled_non_en = rng.sample(all_non_en, target_non_en) if target_non_en > 0 else []
+
+    target_en = n - len(sampled_non_en)
+    sampled_en: List[Tuple[Any, str, str, str]] = []
+
+    en_buckets = sorted(candidates_en.keys())
+    total_en_candidates = sum(len(candidates_en[b]) for b in en_buckets)
+
+    if total_en_candidates > 0 and target_en > 0:
+        remaining_en = min(target_en, total_en_candidates)
+        for idx, b in enumerate(en_buckets):
+            b_candidates = list(candidates_en[b])
+            b_candidates.sort(key=lambda x: x[2])
+            if idx == len(en_buckets) - 1:
+                quota = remaining_en
+            else:
+                quota = round(remaining_en * (len(b_candidates) / total_en_candidates))
+                quota = min(quota, remaining_en)
+            take = min(quota, len(b_candidates))
+            if take > 0:
+                sampled_b = rng.sample(b_candidates, take)
+                sampled_en.extend(sampled_b)
+                remaining_en -= len(sampled_b)
+                total_en_candidates -= len(b_candidates)
+
+    cases: List[RoutingCase] = []
+
+    # English cases
+    for tid, desc, chash, bucket in sampled_en:
+        t_id = make_ticket_id("kaggle_twcs", chash)
+        exp = Expected(
+            intent="other",
+            acceptable_intents=("other",),
+            escalate=True,
+            decision="escalate",
+            queue="human-standard",
+            sentiment="neutral",
+            urgency=1,
+        )
+        style = Style(register="casual", length_bucket=bucket)
+        case = RoutingCase(
+            ticket_id=t_id,
+            content_hash=chash,
+            dataset_version=dataset_version,
+            split="pool",
+            created_at="2026-10-28T00:00:00Z",
+            subject=None,
+            description=desc,
+            channel="twitter",
+            language="en",
+            pii_scrubbed=True,
+            expected=exp,
+            difficulty="medium",
+            scenarios=("normal",),
+            style=style,
+            source="real",
+            source_dataset="kaggle_twcs",
+            source_ref=f"twcs_thread_{tid}",
+            ground_truth_source="rule_derived",
+            label_status="provisional",
+            verified_fields=(),
+            annotations=(),
+            adjudication=None,
+            group_id=f"grp-{t_id}",
+            parent_ticket_id=None,
+            perturbation=None,
+            failure_ref=None,
+            notes="fresh_unlabeled",
+        )
+        cases.append(case)
+
+    # Non-English cases
+    for tid, desc, chash, bucket in sampled_non_en:
+        t_id = make_ticket_id("kaggle_twcs", chash)
+        exp = Expected(
+            intent="other",
+            acceptable_intents=("other",),
+            escalate=True,
+            decision="escalate",
+            queue="human-standard",
+            sentiment="neutral",
+            urgency=1,
+        )
+        style = Style(register="casual", length_bucket=bucket)
+        case = RoutingCase(
+            ticket_id=t_id,
+            content_hash=chash,
+            dataset_version=dataset_version,
+            split="pool",
+            created_at="2026-10-28T00:00:00Z",
+            subject=None,
+            description=desc,
+            channel="twitter",
+            language="other",
+            pii_scrubbed=True,
+            expected=exp,
+            difficulty="medium",
+            scenarios=("ood",),
+            style=style,
+            source="real",
+            source_dataset="kaggle_twcs",
+            source_ref=f"twcs_thread_{tid}",
+            ground_truth_source="rule_derived",
+            label_status="provisional",
+            verified_fields=(),
+            annotations=(),
+            adjudication=None,
+            group_id=f"grp-{t_id}",
+            parent_ticket_id=None,
+            perturbation=None,
+            failure_ref=None,
+            notes="fresh_unlabeled",
+        )
+        cases.append(case)
+
+    cases.sort(key=lambda c: c.ticket_id)
+    return cases
+

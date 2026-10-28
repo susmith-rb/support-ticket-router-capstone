@@ -120,3 +120,57 @@ def test_missing_config_key_fails_loudly(passing_scorecard: dict) -> None:
     bad_cfg = {"gate_thresholds": {"strict_safety_recall_min": 0.98}}
     with pytest.raises(KeyError, match="Missing required gate threshold key"):
         evaluate(passing_scorecard, bad_cfg)
+
+
+def test_regression_pass_rate_empty_split_not_evaluated(base_cfg: dict, passing_scorecard: dict) -> None:
+    # REQ-REVAL-013: Empty regression split yields NOT_EVALUATED with detail 'run regression split'.
+    passing_scorecard["slices"]["split"]["regression"] = {"count": 0, "routing_correctness": None}
+    gates, overall_passed = evaluate(passing_scorecard, base_cfg)
+    assert overall_passed is False
+    assert gates["overall_status"] == "INCOMPLETE"
+    assert gates["regression_pass_rate"]["status"] == "NOT_EVALUATED"
+    assert gates["regression_pass_rate"]["passed"] is None
+    assert gates["regression_pass_rate"]["detail"] == "run regression split"
+
+
+def test_strict_safety_recall_empty_denominator_not_evaluated(base_cfg: dict, passing_scorecard: dict) -> None:
+    # REQ-REVAL-013: Strict safety recall with n=0 yields NOT_EVALUATED.
+    passing_scorecard["verified"] = {
+        "strict_safety_recall": None,
+        "strict_safety_wilson_lb": None,
+        "strict_safety_total": 0,
+    }
+    gates, overall_passed = evaluate(passing_scorecard, base_cfg)
+    assert overall_passed is False
+    assert gates["overall_status"] == "INCOMPLETE"
+    assert gates["strict_safety_recall"]["status"] == "NOT_EVALUATED"
+    assert gates["strict_safety_recall"]["passed"] is None
+
+
+def test_cost_cap_reads_cost_total_usd(base_cfg: dict, passing_scorecard: dict) -> None:
+    # REQ-REVAL-013: Cost cap respects cost_total_usd correctly.
+    passing_scorecard["cost_latency"] = {
+        "cost_total_usd": 0.28,
+        "cost_per_1k_usd": 0.5379,
+    }
+    gates, overall_passed = evaluate(passing_scorecard, base_cfg)
+    assert gates["cost_cap"]["passed"] is True
+    assert gates["cost_cap"]["value"] == 0.28
+
+
+def test_overall_verdict_fail_if_any_fails(base_cfg: dict, passing_scorecard: dict) -> None:
+    # REQ-REVAL-013: FAIL overrides INCOMPLETE if any gate fails.
+    passing_scorecard["slices"]["split"]["regression"] = {"count": 0}  # NOT_EVALUATED
+    passing_scorecard["all"]["degraded_rate"] = 0.05  # FAIL
+    gates, overall_passed = evaluate(passing_scorecard, base_cfg)
+    assert overall_passed is False
+    assert gates["overall_status"] == "FAIL"
+
+
+def test_taxonomy_validity_gate_breakdown_detail(base_cfg: dict, passing_scorecard: dict) -> None:
+    # REQ-REVAL-013: Taxonomy validity detail includes breakdown of invalid labels
+    passing_scorecard["all"]["taxonomy_validity_rate"] = 0.8500
+    passing_scorecard["all"]["taxonomy_invalid_summary"] = "shipping 45 tier2_flash, technical 29 tier2_flash"
+    gates, overall_passed = evaluate(passing_scorecard, base_cfg)
+    assert gates["taxonomy_validity"]["passed"] is False
+    assert "(invalid: shipping 45 tier2_flash, technical 29 tier2_flash)" in gates["taxonomy_validity"]["detail"]

@@ -222,6 +222,19 @@ def _agglomerate_cluster_indices(
     return clusters
 
 
+def _format_invalid_transition(inv_list: Sequence[str]) -> str:
+    """Format combined transition label for invalid labels within a tier."""
+    unique: List[str] = []
+    preferred_order = ["shipping", "billing", "refund", "technical", "human_escalation"]
+    for pref in preferred_order:
+        if pref in inv_list and pref not in unique:
+            unique.append(pref)
+    for inv in inv_list:
+        if inv not in unique:
+            unique.append(inv)
+    return f"*->{'|'.join(unique)}" if unique else "*->invalid"
+
+
 def cluster_failures(
     traces: Sequence[Dict[str, Any]],
     cases: Sequence[RoutingCase],
@@ -238,7 +251,6 @@ def cluster_failures(
         List of cluster dictionaries ranked by severity score descending.
     """
     cfg = cfg or {}
-    sim_threshold = float(cfg.get("cluster_similarity_threshold", 0.35))
 
     tax = load_taxonomy()
     valid_intents = list(tax.intents)
@@ -257,40 +269,51 @@ def cluster_failures(
     if not incorrect_items:
         return []
 
-    # 2. Partition into group keys: (error_type, expected->predicted, deciding_tier, primary_scenario)
-    groups: Dict[Tuple[str, str, str, str], List[Tuple[RoutingCase, Dict[str, Any]]]] = {}
+    # 2. Collect invalid intents per tier to format unified invalid transition
+    invalid_intents_by_tier: Dict[str, List[str]] = {}
+    for c, t in incorrect_items:
+        et = _classify_error_type(c, t, valid_intents)
+        if et == "invalid_label":
+            tier = str(t.get("predicted", {}).get("tier", "unknown"))
+            p_intent = str(t.get("predicted", {}).get("intent", "none"))
+            invalid_intents_by_tier.setdefault(tier, []).append(p_intent)
+
+    # Partition into group keys: (error_type, transition, deciding_tier)
+    groups: Dict[Tuple[str, str, str], List[Tuple[RoutingCase, Dict[str, Any]]]] = {}
     for c, t in incorrect_items:
         err_type = _classify_error_type(c, t, valid_intents)
-        p_intent = str(t.get("predicted", {}).get("intent", "none"))
-        transition = f"{c.expected.intent}->{p_intent}"
         dec_tier = str(t.get("predicted", {}).get("tier", "unknown"))
-        primary_scenario = c.scenarios[0] if c.scenarios else "normal"
+        if err_type == "invalid_label":
+            transition = _format_invalid_transition(invalid_intents_by_tier.get(dec_tier, []))
+        else:
+            p_intent = str(t.get("predicted", {}).get("intent", "none"))
+            transition = f"{c.expected.intent}->{p_intent}"
 
-        g_key = (err_type, transition, dec_tier, primary_scenario)
+        g_key = (err_type, transition, dec_tier)
         groups.setdefault(g_key, []).append((c, t))
 
     raw_clusters: List[Dict[str, Any]] = []
 
-    # 3. Within each group key, perform TF-IDF cosine agglomeration
-    for (err_type, transition, dec_tier, primary_scenario), items in sorted(groups.items()):
+    # 3. Within each group key, compute TF-IDF terms, medoid, and representatives
+    for (err_type, transition, dec_tier), items in sorted(groups.items()):
         texts = [f"{c.subject or ''} {c.description}" for c, _ in items]
         tids = [c.ticket_id for c, _ in items]
+        cluster_size = len(items)
 
         vectors = _build_tfidf_vectors(texts)
-        clustered_indices = _agglomerate_cluster_indices(vectors, tids, sim_threshold)
 
-        for cluster_sub_idx in clustered_indices:
-            cluster_items = [items[idx] for idx in cluster_sub_idx]
-            cluster_vectors = [vectors[idx] for idx in cluster_sub_idx]
-            cluster_size = len(cluster_items)
+        # Severity calculation
+        sev_weight = SEVERITY_WEIGHTS.get(err_type, 1)
+        score = cluster_size * sev_weight
 
-            # Severity calculation
-            sev_weight = SEVERITY_WEIGHTS.get(err_type, 1)
-            score = cluster_size * sev_weight
-
+        if cluster_size == 1:
+            sorted_terms = sorted(vectors[0].items(), key=lambda kv: (-kv[1], kv[0]))
+            top_terms = [tok for tok, _ in sorted_terms[:5]]
+            selected_local_indices = [0]
+        else:
             # Compute signature: top 5 TF-IDF terms for cluster
             cluster_term_weights: Dict[str, float] = {}
-            for v in cluster_vectors:
+            for v in vectors:
                 for tok, w in v.items():
                     cluster_term_weights[tok] = cluster_term_weights.get(tok, 0.0) + w
 
@@ -302,64 +325,64 @@ def cluster_failures(
 
             # Medoid selection: member maximizing average cosine similarity to all cluster items
             m_scores: List[Tuple[float, str, int]] = []
-            for i_local, idx_a in enumerate(cluster_sub_idx):
+            for i in range(cluster_size):
                 tot_sim = sum(
-                    _cosine_similarity(cluster_vectors[i_local], cluster_vectors[j_local])
-                    for j_local in range(cluster_size)
+                    _cosine_similarity(vectors[i], vectors[j])
+                    for j in range(cluster_size)
                 )
                 avg_sim = tot_sim / cluster_size
-                m_scores.append((avg_sim, tids[idx_a], i_local))
+                m_scores.append((avg_sim, tids[i], i))
 
             # Best medoid has highest avg_sim, min ticket_id
             m_scores.sort(key=lambda item: (-item[0], item[1]))
             medoid_local_idx = m_scores[0][2]
-            medoid_vector = cluster_vectors[medoid_local_idx]
+            medoid_vector = vectors[medoid_local_idx]
 
             # Rank representatives: medoid first, then closest to medoid
             rep_scores: List[Tuple[float, str, int]] = []
-            for i_local, idx_a in enumerate(cluster_sub_idx):
-                sim_to_medoid = _cosine_similarity(cluster_vectors[i_local], medoid_vector)
-                rep_scores.append((sim_to_medoid, tids[idx_a], i_local))
+            for i in range(cluster_size):
+                sim_to_medoid = _cosine_similarity(vectors[i], medoid_vector)
+                rep_scores.append((sim_to_medoid, tids[i], i))
 
             # Medoid has sim 1.0 and is selected first; tie break by ticket_id
             rep_scores.sort(key=lambda item: (-item[0], item[1]))
             selected_local_indices = [item[2] for item in rep_scores[:5]]
 
-            representatives: List[Dict[str, Any]] = []
-            for loc_idx in selected_local_indices:
-                c_rep, t_rep = cluster_items[loc_idx]
-                representatives.append({
-                    "ticket_id": c_rep.ticket_id,
-                    "subject": c_rep.subject,
-                    "description": c_rep.description[:200],
-                    "expected": c_rep.expected.to_dict(),
-                    "predicted": t_rep.get("predicted"),
-                })
-
-            # Tier details summary
-            t1_probs = [
-                float(t.get("decision_raw", {}).get("details", {}).get("intent_prob", 0.0))
-                for _, t in cluster_items
-                if "intent_prob" in t.get("decision_raw", {}).get("details", {})
-            ]
-            avg_intent_prob = (sum(t1_probs) / len(t1_probs)) if t1_probs else None
-
-            raw_clusters.append({
-                "error_type": err_type,
-                "transition": transition,
-                "deciding_tier": dec_tier,
-                "primary_scenario": primary_scenario,
-                "size": cluster_size,
-                "severity_weight": sev_weight,
-                "score": score,
-                "signature": top_terms,
-                "avg_tier1_intent_prob": round(avg_intent_prob, 4) if avg_intent_prob else None,
-                "representatives": representatives,
+        representatives: List[Dict[str, Any]] = []
+        for loc_idx in selected_local_indices:
+            c_rep, t_rep = items[loc_idx]
+            representatives.append({
+                "ticket_id": c_rep.ticket_id,
+                "subject": c_rep.subject,
+                "description": c_rep.description[:200],
+                "expected": c_rep.expected.to_dict(),
+                "predicted": t_rep.get("predicted"),
+                "tier": t_rep.get("predicted", {}).get("tier", "unknown"),
             })
+
+        # Tier details summary
+        t1_probs = [
+            float(t.get("decision_raw", {}).get("details", {}).get("intent_prob", 0.0))
+            for _, t in items
+            if "intent_prob" in t.get("decision_raw", {}).get("details", {})
+        ]
+        avg_intent_prob = (sum(t1_probs) / len(t1_probs)) if t1_probs else None
+
+        raw_clusters.append({
+            "error_type": err_type,
+            "transition": transition,
+            "deciding_tier": dec_tier,
+            "size": cluster_size,
+            "severity_weight": sev_weight,
+            "score": score,
+            "signature": top_terms,
+            "avg_tier1_intent_prob": round(avg_intent_prob, 4) if avg_intent_prob else None,
+            "representatives": representatives,
+        })
 
     # 4. Globally rank clusters by score desc, size desc, transition asc
     raw_clusters.sort(
-        key=lambda cl: (-cl["score"], -cl["size"], cl["error_type"], cl["transition"])
+        key=lambda cl: (-cl["score"], -cl["size"], cl["error_type"], cl["transition"], cl["deciding_tier"])
     )
 
     # Assign 1-based cluster_id
@@ -367,3 +390,96 @@ def cluster_failures(
         cl["cluster_id"] = idx
 
     return raw_clusters
+
+
+def get_error_type_summary(
+    traces: Sequence[Dict[str, Any] | Any],
+    cases: Sequence[RoutingCase],
+) -> List[Dict[str, Any]]:
+    """Return top-level summary of error types by error_type and deciding_tier.
+
+    Returns:
+        List of dicts with {"error_type", "deciding_tier", "count", "share"}
+        sorted by count desc, error_type asc, deciding_tier asc.
+    """
+    tax = load_taxonomy()
+    valid_intents = list(tax.intents)
+    case_map = {c.ticket_id: c for c in cases if c.label_status != "rejected"}
+    trace_map: Dict[str, Dict[str, Any]] = {}
+    for t in traces:
+        t_dict = t.to_dict() if hasattr(t, "to_dict") else dict(t)
+        if "ticket_id" in t_dict:
+            trace_map[t_dict["ticket_id"]] = t_dict
+
+    counts: Dict[Tuple[str, str], int] = {}
+    total_errors = 0
+
+    for tid, c in sorted(case_map.items()):
+        if tid in trace_map:
+            t = trace_map[tid]
+            if not _is_routing_correct(c, t):
+                err_type = _classify_error_type(c, t, valid_intents)
+                tier = str(t.get("predicted", {}).get("tier") or t.get("decision_raw", {}).get("tier") or "unknown")
+                counts[(err_type, tier)] = counts.get((err_type, tier), 0) + 1
+                total_errors += 1
+
+    summary: List[Dict[str, Any]] = []
+    for (err_type, tier), count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0][0], kv[0][1])):
+        summary.append({
+            "error_type": err_type,
+            "deciding_tier": tier,
+            "count": count,
+            "share": round(count / total_errors, 4) if total_errors > 0 else 0.0,
+        })
+    return summary
+
+
+def get_representative_misclassified(
+    traces: Sequence[Dict[str, Any]],
+    cases: Sequence[RoutingCase],
+    n_per_type: int = 3,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Return top representative misclassified tickets grouped by error type.
+
+    # REQ-REVAL-017: Representative misclassified tickets (top 3 per error type).
+    """
+    tax = load_taxonomy()
+    valid_intents = list(tax.intents)
+    case_map = {c.ticket_id: c for c in cases if c.label_status != "rejected"}
+    trace_map = {t["ticket_id"]: t for t in traces if "ticket_id" in t}
+
+    by_error_type: Dict[str, List[Tuple[RoutingCase, Dict[str, Any]]]] = {}
+    for tid, c in sorted(case_map.items()):
+        if tid in trace_map:
+            t = trace_map[tid]
+            if not _is_routing_correct(c, t):
+                err_type = _classify_error_type(c, t, valid_intents)
+                by_error_type.setdefault(err_type, []).append((c, t))
+
+    results: Dict[str, List[Dict[str, Any]]] = {}
+    # Preferred canonical order of error types
+    order = [
+        "missed_escalation",
+        "false_escalation",
+        "wrong_intent",
+        "wrong_queue",
+        "invalid_label",
+        "degraded",
+        "error",
+    ]
+    for et in order:
+        if et in by_error_type:
+            pairs = by_error_type[et]
+            reps: List[Dict[str, Any]] = []
+            for c, t in pairs[:n_per_type]:
+                p_tier = t.get("predicted", {}).get("tier") or t.get("decision_raw", {}).get("tier") or "unknown"
+                reps.append({
+                    "ticket_id": c.ticket_id,
+                    "subject": c.subject,
+                    "description": c.description[:200],
+                    "expected": c.expected.to_dict(),
+                    "predicted": t.get("predicted"),
+                    "tier": str(p_tier),
+                })
+            results[et] = reps
+    return results

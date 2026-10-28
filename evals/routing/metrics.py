@@ -88,38 +88,51 @@ def _compute_view_metrics(
     if n_cases == 0:
         return {
             "count": 0,
-            "routing_correctness": 0.0,
+            "routing_correctness": None,
             "ci_95": {
-                "routing_correctness": [0.0, 0.0],
-                "intent_accuracy": [0.0, 0.0],
-                "decision_accuracy": [0.0, 0.0],
-                "strict_safety_recall": [0.0, 0.0],
-                "macro_f1": [0.0, 0.0],
+                "routing_correctness": None,
+                "intent_accuracy": None,
+                "decision_accuracy": None,
+                "strict_safety_recall": None,
+                "macro_f1": None,
             },
-            "intent_accuracy": 0.0,
-            "lenient_accuracy": 0.0,
-            "macro_f1": 0.0,
+            "intent_accuracy": None,
+            "lenient_accuracy": None,
+            "macro_f1": None,
             "per_class": {},
             "confusion_matrix": {},
-            "taxonomy_validity_rate": 0.0,
-            "decision_accuracy": 0.0,
-            "escalation_precision": 0.0,
-            "escalation_recall": 0.0,
-            "escalation_f1": 0.0,
-            "missed_escalation_rate": 0.0,
-            "false_escalation_rate": 0.0,
-            "queue_accuracy": 0.0,
-            "urgent_queue_recall": 0.0,
-            "strict_safety_recall": 0.0,
-            "strict_safety_wilson_lb": 0.0,
+            "taxonomy_validity_rate": None,
+            "decision_accuracy": None,
+            "escalation_precision": None,
+            "escalation_recall": None,
+            "escalation_f1": None,
+            "missed_escalation_rate": None,
+            "false_escalation_rate": None,
+            "queue_accuracy": None,
+            "urgent_queue_recall": None,
+            "strict_safety_recall": None,
+            "strict_safety_wilson_lb": None,
             "strict_safety_total": 0,
             "strict_safety_passed": 0,
             "tier_share": {},
-            "tier2_invocation_rate": 0.0,
-            "degraded_rate": 0.0,
-            "error_rate": 0.0,
-            "auto_resolution_share": 0.0,
-            "ece": 0.0,
+            "tier2_invocation_rate": None,
+            "degraded_rate": None,
+            "error_rate": None,
+            "auto_resolution_share": None,
+            "ece": None,
+            "counts": {
+                "routing_correctness": 0,
+                "intent_accuracy": 0,
+                "lenient_accuracy": 0,
+                "macro_f1": 0,
+                "decision_accuracy": 0,
+                "escalation_recall": 0,
+                "strict_safety_recall": 0,
+                "degraded_rate": 0,
+                "error_rate": 0,
+                "auto_resolution_share": 0,
+                "taxonomy_validity_rate": 0,
+            },
         }
 
     # 1. Intent metrics
@@ -161,9 +174,9 @@ def _compute_view_metrics(
             t1_correct.append(is_exact)
 
     n_intent = len(intent_eligible)
-    intent_acc = (exact_intent_correct / n_intent) if n_intent > 0 else 0.0
-    lenient_acc = (lenient_intent_correct / n_intent) if n_intent > 0 else 0.0
-    ece = _compute_ece(t1_confs, t1_correct, n_bins=10)
+    intent_acc = round(exact_intent_correct / n_intent, 4) if n_intent > 0 else None
+    lenient_acc = round(lenient_intent_correct / n_intent, 4) if n_intent > 0 else None
+    ece = round(_compute_ece(t1_confs, t1_correct, n_bins=10), 4) if t1_confs else None
 
     # Per-class and Macro-F1
     per_class: Dict[str, Dict[str, float]] = {}
@@ -202,7 +215,7 @@ def _compute_view_metrics(
         if supp > 0 or fp > 0:
             f1_list.append(f1)
 
-    macro_f1 = (sum(f1_list) / len(f1_list)) if f1_list else 0.0
+    macro_f1 = round(sum(f1_list) / len(f1_list), 4) if f1_list else None
 
     # 2. Decision metrics
     decision_eligible: List[Tuple[RoutingCase, Dict[str, Any]]] = []
@@ -216,7 +229,7 @@ def _compute_view_metrics(
         if t.get("predicted", {}).get("decision") == c.expected.decision
     )
     n_dec = len(decision_eligible)
-    dec_acc = (dec_correct / n_dec) if n_dec > 0 else 0.0
+    dec_acc = round(dec_correct / n_dec, 4) if n_dec > 0 else None
 
     # 3. Escalation metrics
     esc_eligible: List[Tuple[RoutingCase, Dict[str, Any]]] = []
@@ -245,11 +258,17 @@ def _compute_view_metrics(
         if not c.expected.escalate and not bool(t.get("predicted", {}).get("escalate"))
     )
 
-    esc_prec = (tp_esc / (tp_esc + fp_esc)) if (tp_esc + fp_esc) > 0 else 0.0
-    esc_rec = (tp_esc / (tp_esc + fn_esc)) if (tp_esc + fn_esc) > 0 else 0.0
-    esc_f1 = (2.0 * esc_prec * esc_rec / (esc_prec + esc_rec)) if (esc_prec + esc_rec) > 0 else 0.0
-    missed_esc_rate = (fn_esc / (tp_esc + fn_esc)) if (tp_esc + fn_esc) > 0 else 0.0
-    false_esc_rate = (fp_esc / (tn_esc + fp_esc)) if (tn_esc + fp_esc) > 0 else 0.0
+    n_esc_positives = tp_esc + fn_esc
+    n_non_esc = tn_esc + fp_esc
+    esc_prec = round(tp_esc / (tp_esc + fp_esc), 4) if (tp_esc + fp_esc) > 0 else None
+    esc_rec = round(tp_esc / n_esc_positives, 4) if n_esc_positives > 0 else None
+    esc_f1 = (
+        round(2.0 * esc_prec * esc_rec / (esc_prec + esc_rec), 4)
+        if (esc_prec is not None and esc_rec is not None and (esc_prec + esc_rec) > 0)
+        else None
+    )
+    missed_esc_rate = round(fn_esc / n_esc_positives, 4) if n_esc_positives > 0 else None
+    false_esc_rate = round(fp_esc / n_non_esc, 4) if n_non_esc > 0 else None
 
     # 4. Queue metrics
     queue_eligible: List[Tuple[RoutingCase, Dict[str, Any]]] = []
@@ -263,7 +282,7 @@ def _compute_view_metrics(
         for c, t in queue_eligible
         if t.get("predicted", {}).get("queue") == c.expected.queue
     )
-    queue_acc = (q_correct / n_q) if n_q > 0 else 0.0
+    queue_acc = round(q_correct / n_q, 4) if n_q > 0 else None
 
     urgent_cases = [c for c, _ in queue_eligible if c.expected.queue == "human-urgent"]
     urgent_total = len(urgent_cases)
@@ -273,7 +292,7 @@ def _compute_view_metrics(
         if c.expected.queue == "human-urgent"
         and t.get("predicted", {}).get("queue") == "human-urgent"
     )
-    urgent_recall = (urgent_passed / urgent_total) if urgent_total > 0 else 1.0
+    urgent_recall = round(urgent_passed / urgent_total, 4) if urgent_total > 0 else None
 
     # 5. Strict safety recall
     strict_eligible: List[Tuple[RoutingCase, Dict[str, Any]]] = []
@@ -296,11 +315,17 @@ def _compute_view_metrics(
                 strict_eligible.append((c, t))
 
     strict_total = len(strict_eligible)
-    strict_passed = sum(
-        1 for c, t in strict_eligible if bool(t.get("predicted", {}).get("escalate"))
-    )
-    strict_recall = (strict_passed / strict_total) if strict_total > 0 else 1.0
-    wilson_lb, _ = wilson_interval(strict_passed, strict_total)
+    if strict_total > 0:
+        strict_passed = sum(
+            1 for c, t in strict_eligible if bool(t.get("predicted", {}).get("escalate"))
+        )
+        strict_recall = round(strict_passed / strict_total, 4)
+        w_lb, _ = wilson_interval(strict_passed, strict_total)
+        wilson_lb = round(w_lb, 4)
+    else:
+        strict_passed = 0
+        strict_recall = None
+        wilson_lb = None
 
     # 6. Routing Correctness
     # A case is correct iff:
@@ -331,7 +356,7 @@ def _compute_view_metrics(
 
     n_rc = len(routing_eligible)
     rc_passed = sum(1 for c, t in routing_eligible if _is_routing_correct(c, t))
-    routing_correctness = (rc_passed / n_rc) if n_rc > 0 else 0.0
+    routing_correctness = round(rc_passed / n_rc, 4) if n_rc > 0 else None
 
     # 7. System metrics
     tier_counts: Dict[str, int] = {}
@@ -340,6 +365,7 @@ def _compute_view_metrics(
     error_count = 0
     auto_res_count = 0
     valid_tax_count = 0
+    invalid_breakdown: Dict[Tuple[str, str], int] = {}
 
     for _, t in eligible_pairs:
         pred = t.get("predicted", {})
@@ -362,24 +388,37 @@ def _compute_view_metrics(
         if pred.get("decision") == "auto_rag":
             auto_res_count += 1
 
-        if pred.get("intent") in taxonomy_intents:
+        p_intent = str(pred.get("intent", ""))
+        p_tier = str(tier)
+        if p_intent in taxonomy_intents:
             valid_tax_count += 1
+        else:
+            invalid_breakdown[(p_intent, p_tier)] = invalid_breakdown.get((p_intent, p_tier), 0) + 1
 
     tier_share = {tier: round(cnt / n_cases, 4) for tier, cnt in sorted(tier_counts.items())}
-    tier2_rate = tier2_invocations / n_cases
-    degraded_rate = degraded_count / n_cases
-    error_rate = error_count / n_cases
-    auto_res_share = auto_res_count / n_cases
-    tax_validity = valid_tax_count / n_cases
+    tier2_rate = round(tier2_invocations / n_cases, 4)
+    degraded_rate = round(degraded_count / n_cases, 4)
+    error_rate = round(error_count / n_cases, 4)
+    auto_res_share = round(auto_res_count / n_cases, 4)
+    tax_validity = round(valid_tax_count / n_cases, 4)
+
+    invalid_items = sorted(invalid_breakdown.items(), key=lambda kv: (-kv[1], kv[0][0], kv[0][1]))
+    taxonomy_invalid_breakdown = [
+        {"intent": intent, "tier": p_tier, "count": count}
+        for (intent, p_tier), count in invalid_items
+    ]
+    taxonomy_invalid_summary = ", ".join(
+        f"{intent} {count} {p_tier}" for (intent, p_tier), count in invalid_items
+    )
 
     # 8. Bootstrap Confidence Intervals on headline metrics
     # Re-sample groups for routing_eligible items
-    ci_results: Dict[str, List[float]] = {
-        "routing_correctness": [0.0, 0.0],
-        "intent_accuracy": [0.0, 0.0],
-        "decision_accuracy": [0.0, 0.0],
-        "strict_safety_recall": [0.0, 0.0],
-        "macro_f1": [0.0, 0.0],
+    ci_results: Dict[str, Optional[List[float]]] = {
+        "routing_correctness": None,
+        "intent_accuracy": None,
+        "decision_accuracy": None,
+        "strict_safety_recall": None,
+        "macro_f1": None,
     }
 
     if routing_eligible:
@@ -441,10 +480,11 @@ def _compute_view_metrics(
                     f1s.append(f1)
             return (sum(f1s) / len(f1s)) if f1s else 0.0
 
-        mf1_low, mf1_high = bootstrap_ci(
-            _metric_macro_f1, intent_eligible, intent_groups, n_resamples=n_bootstrap, seed=seed
-        )
-        ci_results["macro_f1"] = [round(mf1_low, 4), round(mf1_high, 4)]
+        if f1_list:
+            mf1_low, mf1_high = bootstrap_ci(
+                _metric_macro_f1, intent_eligible, intent_groups, n_resamples=n_bootstrap, seed=seed
+            )
+            ci_results["macro_f1"] = [round(mf1_low, 4), round(mf1_high, 4)]
 
     if decision_eligible:
         dec_groups = [c.group_id for c, _ in decision_eligible]
@@ -476,34 +516,51 @@ def _compute_view_metrics(
         )
         ci_results["strict_safety_recall"] = [round(s_low, 4), round(s_high, 4)]
 
+    counts = {
+        "routing_correctness": n_rc,
+        "intent_accuracy": n_intent,
+        "lenient_accuracy": n_intent,
+        "macro_f1": n_intent,
+        "decision_accuracy": n_dec,
+        "escalation_recall": n_esc_positives,
+        "strict_safety_recall": strict_total,
+        "degraded_rate": n_cases,
+        "error_rate": n_cases,
+        "auto_resolution_share": n_cases,
+        "taxonomy_validity_rate": n_cases,
+    }
+
     return {
         "count": n_cases,
-        "routing_correctness": round(routing_correctness, 4),
+        "routing_correctness": routing_correctness,
         "ci_95": ci_results,
-        "intent_accuracy": round(intent_acc, 4),
-        "lenient_accuracy": round(lenient_acc, 4),
-        "macro_f1": round(macro_f1, 4),
+        "intent_accuracy": intent_acc,
+        "lenient_accuracy": lenient_acc,
+        "macro_f1": macro_f1,
         "per_class": per_class,
         "confusion_matrix": confusion,
-        "taxonomy_validity_rate": round(tax_validity, 4),
-        "decision_accuracy": round(dec_acc, 4),
-        "escalation_precision": round(esc_prec, 4),
-        "escalation_recall": round(esc_rec, 4),
-        "escalation_f1": round(esc_f1, 4),
-        "missed_escalation_rate": round(missed_esc_rate, 4),
-        "false_escalation_rate": round(false_esc_rate, 4),
-        "queue_accuracy": round(queue_acc, 4),
-        "urgent_queue_recall": round(urgent_recall, 4),
-        "strict_safety_recall": round(strict_recall, 4),
-        "strict_safety_wilson_lb": round(wilson_lb, 4),
+        "taxonomy_validity_rate": tax_validity,
+        "taxonomy_invalid_breakdown": taxonomy_invalid_breakdown,
+        "taxonomy_invalid_summary": taxonomy_invalid_summary,
+        "decision_accuracy": dec_acc,
+        "escalation_precision": esc_prec,
+        "escalation_recall": esc_rec,
+        "escalation_f1": esc_f1,
+        "missed_escalation_rate": missed_esc_rate,
+        "false_escalation_rate": false_esc_rate,
+        "queue_accuracy": queue_acc,
+        "urgent_queue_recall": urgent_recall,
+        "strict_safety_recall": strict_recall,
+        "strict_safety_wilson_lb": wilson_lb,
         "strict_safety_total": strict_total,
         "strict_safety_passed": strict_passed,
+        "counts": counts,
         "tier_share": tier_share,
-        "tier2_invocation_rate": round(tier2_rate, 4),
-        "degraded_rate": round(degraded_rate, 4),
-        "error_rate": round(error_rate, 4),
-        "auto_resolution_share": round(auto_res_share, 4),
-        "ece": round(ece, 4),
+        "tier2_invocation_rate": round(tier2_rate, 4) if tier2_rate is not None else None,
+        "degraded_rate": round(degraded_rate, 4) if degraded_rate is not None else None,
+        "error_rate": round(error_rate, 4) if error_rate is not None else None,
+        "auto_resolution_share": round(auto_res_share, 4) if auto_res_share is not None else None,
+        "ece": round(ece, 4) if ece is not None else None,
     }
 
 
@@ -526,7 +583,7 @@ def _compute_slices(
     def _summarize_slice(pairs: List[Tuple[RoutingCase, Dict[str, Any]]]) -> Dict[str, Any]:
         n = len(pairs)
         if n == 0:
-            return {"count": 0, "routing_correctness": 0.0, "intent_acc": 0.0, "dec_acc": 0.0}
+            return {"count": 0, "routing_correctness": None, "intent_accuracy": None, "decision_accuracy": None}
         rc = sum(1 for c, t in pairs if _is_routing_correct(c, t)) / n
         i_acc = (
             sum(1 for c, t in pairs if t.get("predicted", {}).get("intent") == c.expected.intent) / n
@@ -549,6 +606,7 @@ def _compute_slices(
     slices: Dict[str, Dict[str, Dict[str, Any]]] = {
         "split": {},
         "source": {},
+        "source_dataset": {},
         "scenario": {},
         "intent": {},
         "difficulty": {},
@@ -556,6 +614,7 @@ def _compute_slices(
         "length_bucket": {},
         "label_status": {},
         "deciding_tier": {},
+        "laya_contaminated": {},
     }
 
     # Group by attributes
@@ -567,6 +626,8 @@ def _compute_slices(
         slices["split"].setdefault(c.split, []).append((c, t))
         # source
         slices["source"].setdefault(c.source, []).append((c, t))
+        # source_dataset
+        slices["source_dataset"].setdefault(c.source_dataset, []).append((c, t))
         # scenario (multi-label)
         for sc in c.scenarios:
             slices["scenario"].setdefault(sc, []).append((c, t))
@@ -582,6 +643,10 @@ def _compute_slices(
         slices["label_status"].setdefault(c.label_status, []).append((c, t))
         # deciding_tier
         slices["deciding_tier"].setdefault(dec_tier, []).append((c, t))
+        # laya_contaminated
+        is_contaminated = bool(c.notes and "laya_train_collision" in c.notes)
+        contam_label = "contaminated" if is_contaminated else "clean"
+        slices["laya_contaminated"].setdefault(contam_label, []).append((c, t))
 
     # Convert grouped lists to summary dicts
     out_slices: Dict[str, Dict[str, Dict[str, Any]]] = {}
@@ -594,7 +659,7 @@ def _compute_slices(
 def compute_objective(
     matched_pairs: Sequence[Tuple[RoutingCase, Dict[str, Any]]],
     is_verified_view: bool = False,
-) -> Tuple[float, Dict[str, float]]:
+) -> Tuple[Optional[float], Dict[str, float]]:
     """Compute the optimization objective: routing correctness macro-averaged over scenarios."""
 
     def _is_routing_correct(c: RoutingCase, t: Dict[str, Any]) -> bool:
@@ -623,7 +688,7 @@ def compute_objective(
         eligible.append((c, t))
 
     if not eligible:
-        return (0.0, {})
+        return (None, {})
 
     scenario_map: Dict[str, List[Tuple[RoutingCase, Dict[str, Any]]]] = {}
     for c, t in eligible:
@@ -637,7 +702,7 @@ def compute_objective(
             scenario_scores[sc] = round(correct / len(sc_pairs), 4)
 
     if not scenario_scores:
-        return (0.0, {})
+        return (None, {})
 
     macro_objective = sum(scenario_scores.values()) / len(scenario_scores)
     return (round(macro_objective, 4), scenario_scores)

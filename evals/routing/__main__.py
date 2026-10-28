@@ -67,7 +67,7 @@ def handle_preregister(args: argparse.Namespace) -> int:
 
 
 def handle_report(args: argparse.Namespace) -> int:
-    from evals.routing.report import write_run_artifacts
+    from evals.routing.report import resolve_dataset_path, write_run_artifacts
     from evals.routing.schema import read_jsonl
 
     run_dir = Path(args.run)
@@ -86,7 +86,8 @@ def handle_report(args: argparse.Namespace) -> int:
             if line.strip():
                 traces.append(json.loads(line))
 
-    dataset_path = Path(args.dataset) if args.dataset else Path("evals/data/routing_v1/dev.jsonl")
+    trace_split = traces[0].get("split") if traces else "dev"
+    dataset_path = resolve_dataset_path(args.dataset, split=trace_split)
     if not dataset_path.exists():
         print(f"Error: Dataset file not found: {dataset_path}", file=sys.stderr)
         return 1
@@ -109,6 +110,7 @@ def handle_report(args: argparse.Namespace) -> int:
 
 def handle_compare(args: argparse.Namespace) -> int:
     from evals.routing.compare import compare
+    from evals.routing.report import resolve_dataset_path
     from evals.routing.schema import read_jsonl
 
     b_dir = Path(args.baseline)
@@ -134,7 +136,8 @@ def handle_compare(args: argparse.Namespace) -> int:
     b_traces = [json.loads(line) for line in b_traces_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     c_traces = [json.loads(line) for line in c_traces_path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
-    dataset_path = Path(args.dataset) if args.dataset else Path("evals/data/routing_v1/dev.jsonl")
+    trace_split = b_traces[0].get("split") if b_traces else "dev"
+    dataset_path = resolve_dataset_path(args.dataset, split=trace_split)
     if not dataset_path.exists():
         print(f"Error: Dataset file not found: {dataset_path}", file=sys.stderr)
         return 1

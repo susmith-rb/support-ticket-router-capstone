@@ -230,6 +230,7 @@ def run(
     reliability_k: int = 1,
     with_model_armor: bool = False,
     dry_run: bool = False,
+    refresh_cache: bool = False,
     label: Optional[str] = None,
     cache_root: Optional[Path | str] = None,
     config_path: Optional[Path | str] = None,
@@ -445,9 +446,16 @@ def run(
     if eff_mode != "replay":
         if live_s1_inner is None and eff_target == "policy":
             try:
+                from ticket_router.common.settings import Settings
                 from ticket_router.models.router_s1_client import RouterS1Client
 
-                live_s1_inner = RouterS1Client()
+                # Mirror production wiring (TriageRouterAgent._ensure_initialized): the dedicated
+                # endpoint rejects the shared-domain default URL with HTTP 400.
+                settings = Settings.from_env()
+                live_s1_inner = RouterS1Client(
+                    endpoint=settings.router_s1_endpoint,
+                    base_url=settings.router_s1_base_url,
+                )
             except Exception as exc:
                 logger.warning("Could not construct live RouterS1Client: %s", exc)
 
@@ -472,6 +480,7 @@ def run(
         model_role="router_s1",
         model_id=s1_model_id,
         prompt_version=None,
+        refresh_cache=refresh_cache,
     )
     caching_t2 = CachingTier2Invoker(
         inner=live_t2_inner,
@@ -481,6 +490,7 @@ def run(
         model_role="router_tier2",
         model_id=t2_model_id,
         prompt_version=prompt_version,
+        refresh_cache=refresh_cache,
     )
 
     policy = TriagePolicy(
@@ -632,8 +642,10 @@ def run(
 
         # Policy / Replay target with retries on transient errors
         max_attempts = 4
+        t_eval_ms = 0.0
         for attempt in range(max_attempts):
             try:
+                t0_eval = time.monotonic()
                 decision = policy.evaluate(
                     text=text,
                     session_id=f"eval-{t_id[:12]}",
@@ -641,6 +653,7 @@ def run(
                     verified_facts=None,
                     ticket_id=t_id,
                 )
+                t_eval_ms = (time.monotonic() - t0_eval) * 1000.0
                 break
             except CacheMiss:
                 # CacheMiss is deterministically non-transient, re-raise immediately
@@ -652,9 +665,10 @@ def run(
                     time.sleep(0.05 * (2**attempt))
                     continue
                 error_msg = str(exc)
+                t_eval_ms = (time.monotonic() - t0_wall) * 1000.0
                 break
 
-        t_total_ms = (time.monotonic() - t0_wall) * 1000.0
+        t_total_ms = t_eval_ms if decision is not None else ((time.monotonic() - t0_wall) * 1000.0)
 
         # Calculate costs for calls made in this case
         for call_rec in case_calls:
@@ -676,7 +690,7 @@ def run(
                 tier0 = evaluate_tier0_rules(text)
                 for p_idx in range(1, reliability_k):
                     try:
-                        p_pred = caching_t2(text, pass_index=p_idx)
+                        p_pred = caching_t2(text, pass_index=p_idx, purpose="reliability")
                         final_esc = (
                             tier0.escalate
                             or p_pred.escalate

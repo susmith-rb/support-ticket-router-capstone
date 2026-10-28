@@ -196,3 +196,72 @@ def test_estimate_dry_run_cost(eval_config):
     # Total = 0.05177
     est = estimate_dry_run_cost(misses, eval_config)
     assert pytest.approx(est, rel=1e-4) == 0.05177
+
+
+def test_breakdown_reliability_cost_separation(eval_config):
+    # REQ-REVAL-018: Reliability cost is reported separately and excluded from per-ticket cost.
+    traces = [
+        TraceRecord(
+            ticket_id="TICK-001",
+            split="dev",
+            target="policy",
+            run_id="run_001",
+            config_hash="h1",
+            candidate="baseline",
+            predicted={"tier": "tier2_flash"},
+            decision_raw={"tier": "tier2_flash"},
+            tier_calls=[
+                {"tier": "tier1_router_s1", "pass_index": 0, "purpose": "decision", "cost_usd": 0.0005, "latency_ms": 10.0, "latency_measured": True},
+                {"tier": "tier2_flash", "pass_index": 0, "purpose": "decision", "cost_usd": 0.0010, "latency_ms": 100.0, "latency_measured": True},
+                {"tier": "tier2_flash", "pass_index": 1, "purpose": "reliability", "cost_usd": 0.0010, "latency_ms": 100.0, "latency_measured": True},
+                {"tier": "tier2_flash", "pass_index": 2, "purpose": "reliability", "cost_usd": 0.0010, "latency_ms": 100.0, "latency_measured": True},
+            ],
+            latency_ms_total=110.0,
+            cost_usd_total=0.0035,
+        ),
+    ]
+
+    bd = breakdown(traces, eval_config)
+    # Total cost = 0.0035
+    assert pytest.approx(bd["cost_total_usd"], rel=1e-5) == 0.0035
+    # Decision cost = 0.0015 (tier1 + tier2 pass 0)
+    assert pytest.approx(bd["cost_decision_usd"], rel=1e-5) == 0.0015
+    # Reliability cost = 0.0020 (tier2 pass 1 + pass 2)
+    assert pytest.approx(bd["cost_reliability_usd"], rel=1e-5) == 0.0020
+    # Cost per ticket uses decision cost: 0.0015 / 1 = 0.0015
+    assert pytest.approx(bd["cost_per_ticket_usd"], rel=1e-5) == 0.0015
+    assert pytest.approx(bd["cost_per_1k_usd"], rel=1e-5) == 1.50
+
+    # Reliability calls excluded from per-tier latency percentiles
+    t2_stats = bd["per_tier"]["tier2_flash"]
+    assert t2_stats["calls"] == 3
+    # Only 1 decision call was measured
+    assert t2_stats["latency_measured"] is True
+    assert t2_stats["latency_ms"]["p50"] == 100.0
+
+
+def test_unmeasured_latency_exclusion(eval_config):
+    # Old cache entries lacking measured flag must be marked unmeasured and excluded
+    traces = [
+        TraceRecord(
+            ticket_id="TICK-001",
+            split="dev",
+            target="policy",
+            run_id="run_001",
+            config_hash="h1",
+            candidate="baseline",
+            predicted={"tier": "tier2_flash"},
+            decision_raw={"tier": "tier2_flash"},
+            tier_calls=[
+                {"tier": "tier2_flash", "pass_index": 0, "purpose": "decision", "cost_usd": 0.0010, "latency_ms": 120.0, "latency_measured": False},
+            ],
+            latency_ms_total=120.0,
+            cost_usd_total=0.0010,
+        ),
+    ]
+
+    bd = breakdown(traces, eval_config)
+    t2_stats = bd["per_tier"]["tier2_flash"]
+    assert t2_stats["calls"] == 1
+    assert t2_stats["latency_measured"] is False
+    assert t2_stats["latency_ms"]["p50"] is None

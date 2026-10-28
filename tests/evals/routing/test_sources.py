@@ -335,3 +335,56 @@ def test_contamination_guard_heldout_reassignment():
     assert "laya_train_collision" in (guarded[0].notes or "")
 
 
+def test_sample_fresh_threads_hermetic(tmp_path: Path):
+    """# REQ-REVAL-004: Hermetic test for sample_fresh_threads from raw JSONL."""
+    from evals.routing.schema import compute_content_hash
+    from evals.routing.sources.real_twcs import sample_fresh_threads, scrub_pii
+
+    # Alias check
+    assert scrub_pii("Contact me at test@example.com") == "Contact me at [EMAIL]"
+
+    threads_file = tmp_path / "mock_threads.jsonl"
+    lines = [
+        # English lines
+        {"thread_id": 1, "brand": "TestBrand", "turns": [{"role": "customer", "text": "Where is my order 123-1234567-1234567? I need it today!"}]},
+        {"thread_id": 2, "brand": "TestBrand", "turns": [{"role": "customer", "text": "Can I return these damaged shoes for a full refund please?"}]},
+        {"thread_id": 3, "brand": "TestBrand", "turns": [{"role": "customer", "text": "My account password reset email never arrived."}]},
+        {"thread_id": 4, "brand": "TestBrand", "turns": [{"role": "agent", "text": "Agent greeting"}, {"role": "customer", "text": "I need help with my billing invoice."}]},
+        {"thread_id": 5, "brand": "TestBrand", "turns": [{"role": "customer", "text": "Terse order status request"}]},
+        {"thread_id": 6, "brand": "TestBrand", "turns": [{"role": "customer", "text": "Another English support inquiry regarding delayed parcel shipping transit times."}]},
+        # Non-English lines
+        {"thread_id": 7, "brand": "TestBrand", "turns": [{"role": "customer", "text": "amazonのfireTVstickが見れない 再生エラーが多いです"}]},
+        {"thread_id": 8, "brand": "TestBrand", "turns": [{"role": "customer", "text": "Bonjour je voudrais savoir où est mon colis merci"}]},
+        # Should be excluded line
+        {"thread_id": 9, "brand": "TestBrand", "turns": [{"role": "customer", "text": "This ticket text is in exclude_hashes and must be skipped."}]},
+    ]
+    with threads_file.open("w", encoding="utf-8") as f:
+        for item in lines:
+            f.write(json.dumps(item) + "\n")
+
+    ex_hash = compute_content_hash(None, "This ticket text is in exclude_hashes and must be skipped.")
+    cases = sample_fresh_threads(threads_file, n=5, seed=20261028, exclude_hashes={ex_hash})
+
+    assert len(cases) == 5
+    for c in cases:
+        errs = validate_case(c.to_dict())
+        assert not errs, f"Validation failed for case {c.ticket_id}: {errs}"
+        assert c.source == "real"
+        assert c.source_dataset == "kaggle_twcs"
+        assert c.ground_truth_source == "rule_derived"
+        assert c.label_status == "provisional"
+        assert c.notes == "fresh_unlabeled"
+        assert c.channel == "twitter"
+        assert c.content_hash != ex_hash
+        if c.language != "en":
+            assert "ood" in c.scenarios
+            assert c.language == "other"
+        else:
+            assert "normal" in c.scenarios
+
+    # Determinism
+    cases_2 = sample_fresh_threads(threads_file, n=5, seed=20261028, exclude_hashes={ex_hash})
+    assert [c.ticket_id for c in cases] == [c.ticket_id for c in cases_2]
+
+
+

@@ -204,7 +204,11 @@ def test_verified_scoping_exclusion() -> None:
     # In verified view: intent was evaluated (intent_acc = 1.0)
     assert scorecard["verified"]["intent_accuracy"] == 1.0
     # But decision was NOT in verified_fields, so decision_accuracy is not scored on c1
-    assert scorecard["verified"]["decision_accuracy"] == 0.0
+    assert scorecard["verified"]["decision_accuracy"] is None
+    assert scorecard["verified"]["routing_correctness"] is None
+    assert scorecard["verified"]["strict_safety_recall"] is None
+    assert scorecard["verified"]["counts"]["decision_accuracy"] == 0
+    assert scorecard["verified"]["counts"]["intent_accuracy"] == 1
 
 
 def test_objective_scenario_macro_average() -> None:

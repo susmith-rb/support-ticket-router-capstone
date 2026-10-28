@@ -458,3 +458,29 @@ def test_cli_heldout_guard_enforced(tmp_eval_env, monkeypatch):
             "--dataset", str(dataset_dir),
             "--dry-run",
         ])
+
+
+def test_live_s1_client_uses_production_endpoint_wiring(monkeypatch, tmp_path):
+    # REQ-REVAL-011: the policy target must build RouterS1Client exactly like production
+    # (dedicated endpoint + dedicated base URL), not with library defaults.
+    import ticket_router.models.router_s1_client as s1mod
+    from ticket_router.common.settings import Settings
+
+    captured = {}
+
+    class _Spy:
+        def __init__(self, endpoint=None, base_url=None, **kw):
+            captured["endpoint"], captured["base_url"] = endpoint, base_url
+
+        def route(self, text):  # pragma: no cover - not called in dry wiring check
+            raise RuntimeError("no network in tests")
+
+    monkeypatch.setattr(s1mod, "RouterS1Client", _Spy)
+    from evals.routing import runner
+    from tests.evals.routing.fakes import FakeTier2Invoker
+
+    case = FakeRoutingCase(ticket_id="TICK-WIRE", description="Where is my order?")
+    runner.run([case], target="policy", candidate_overlay={}, run_dir=tmp_path / "r", mode="live",
+               tier2_invoker_override=FakeTier2Invoker(), cache_root=tmp_path / "c")
+    s = Settings.from_env()
+    assert captured == {"endpoint": s.router_s1_endpoint, "base_url": s.router_s1_base_url}

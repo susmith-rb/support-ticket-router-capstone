@@ -248,6 +248,7 @@ class CachingS1Client:
         model_id: Optional[str] = None,
         prompt_version: Optional[str] = None,
         tier: str = "tier1_router_s1",
+        refresh_cache: bool = False,
     ) -> None:
         self.inner = inner
         self.cache = cache
@@ -256,6 +257,7 @@ class CachingS1Client:
         self.model_id = model_id or "router-s1"
         self.prompt_version = prompt_version
         self.tier = tier
+        self.refresh_cache = refresh_cache
         self.calls: List[Dict[str, Any]] = []
 
     def route(self, text: str) -> RouterPrediction:
@@ -276,8 +278,10 @@ class CachingS1Client:
             "model_id": self.model_id,
             "prompt_version": self.prompt_version,
             "pass_index": 0,
+            "purpose": "decision",
             "cache_hit": False,
             "latency_ms": 0.0,
+            "latency_measured": False,
             "usage": None,
             "cost_usd": 0.0,
             "error": None,
@@ -290,28 +294,31 @@ class CachingS1Client:
             if cur_log is not None:
                 cur_log.append(rec)
 
-        if self.mode == "replay":
-            if cached is not None and cached.get("prediction") is not None:
+        if not self.refresh_cache:
+            if self.mode == "replay":
+                if cached is not None and cached.get("prediction") is not None:
+                    call_record["cache_hit"] = True
+                    call_record["latency_ms"] = float(cached.get("latency_ms", 0.0))
+                    call_record["latency_measured"] = bool(cached.get("latency_measured", False))
+                    call_record["usage"] = cached.get("usage")
+                    call_record["prediction"] = cached["prediction"]
+                    record_call(call_record)
+                    return prediction_from_dict(cached["prediction"])
+
+                key_tuple = (self.tier, self.model_role, self.model_id, self.prompt_version, input_sha, 0)
+                call_record["error"] = f"Cache miss in replay mode: {key_tuple}"
+                record_call(call_record)
+                raise CacheMiss(key_tuple)
+
+            # live or replay_or_live
+            if self.mode == "replay_or_live" and cached is not None and cached.get("prediction") is not None:
                 call_record["cache_hit"] = True
                 call_record["latency_ms"] = float(cached.get("latency_ms", 0.0))
+                call_record["latency_measured"] = bool(cached.get("latency_measured", False))
                 call_record["usage"] = cached.get("usage")
                 call_record["prediction"] = cached["prediction"]
                 record_call(call_record)
                 return prediction_from_dict(cached["prediction"])
-
-            key_tuple = (self.tier, self.model_role, self.model_id, self.prompt_version, input_sha, 0)
-            call_record["error"] = f"Cache miss in replay mode: {key_tuple}"
-            record_call(call_record)
-            raise CacheMiss(key_tuple)
-
-        # live or replay_or_live
-        if self.mode == "replay_or_live" and cached is not None and cached.get("prediction") is not None:
-            call_record["cache_hit"] = True
-            call_record["latency_ms"] = float(cached.get("latency_ms", 0.0))
-            call_record["usage"] = cached.get("usage")
-            call_record["prediction"] = cached["prediction"]
-            record_call(call_record)
-            return prediction_from_dict(cached["prediction"])
 
         if self.inner is None:
             err = "Cannot execute live Tier 1 call: inner client is None"
@@ -319,18 +326,17 @@ class CachingS1Client:
             record_call(call_record)
             raise RuntimeError(err)
 
-        t0 = time.monotonic()
+        t0 = time.perf_counter()
         try:
             pred = self.inner.route(text)
-            latency_ms = (time.monotonic() - t0) * 1000.0
-            if pred.latency_ms > 0:
-                latency_ms = pred.latency_ms
+            latency_ms = (time.perf_counter() - t0) * 1000.0
 
             pred_dict = prediction_to_dict(pred)
             usage = pred.raw.get("usage") if pred.raw else None
 
             call_record["cache_hit"] = False
             call_record["latency_ms"] = latency_ms
+            call_record["latency_measured"] = True
             call_record["usage"] = usage
             call_record["prediction"] = pred_dict
             record_call(call_record)
@@ -344,6 +350,7 @@ class CachingS1Client:
                 entry={
                     "prediction": pred_dict,
                     "latency_ms": latency_ms,
+                    "latency_measured": True,
                     "usage": usage,
                     "error": None,
                 },
@@ -351,9 +358,10 @@ class CachingS1Client:
             )
             return pred
         except Exception as exc:
-            latency_ms = (time.monotonic() - t0) * 1000.0
+            latency_ms = (time.perf_counter() - t0) * 1000.0
             call_record["error"] = str(exc)
             call_record["latency_ms"] = latency_ms
+            call_record["latency_measured"] = True
             record_call(call_record)
             raise
 
@@ -374,6 +382,7 @@ class CachingTier2Invoker:
         model_id: Optional[str] = None,
         prompt_version: Optional[str] = None,
         tier: str = "tier2_flash",
+        refresh_cache: bool = False,
     ) -> None:
         self.inner = inner
         self.cache = cache
@@ -391,11 +400,18 @@ class CachingTier2Invoker:
                 self.model_id = ""
         self.prompt_version = prompt_version
         self.tier = tier
+        self.refresh_cache = refresh_cache
         self.calls: List[Dict[str, Any]] = []
 
-    def __call__(self, text: str, pass_index: Optional[int] = None) -> RouterPrediction:
+    def __call__(
+        self,
+        text: str,
+        pass_index: Optional[int] = None,
+        purpose: Optional[str] = None,
+    ) -> RouterPrediction:
         """Invoke Tier 2 fallback inference with caching and telemetry capture."""
         effective_pass = self.pass_index if pass_index is None else pass_index
+        effective_purpose = purpose or ("reliability" if (effective_pass and effective_pass > 0) else "decision")
         input_sha = compute_input_sha256(text)
 
         cached = self.cache.get(
@@ -413,8 +429,10 @@ class CachingTier2Invoker:
             "model_id": self.model_id,
             "prompt_version": self.prompt_version,
             "pass_index": effective_pass,
+            "purpose": effective_purpose,
             "cache_hit": False,
             "latency_ms": 0.0,
+            "latency_measured": False,
             "usage": None,
             "cost_usd": 0.0,
             "error": None,
@@ -427,35 +445,38 @@ class CachingTier2Invoker:
             if cur_log is not None:
                 cur_log.append(rec)
 
-        if self.mode == "replay":
-            if cached is not None and cached.get("prediction") is not None:
+        if not self.refresh_cache:
+            if self.mode == "replay":
+                if cached is not None and cached.get("prediction") is not None:
+                    call_record["cache_hit"] = True
+                    call_record["latency_ms"] = float(cached.get("latency_ms", 0.0))
+                    call_record["latency_measured"] = bool(cached.get("latency_measured", False))
+                    call_record["usage"] = cached.get("usage")
+                    call_record["prediction"] = cached["prediction"]
+                    record_call(call_record)
+                    return prediction_from_dict(cached["prediction"])
+
+                key_tuple = (
+                    self.tier,
+                    self.model_role,
+                    self.model_id,
+                    self.prompt_version,
+                    input_sha,
+                    effective_pass,
+                )
+                call_record["error"] = f"Cache miss in replay mode: {key_tuple}"
+                record_call(call_record)
+                raise CacheMiss(key_tuple)
+
+            # live or replay_or_live
+            if self.mode == "replay_or_live" and cached is not None and cached.get("prediction") is not None:
                 call_record["cache_hit"] = True
                 call_record["latency_ms"] = float(cached.get("latency_ms", 0.0))
+                call_record["latency_measured"] = bool(cached.get("latency_measured", False))
                 call_record["usage"] = cached.get("usage")
                 call_record["prediction"] = cached["prediction"]
                 record_call(call_record)
                 return prediction_from_dict(cached["prediction"])
-
-            key_tuple = (
-                self.tier,
-                self.model_role,
-                self.model_id,
-                self.prompt_version,
-                input_sha,
-                effective_pass,
-            )
-            call_record["error"] = f"Cache miss in replay mode: {key_tuple}"
-            record_call(call_record)
-            raise CacheMiss(key_tuple)
-
-        # live or replay_or_live
-        if self.mode == "replay_or_live" and cached is not None and cached.get("prediction") is not None:
-            call_record["cache_hit"] = True
-            call_record["latency_ms"] = float(cached.get("latency_ms", 0.0))
-            call_record["usage"] = cached.get("usage")
-            call_record["prediction"] = cached["prediction"]
-            record_call(call_record)
-            return prediction_from_dict(cached["prediction"])
 
         if self.inner is None:
             err = "Cannot execute live Tier 2 call: inner invoker is None"
@@ -463,15 +484,13 @@ class CachingTier2Invoker:
             record_call(call_record)
             raise RuntimeError(err)
 
-        t0 = time.monotonic()
+        t0 = time.perf_counter()
         try:
             try:
                 pred = self.inner(text, pass_index=effective_pass)
             except TypeError:
                 pred = self.inner(text)
-            latency_ms = (time.monotonic() - t0) * 1000.0
-            if pred.latency_ms > 0:
-                latency_ms = pred.latency_ms
+            latency_ms = (time.perf_counter() - t0) * 1000.0
 
             pred_dict = prediction_to_dict(pred)
             usage = pred.raw.get("usage") if pred.raw else None
@@ -479,6 +498,7 @@ class CachingTier2Invoker:
             call_record["model_id"] = resolved_model_id
             call_record["cache_hit"] = False
             call_record["latency_ms"] = latency_ms
+            call_record["latency_measured"] = True
             call_record["usage"] = usage
             call_record["prediction"] = pred_dict
             record_call(call_record)
@@ -492,6 +512,7 @@ class CachingTier2Invoker:
                 entry={
                     "prediction": pred_dict,
                     "latency_ms": latency_ms,
+                    "latency_measured": True,
                     "usage": usage,
                     "error": None,
                 },
@@ -499,8 +520,9 @@ class CachingTier2Invoker:
             )
             return pred
         except Exception as exc:
-            latency_ms = (time.monotonic() - t0) * 1000.0
+            latency_ms = (time.perf_counter() - t0) * 1000.0
             call_record["error"] = str(exc)
             call_record["latency_ms"] = latency_ms
+            call_record["latency_measured"] = True
             record_call(call_record)
             raise

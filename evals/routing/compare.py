@@ -312,36 +312,37 @@ def compare(
         "reasons": reasons,
     }
 
-    # 8. Append to hillclimb log if requested
-    target_log = Path(log_path or cfg.get("hillclimb_log_path") or DEFAULT_LOG_PATH)
-    try:
-        target_log.parent.mkdir(parents=True, exist_ok=True)
-        attempt_id = 1
-        if target_log.exists():
-            with target_log.open("r", encoding="utf-8") as f:
-                attempt_id = sum(1 for line in f if line.strip()) + 1
+    # 8. Append to hillclimb log if explicitly requested
+    if log_path is not None:
+        target_log = Path(log_path)
+        try:
+            target_log.parent.mkdir(parents=True, exist_ok=True)
+            attempt_id = 1
+            if target_log.exists():
+                with target_log.open("r", encoding="utf-8") as f:
+                    attempt_id = sum(1 for line in f if line.strip()) + 1
 
-        cand_name = str(candidate_scorecard.get("candidate", "candidate"))
-        b_run = str(baseline_scorecard.get("run_id", "baseline"))
-        c_run = str(candidate_scorecard.get("run_id", "candidate"))
-        git_sha = str(candidate_scorecard.get("git_sha", "unknown"))
+            cand_name = str(candidate_scorecard.get("candidate", "candidate"))
+            b_run = str(baseline_scorecard.get("run_id", "baseline"))
+            c_run = str(candidate_scorecard.get("run_id", "candidate"))
+            git_sha = str(candidate_scorecard.get("git_sha", "unknown"))
 
-        entry = {
-            "attempt_id": attempt_id,
-            "candidate": cand_name,
-            "knob": str(candidate_scorecard.get("knob", "threshold_overlay")),
-            "baseline_run": b_run,
-            "candidate_run": c_run,
-            "objective_delta": round(obj_delta, 4),
-            "ci": [round(obj_ci[0], 4), round(obj_ci[1], 4)],
-            "verdict": verdict,
-            "git_sha": git_sha,
-            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        }
-        with target_log.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    except Exception:
-        # Graceful fallback if logging path is unwriteable in tests
-        pass
+            entry = {
+                "attempt_id": attempt_id,
+                "candidate": cand_name,
+                "knob": str(candidate_scorecard.get("knob", "threshold_overlay")),
+                "baseline_run": b_run,
+                "candidate_run": c_run,
+                "objective_delta": round(obj_delta, 4),
+                "ci": [round(obj_ci[0], 4), round(obj_ci[1], 4)],
+                "verdict": verdict,
+                "git_sha": git_sha,
+                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            }
+            with target_log.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception:
+            # Graceful fallback if logging path is unwriteable in tests
+            pass
 
     return result

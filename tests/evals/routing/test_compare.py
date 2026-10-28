@@ -128,3 +128,17 @@ def test_compare_newly_failing_regression() -> None:
     res = compare(b_sc, [b_trace], c_sc, [c_trace], [case], cfg={"bootstrap_resamples": 50})
     assert len(res["newly_failing_regression"]) == 1
     assert res["verdict"] == "REJECT"
+    # Ensure compare() did not write to default log when log_path is omitted
+    assert not Path("evals/results/routing/hillclimb_log.jsonl").exists()
+
+
+def test_compare_no_log_path_does_not_write() -> None:
+    # REQ-REVAL-016: compare() writes only when log_path is explicitly provided.
+    case = _make_case("t1", "order_status", "auto_rag", "none")
+    trace = _make_trace("t1", "order_status", "auto_rag", "none")
+    b_sc = {"objective": {"all": 1.0}}
+    c_sc = {"objective": {"all": 1.0}}
+    res = compare(b_sc, [trace], c_sc, [trace], [case], cfg={"bootstrap_resamples": 10}, log_path=None)
+    assert res["verdict"] in {"ACCEPT", "ACCEPT_NEUTRAL", "REJECT"}
+    assert not Path("evals/results/routing/hillclimb_log.jsonl").exists()
+

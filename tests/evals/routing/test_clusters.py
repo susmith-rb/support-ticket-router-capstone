@@ -117,3 +117,85 @@ def test_cluster_failures_severity_ranking() -> None:
     assert second["size"] == 2
     assert second["score"] == 2
     assert len(second["representatives"]) == 2
+    assert second["representatives"][0]["tier"] == "tier1_router_s1"
+
+
+def test_representative_misclassified_by_error_type() -> None:
+    # REQ-REVAL-017: Top 3 representative misclassified tickets per error type.
+    from evals.routing.clusters import get_representative_misclassified
+
+    c_miss = _make_case("t_miss", "order_status", "escalate", "human-urgent")
+    t_miss = {
+        "ticket_id": "t_miss",
+        "predicted": {"intent": "order_status", "decision": "auto_rag", "escalate": False, "queue": "none", "tier": "tier1_router_s1"},
+    }
+    c_wi = _make_case("t_wi", "order_status", "auto_rag", "none")
+    t_wi = {
+        "ticket_id": "t_wi",
+        "predicted": {"intent": "shipping_policy", "decision": "auto_rag", "escalate": False, "queue": "none", "tier": "tier2_flash"},
+    }
+
+    reps = get_representative_misclassified([t_miss, t_wi], [c_miss, c_wi], n_per_type=3)
+    assert "missed_escalation" in reps
+    assert len(reps["missed_escalation"]) == 1
+    assert reps["missed_escalation"][0]["ticket_id"] == "t_miss"
+    assert reps["missed_escalation"][0]["tier"] == "tier1_router_s1"
+
+    assert "wrong_intent" in reps
+    assert len(reps["wrong_intent"]) == 1
+    assert reps["wrong_intent"][0]["ticket_id"] == "t_wi"
+    assert reps["wrong_intent"][0]["tier"] == "tier2_flash"
+
+
+def test_key_level_clustering_defragmentation() -> None:
+    # REQ-REVAL-017: Clusters ranked at KEY level (error_type, transition, deciding_tier)
+    # Multiple invalid labels from tier2_flash should be grouped into a single key-level cluster.
+    c1 = _make_case("t1", "order_status", "auto_rag", "none", description="Need order update")
+    t1 = {
+        "ticket_id": "t1",
+        "predicted": {"intent": "shipping", "decision": "auto_rag", "escalate": False, "queue": "none", "tier": "tier2_flash"},
+    }
+    c2 = _make_case("t2", "account_payment", "auto_rag", "none", description="Payment problem")
+    t2 = {
+        "ticket_id": "t2",
+        "predicted": {"intent": "billing", "decision": "auto_rag", "escalate": False, "queue": "none", "tier": "tier2_flash"},
+    }
+    c3 = _make_case("t3", "other", "auto_rag", "none", description="Technical glitch")
+    t3 = {
+        "ticket_id": "t3",
+        "predicted": {"intent": "technical", "decision": "auto_rag", "escalate": False, "queue": "none", "tier": "tier2_flash"},
+    }
+
+    clusters = cluster_failures([t1, t2, t3], [c1, c2, c3])
+    assert len(clusters) == 1
+    cl = clusters[0]
+    assert cl["error_type"] == "invalid_label"
+    assert cl["deciding_tier"] == "tier2_flash"
+    assert cl["size"] == 3
+    assert cl["transition"] == "*->shipping|billing|technical"
+    assert len(cl["representatives"]) == 3
+
+
+def test_get_error_type_summary() -> None:
+    # REQ-REVAL-017: Error type summary table counts and shares
+    from evals.routing.clusters import get_error_type_summary
+
+    c1 = _make_case("t1", "order_status", "escalate", "human-urgent")
+    t1 = {"ticket_id": "t1", "predicted": {"intent": "order_status", "decision": "auto_rag", "escalate": False, "tier": "tier1_router_s1"}}
+    c2 = _make_case("t2", "order_status", "escalate", "human-urgent")
+    t2 = {"ticket_id": "t2", "predicted": {"intent": "order_status", "decision": "auto_rag", "escalate": False, "tier": "tier1_router_s1"}}
+    c3 = _make_case("t3", "account_payment", "auto_rag", "none")
+    t3 = {"ticket_id": "t3", "predicted": {"intent": "billing", "decision": "auto_rag", "escalate": False, "tier": "tier2_flash"}}
+
+    summary = get_error_type_summary([t1, t2, t3], [c1, c2, c3])
+    assert len(summary) == 2
+    # missed_escalation tier1_router_s1 (count 2, share 2/3)
+    assert summary[0]["error_type"] == "missed_escalation"
+    assert summary[0]["deciding_tier"] == "tier1_router_s1"
+    assert summary[0]["count"] == 2
+    assert summary[0]["share"] == 0.6667
+    # invalid_label tier2_flash (count 1, share 1/3)
+    assert summary[1]["error_type"] == "invalid_label"
+    assert summary[1]["deciding_tier"] == "tier2_flash"
+    assert summary[1]["count"] == 1
+    assert summary[1]["share"] == 0.3333

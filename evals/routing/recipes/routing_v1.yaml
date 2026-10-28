@@ -1,0 +1,886 @@
+# Declarative dataset recipe for routing_v1
+# REQ-REVAL-004 / REQ-REVAL-005 / REQ-REVAL-006 / REQ-REVAL-009 / REQ-REVAL-020
+
+dataset_version: "routing_v1.0.0"
+seed: 20261028
+
+quotas:
+  dev: 400
+  regression: 150
+  heldout: 400
+
+split_mix:
+  dev:
+    real_fresh: 150
+    bitext: 80
+    synthetic_jetski: 100
+    synthetic_template: 30
+    paraphrase_perturbation: 40
+    contaminated_c2: 120
+  heldout:
+    real_fresh: 150
+    bitext: 80
+    synthetic_jetski: 100
+    synthetic_template: 30
+    paraphrase_perturbation: 40
+
+contamination:
+  laya_hashes_path: ".cache/routing_eval/laya_hashes.json"
+  keys:
+    - "train_val"
+    - "test"
+
+sources:
+  real_fresh:
+    threads_path: ".cache/routing_eval/raw/threads.jsonl"
+    n: 320
+    seed: 20261028
+
+  real_c2:
+    labels_path: "rag/labels/retrieval_v1/labels_C2.jsonl"
+    queries_path: "rag/labels/retrieval_v1/queries_blind.jsonl"
+    manifest_path: "rag/corpus_v2/manifest.jsonl"
+
+  real_golden:
+    golden_csv_path: "training/router_s1/results/v2/golden_all_model_outputs.csv"
+
+  public_bitext:
+    csv_path: ".cache/routing_eval/raw/bitext/Bitext_Sample_Customer_Support_Training_Dataset_27K_responses-v11.csv"
+    n: 300
+    per_intent_min: 8
+    seed: 20261028
+
+  regression:
+    yaml_path: "evals/routing/regression_seeds.yaml"
+    adversarial_path: "evals/data/adversarial_tone_v1.jsonl"
+
+  synthetic_templates:
+    n_target: 60
+    scenarios:
+      - "missing_info"
+      - "conflicting"
+      - "rare"
+      - "long"
+      - "ood"
+
+perturbations:
+  num_c2_bases: 60
+  variants_per_base: 2
+  meaning_preserving_types:
+    - "typos"
+    - "case"
+    - "punctuation_strip"
+    - "emoji_slang"
+    - "long_padding"
+    - "prompt_injection"
+  semantic_altering_bases: 20
+  semantic_altering_types:
+    - "truncate"
+    - "conflicting_info"
+
+paraphrases:
+  num_c2_bases: 40
+  paraphrases_per_base: 3
+
+synthetic_generation:
+  target_total: 260
+  tickets_per_packet: 10
+  scenario_weights:
+    ambiguous: 50
+    conflicting: 30
+    missing_info: 30
+    rare: 30
+    ood: 40
+    long: 30
+    prompt_injection: 30
+    noisy: 20
+
+annotation:
+  k_passes: 3
+  batch_size: 20
+
+templates:
+  # --- missing_info (12 templates) ---
+  - scenario: "missing_info"
+    description: "not working ?"
+    intent: "other"
+    acceptable_intents: ["other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "terse"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Vague uninferable query per Rule 6"
+
+  - scenario: "missing_info"
+    description: "where order ?"
+    intent: "order_status"
+    acceptable_intents: ["order_status"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "terse"
+    difficulty: "medium"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Terse order tracking without order number"
+
+  - scenario: "missing_info"
+    description: "package status please"
+    intent: "order_status"
+    acceptable_intents: ["order_status"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "terse"
+    difficulty: "easy"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Short status request without tracking details"
+
+  - scenario: "missing_info"
+    description: "refund ?"
+    intent: "returns_refunds"
+    acceptable_intents: ["returns_refunds"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "terse"
+    difficulty: "medium"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Terse refund inquiry"
+
+  - scenario: "missing_info"
+    description: "shipping cost ?"
+    intent: "shipping_policy"
+    acceptable_intents: ["shipping_policy"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "terse"
+    difficulty: "easy"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "General shipping rate question without destination"
+
+  - scenario: "missing_info"
+    description: "login failed"
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "terse"
+    difficulty: "medium"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Terse login issue without username or details"
+
+  - scenario: "missing_info"
+    description: "help me please"
+    intent: "other"
+    acceptable_intents: ["other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "terse"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Generic cry for help with zero domain context"
+
+  - scenario: "missing_info"
+    description: "order not here"
+    intent: "order_status"
+    acceptable_intents: ["order_status"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "terse"
+    difficulty: "medium"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Undelivered package notice missing order identifier"
+
+  - scenario: "missing_info"
+    description: "return label"
+    intent: "returns_refunds"
+    acceptable_intents: ["returns_refunds"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "terse"
+    difficulty: "easy"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Request for return label without item or invoice"
+
+  - scenario: "missing_info"
+    description: "how long shipping"
+    intent: "shipping_policy"
+    acceptable_intents: ["shipping_policy"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "terse"
+    difficulty: "easy"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "General transit inquiry without location"
+
+  - scenario: "missing_info"
+    description: "password reset"
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "terse"
+    difficulty: "easy"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Password reset assistance request"
+
+  - scenario: "missing_info"
+    description: "can you help ?"
+    intent: "other"
+    acceptable_intents: ["other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "terse"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Unspecified greeting/help inquiry per Rule 6"
+
+  # --- conflicting (12 templates) ---
+  - scenario: "conflicting"
+    description: "I wanted to check the delivery date for order [ORDER], but actually please cancel the order immediately instead."
+    intent: "order_status"
+    acceptable_intents: ["order_status"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "casual"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 2
+    notes: "Resolved by most recent explicit request (cancel) per Rule 5"
+
+  - scenario: "conflicting"
+    description: "I need to return this sweater because it is too large, but wait, do you have express shipping if I reorder in size medium?"
+    intent: "shipping_policy"
+    acceptable_intents: ["shipping_policy", "returns_refunds"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "casual"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Return question followed by shipping policy inquiry; recent statement asks about shipping"
+
+  - scenario: "conflicting"
+    description: "I was checking my invoice for this month, but my card was charged fraudulently and someone stole my account!"
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "emotional"
+    difficulty: "hard"
+    sentiment: "angry"
+    urgency: 3
+    notes: "Invoice inquiry contains security emergency; Rule 1 escalation supersedes"
+
+  - scenario: "conflicting"
+    description: "Where is my package? Never mind, I received it five minutes ago, but the screen is completely shattered."
+    intent: "returns_refunds"
+    acceptable_intents: ["returns_refunds", "order_status"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "casual"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Tracking query superseded by damaged item replacement request"
+
+  - scenario: "conflicting"
+    description: "I forgot my account password. Actually wait, I remembered it, but checkout gives an error on my credit card."
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "casual"
+    difficulty: "medium"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Password inquiry superseded by credit card decline"
+
+  - scenario: "conflicting"
+    description: "How long does standard delivery take to Seattle? Or rather, can I return an item I already received?"
+    intent: "returns_refunds"
+    acceptable_intents: ["returns_refunds", "shipping_policy"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "casual"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Shipping question superseded by return inquiry"
+
+  - scenario: "conflicting"
+    description: "I want to exchange my shoes for a size 10. Wait, never mind exchanging, where is the tracking link for the original pair?"
+    intent: "order_status"
+    acceptable_intents: ["order_status", "returns_refunds"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "casual"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Exchange superseded by original tracking link request"
+
+  - scenario: "conflicting"
+    description: "Please update my shipping address for order [ORDER]. Wait, no, please cancel and refund it right now."
+    intent: "order_status"
+    acceptable_intents: ["order_status"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "casual"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 2
+    notes: "Address modification superseded by cancellation"
+
+  - scenario: "conflicting"
+    description: "Can I pay with PayPal? Actually I already paid with my Visa, but my order status shows pending."
+    intent: "order_status"
+    acceptable_intents: ["order_status", "account_payment"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "casual"
+    difficulty: "medium"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Payment query superseded by order status pending check"
+
+  - scenario: "conflicting"
+    description: "Do you ship overseas to Germany? Also, is there a return fee for international orders if I don't like it?"
+    intent: "returns_refunds"
+    acceptable_intents: ["returns_refunds", "shipping_policy"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "formal"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "International shipping question followed by international return fee inquiry"
+
+  - scenario: "conflicting"
+    description: "I need a replacement for item [ORDER]. Wait, no, just tell me your general return policy timeline."
+    intent: "returns_refunds"
+    acceptable_intents: ["returns_refunds"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "casual"
+    difficulty: "medium"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Specific replacement question superseded by general return policy request"
+
+  - scenario: "conflicting"
+    description: "Checking on tracking for order [ORDER]. But wait, the delivery driver threatened me with physical violence and assaulted my neighbor!"
+    intent: "order_status"
+    acceptable_intents: ["order_status"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-urgent"
+    register: "emotional"
+    difficulty: "hard"
+    sentiment: "angry"
+    urgency: 3
+    notes: "Tracking inquiry superseded by severe physical safety emergency per Rule 1 & Rule 3"
+
+  # --- rare (12 templates) ---
+  - scenario: "rare"
+    description: "We are a registered 501(c)(3) nonprofit organization. Where do we upload our state sales tax exemption certificate for billing?"
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "formal"
+    difficulty: "medium"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Tax exemption document submission for account billing"
+
+  - scenario: "rare"
+    description: "What are your international hazardous material customs declarations and restrictions for shipping lithium ion battery packs overseas?"
+    intent: "shipping_policy"
+    acceptable_intents: ["shipping_policy"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "formal"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Specialized international hazmat shipping policy inquiry"
+
+  - scenario: "rare"
+    description: "How do I request an estate inheritance transfer for a deceased relative's account balance and active digital subscriptions?"
+    intent: "account_payment"
+    acceptable_intents: ["account_payment", "other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "formal"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Rare legal/estate account management workflow requiring human intervention"
+
+  - scenario: "rare"
+    description: "Do you support shipments addressed to diplomatic pouch codes and overseas military APO/FPO/DPO ZIP addresses?"
+    intent: "shipping_policy"
+    acceptable_intents: ["shipping_policy"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "formal"
+    difficulty: "medium"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "Specialized military and diplomatic address shipping policy"
+
+  - scenario: "rare"
+    description: "We have served your company with a formal court subpoena regarding order history records for case #CR-2026-991."
+    intent: "account_payment"
+    acceptable_intents: ["account_payment", "other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-urgent"
+    register: "formal"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 3
+    notes: "Formal court legal subpoena escalation to human-urgent per Rule 1 & Rule 3"
+
+  - scenario: "rare"
+    description: "Can we schedule a specialized commercial freight dock delivery with a hydraulic liftgate for palletized merchandise?"
+    intent: "shipping_policy"
+    acceptable_intents: ["shipping_policy"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "formal"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Commercial freight liftgate delivery inquiry"
+
+  - scenario: "rare"
+    description: "Our school district requires purchase order invoicing with Net-60 settlement terms for bulk educational orders."
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "formal"
+    difficulty: "medium"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Institutional Net-60 PO billing question"
+
+  - scenario: "rare"
+    description: "Is it possible to return or re-engrave a custom personalized laser-etched watch under your warranty exception clause?"
+    intent: "returns_refunds"
+    acceptable_intents: ["returns_refunds"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "formal"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Personalized item return warranty exception inquiry"
+
+  - scenario: "rare"
+    description: "What cold-chain dry ice packaging guidelines apply when ordering temperature-sensitive perishable items?"
+    intent: "shipping_policy"
+    acceptable_intents: ["shipping_policy"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "formal"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "Dry ice cold chain delivery rules"
+
+  - scenario: "rare"
+    description: "I received a state notice regarding unclaimed property escheatment for an inactive account balance. How do I claim it?"
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "formal"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "State unclaimed property escheatment resolution"
+
+  - scenario: "rare"
+    description: "I suspect that the product I received from a third-party seller on your platform is a counterfeit replica."
+    intent: "returns_refunds"
+    acceptable_intents: ["returns_refunds"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "formal"
+    difficulty: "hard"
+    sentiment: "frustrated"
+    urgency: 2
+    notes: "Counterfeit product claim requires human investigation and refund triage"
+
+  - scenario: "rare"
+    description: "Our vendor company has entered Chapter 11 bankruptcy restructuring. Where do we submit our creditor proof of claim for pending refunds?"
+    intent: "returns_refunds"
+    acceptable_intents: ["returns_refunds", "other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "formal"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Corporate bankruptcy proof of claim for refund"
+
+  # --- long (12 templates) ---
+  - scenario: "long"
+    description: "Hello customer care team, I am writing to you today regarding an order that I placed approximately ten days ago while I was traveling on an extended business trip across several states. I originally expected the parcel to be delivered to my home address before I returned, but when I arrived back yesterday afternoon and inspected my porch and mailbox, there was no sign of the delivery anywhere. I looked at the tracking link provided in the confirmation email and the courier status seems to be stuck indefinitely at the regional sorting facility without any timestamp updates over the last four business days. Could someone please look into this shipment and provide an updated estimated time of arrival?"
+    intent: "order_status"
+    acceptable_intents: ["order_status"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "formal"
+    difficulty: "medium"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Long narrative (>80 words) tracking query"
+
+  - scenario: "long"
+    description: "Dear support, I recently purchased three different items from your online marketplace, including a winter jacket, waterproof hiking boots, and a matching fleece beanie. While the boots and beanie fit perfectly and arrived in great condition, the jacket unfortunately arrived in the wrong color and size entirely. I checked the packing slip inside the box and it lists a completely different product SKU than what I ordered on your web store. I would like to know the exact step-by-step return instructions for returning just the jacket for a replacement or store credit without affecting the discounts applied to the other two items from the promotional bundle."
+    intent: "returns_refunds"
+    acceptable_intents: ["returns_refunds"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "formal"
+    difficulty: "medium"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Long narrative return and exchange inquiry with complex bundle details"
+
+  - scenario: "long"
+    description: "Good afternoon. We are currently planning a significant home renovation project and intend to place a very substantial order consisting of multiple oversized furniture pieces, lighting fixtures, and plumbing hardware. Before we finalize our cart and commit to the purchase, we need complete clarity regarding your freight delivery procedures. Specifically, we want to know whether delivery drivers bring heavy freight items inside the residence through standard doorways, what happens if an item is too large for the staircase, and whether weekend scheduling appointments carry extra surcharges."
+    intent: "shipping_policy"
+    acceptable_intents: ["shipping_policy"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "formal"
+    difficulty: "medium"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "Long shipping policy inquiry about white-glove freight delivery"
+
+  - scenario: "long"
+    description: "To whom it may concern, I have been attempting to update the primary payment method associated with our recurring corporate subscription for the past forty-eight hours without success. Each time I navigate to the billing portal, enter the new corporate credit card credentials, and click confirm, the page displays a generic system error code and reverts back to the expired card on file. Our monthly billing cycle renews in three days and I want to ensure that our service is not disrupted due to an automated payment failure caused by this technical glitch."
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "formal"
+    difficulty: "medium"
+    sentiment: "neutral"
+    urgency: 2
+    notes: "Long payment method failure description with billing cycle context"
+
+  - scenario: "long"
+    description: "Hey guys, so I ordered a gaming keyboard two weeks ago and the carrier marked it as handed directly to resident yesterday afternoon at 3:15 PM. The crazy thing is that I was literally sitting in my living room with my front door open at that exact time watching the street and not a single delivery van drove by all afternoon. I already asked my next-door neighbors on both sides if anything was left on their porch by mistake and neither of them saw anything either. Can you guys help me track down where the driver actually dropped off this box?"
+    intent: "order_status"
+    acceptable_intents: ["order_status"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "casual"
+    difficulty: "medium"
+    sentiment: "frustrated"
+    urgency: 2
+    notes: "Long casual delivery discrepancy inquiry"
+
+  - scenario: "long"
+    description: "Hello there, I am trying to figure out how international warranty claims work for electronics purchased on your US storefront. My family recently relocated to the United Kingdom for a two-year job assignment, and the espresso machine we bought before moving has developed a severe pump leak and will no longer pressurize water. Since returning a heavy appliance back across the Atlantic Ocean would cost more than the machine itself, do you have an authorized European repair partner or can you issue an international credit?"
+    intent: "returns_refunds"
+    acceptable_intents: ["returns_refunds"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "formal"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Long international warranty and replacement question"
+
+  - scenario: "long"
+    description: "Good morning team, our business operates in rural Montana where standard commercial carriers often transfer parcels to regional third-party postal contractors for the final mile delivery. Because of this arrangement, estimated delivery dates shown at checkout frequently prove inaccurate by several days or packages are left at local post offices rather than our physical address. Could you provide detailed information about which specific shipping tiers utilize direct FedEx/UPS transit rather than postal handoffs for rural destinations?"
+    intent: "shipping_policy"
+    acceptable_intents: ["shipping_policy"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "formal"
+    difficulty: "medium"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "Long shipping carrier routing inquiry for rural addresses"
+
+  - scenario: "long"
+    description: "Hi support, I am writing because my personal online profile appears to have merged with another family member who shares our residential street address. When I log in using my personal email credentials, my saved favorites list shows items I never browsed, while my recent purchase history shows transactions completed under my brother's name. We need someone from technical operations to separate these profile profiles into two distinct accounts with separate billing information so our private data remains completely isolated."
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "formal"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 2
+    notes: "Long account data merge issue requiring account specialist human action"
+
+  - scenario: "long"
+    description: "I ordered a custom bespoke tailored suit for my daughter's wedding which takes place this coming Saturday. The order was placed three weeks ago with guaranteed express delivery by Wednesday afternoon, but the online tracking portal still indicates that the garment is in manufacturing and has not yet been assigned a carrier tracking number. With only three days remaining until the ceremony, I am extremely anxious and need immediate confirmation of when the suit will ship and whether priority overnight delivery can be arranged."
+    intent: "order_status"
+    acceptable_intents: ["order_status"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "emotional"
+    difficulty: "hard"
+    sentiment: "frustrated"
+    urgency: 2
+    notes: "Long time-sensitive order tracking with high emotional stakes"
+
+  - scenario: "long"
+    description: "Dear representative, I received my monthly statement this morning and discovered four separate charges of $49.99 billed consecutively on the seventeenth of this month under the merchant description 'Digital Media Subscription Service'. I have only ever maintained a single active subscription with your company and have never authorized multiple family profiles or secondary accounts. I need an itemized explanation of why these duplicate transactions were initiated and a full reversal of the unauthorized charges immediately."
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "formal"
+    difficulty: "hard"
+    sentiment: "frustrated"
+    urgency: 2
+    notes: "Long billing dispute regarding recurring unauthorized charges"
+
+  - scenario: "long"
+    description: "I recently purchased an open-box refurbished laptop during your annual promotional clearance event. When the package arrived, the factory seal on the inner box was torn and the power adapter and charging cable were completely missing from the packaging tray. The laptop itself powers on using a borrowed USB-C charger, but I would like to know whether you can dispatch the missing OEM charging brick separately, or whether I am required to pack up the entire computer and return it for an exchange."
+    intent: "returns_refunds"
+    acceptable_intents: ["returns_refunds"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "casual"
+    difficulty: "medium"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Long missing accessory / partial replacement request"
+
+  - scenario: "long"
+    description: "We are currently organizing a large international charity summit taking place at our regional convention center next month and are expecting delegates from over thirty countries. We would like to inquire about bulk ordering custom branded merchandise and having portions of the shipment delivered to multiple separate satellite hotels across the city on staggered dates. Does your commercial sales division handle custom logistics coordination of this nature?"
+    intent: "shipping_policy"
+    acceptable_intents: ["shipping_policy", "other"]
+    escalate: false
+    decision: "auto_rag"
+    queue: "none"
+    register: "formal"
+    difficulty: "hard"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "Long multi-destination event logistics policy inquiry"
+
+  # --- ood (12 templates) ---
+  - scenario: "ood"
+    description: "Do you provide financial portfolio management services, stock trading advice, or cryptocurrency exchange options on your retail platform?"
+    intent: "other"
+    acceptable_intents: ["other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "formal"
+    difficulty: "easy"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "Out of distribution commercial financial request"
+
+  - scenario: "ood"
+    description: "I would like to apply for an open software engineering position at your corporate headquarters. Where do I send my curriculum vitae?"
+    intent: "other"
+    acceptable_intents: ["other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "formal"
+    difficulty: "easy"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "Out of distribution recruitment inquiry"
+
+  - scenario: "ood"
+    description: "Can someone give me directions to the nearest subway transit station near your main warehouse facility?"
+    intent: "other"
+    acceptable_intents: ["other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "casual"
+    difficulty: "easy"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "Out of distribution local navigation question"
+
+  - scenario: "ood"
+    description: "What will the weather forecast be in downtown Chicago this coming Saturday afternoon?"
+    intent: "other"
+    acceptable_intents: ["other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "casual"
+    difficulty: "easy"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "Out of distribution general weather inquiry"
+
+  - scenario: "ood"
+    description: "Can you recommend a good authentic Italian restaurant located within walking distance of Central Park in New York?"
+    intent: "other"
+    acceptable_intents: ["other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "casual"
+    difficulty: "easy"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "Out of distribution local dining recommendation"
+
+  - scenario: "ood"
+    description: "Could you write a quick Python script to demonstrate how to implement a binary search algorithm on a sorted array?"
+    intent: "other"
+    acceptable_intents: ["other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "formal"
+    difficulty: "easy"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "Out of distribution programming task request"
+
+  - scenario: "ood"
+    description: "Which national team won the FIFA World Cup tournament held in France in 1998?"
+    intent: "other"
+    acceptable_intents: ["other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "casual"
+    difficulty: "easy"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "Out of distribution sports trivia question"
+
+  - scenario: "ood"
+    description: "Our investment firm is interested in exploring potential corporate acquisition or private equity merger discussions with your executive leadership."
+    intent: "other"
+    acceptable_intents: ["other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "formal"
+    difficulty: "easy"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "Out of distribution corporate M&A inquiry"
+
+  - scenario: "ood"
+    description: "I am a staff journalist with the national daily chronicle and would like to schedule an on-the-record interview with your chief technology officer."
+    intent: "other"
+    acceptable_intents: ["other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "formal"
+    difficulty: "easy"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "Out of distribution press and media relations request"
+
+  - scenario: "ood"
+    description: "I have been experiencing a sudden sharp headache and dizziness for the past hour. What medication should I take?"
+    intent: "other"
+    acceptable_intents: ["other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "emotional"
+    difficulty: "easy"
+    sentiment: "neutral"
+    urgency: 1
+    notes: "Out of distribution medical advice request"
+
+  - scenario: "ood"
+    description: "Could you provide me with the complete song lyrics to Bohemian Rhapsody by Queen?"
+    intent: "other"
+    acceptable_intents: ["other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "casual"
+    difficulty: "easy"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "Out of distribution song lyrics lookup"
+
+  - scenario: "ood"
+    description: "Please translate the following introductory paragraph from English into conversational French for a school assignment."
+    intent: "other"
+    acceptable_intents: ["other"]
+    escalate: true
+    decision: "escalate"
+    queue: "human-standard"
+    register: "formal"
+    difficulty: "easy"
+    sentiment: "neutral"
+    urgency: 0
+    notes: "Out of distribution language translation request"

@@ -119,6 +119,7 @@ def build_version(
     seed: int = 20261028,
     out_root: pathlib.Path | str = "evals/data",
     quotas: Optional[Dict[str, int]] = None,
+    split_mix: Optional[Dict[str, Dict[str, int]]] = None,
 ) -> pathlib.Path:
     """Build an immutable dataset version from configured inputs.
 
@@ -208,7 +209,14 @@ def build_version(
     clustered_cases, cluster_report = cluster_near_duplicates(deduped_cases, seed=seed)
 
     # 8. Deterministic split assignment with contamination guard protection
-    assigned_cases = split_assign(clustered_cases, seed=seed, quotas=quotas)
+    effective_split_mix = split_mix or inputs_cfg.get("split_mix")
+    assigned_cases = split_assign(
+        clustered_cases,
+        seed=seed,
+        quotas=quotas,
+        split_mix=effective_split_mix,
+        train_hashes=train_hashes,
+    )
 
     # Reassign any group containing a laya_train_collision away from heldout to dev
     clean_split_cases: List[RoutingCase] = []

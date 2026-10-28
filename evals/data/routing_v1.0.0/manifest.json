@@ -1,0 +1,251 @@
+{
+  "coverage_report": {
+    "intents_present_in_splits": {
+      "actual": true,
+      "details": {
+        "dev": {
+          "account_payment": 102,
+          "order_status": 110,
+          "other": 169,
+          "returns_refunds": 88,
+          "shipping_policy": 50
+        },
+        "heldout": {
+          "account_payment": 83,
+          "order_status": 75,
+          "other": 140,
+          "returns_refunds": 63,
+          "shipping_policy": 39
+        },
+        "pool": {
+          "account_payment": 172,
+          "order_status": 307,
+          "other": 364,
+          "returns_refunds": 224,
+          "shipping_policy": 93
+        },
+        "regression": {
+          "account_payment": 36,
+          "order_status": 36,
+          "other": 18,
+          "returns_refunds": 41,
+          "shipping_policy": 19
+        }
+      },
+      "ok": true,
+      "required": true
+    },
+    "ood_share_min_5pct": {
+      "actual": {
+        "dev": 0.127,
+        "heldout": 0.13,
+        "pool": 0.143,
+        "regression": 0.06
+      },
+      "ok": true,
+      "required": 0.05
+    },
+    "scenarios_counts": {
+      "details": {
+        "ambiguous": {
+          "dev": 22,
+          "heldout": 23,
+          "total": 45
+        },
+        "conflicting": {
+          "dev": 22,
+          "heldout": 21,
+          "total": 43
+        },
+        "long": {
+          "dev": 20,
+          "heldout": 23,
+          "total": 43
+        },
+        "missing_info": {
+          "dev": 22,
+          "heldout": 20,
+          "total": 42
+        },
+        "noisy": {
+          "dev": 19,
+          "heldout": 27,
+          "total": 46
+        },
+        "normal": {
+          "dev": 342,
+          "heldout": 198,
+          "total": 540
+        },
+        "ood": {
+          "dev": 66,
+          "heldout": 52,
+          "total": 118
+        },
+        "paraphrase": {
+          "dev": 12,
+          "heldout": 0,
+          "total": 12
+        },
+        "perturbation": {
+          "dev": 17,
+          "heldout": 0,
+          "total": 17
+        },
+        "prompt_injection": {
+          "dev": 13,
+          "heldout": 17,
+          "total": 30
+        },
+        "rare": {
+          "dev": 19,
+          "heldout": 20,
+          "total": 39
+        }
+      },
+      "ok": true,
+      "required": ">=15 across dev+heldout, >=5 per split"
+    }
+  },
+  "dataset_version": "routing_v1.0.0",
+  "dedup_report": {
+    "exact_duplicates_dropped": 92,
+    "near_duplicate_candidate_pairs": 673,
+    "near_duplicate_clusters": 18,
+    "near_duplicate_confirmed_pairs": 23,
+    "total_groups": 2208
+  },
+  "git_sha": "be8d891963cc782697b174147659ee77666e1897",
+  "input_sha256s": {},
+  "output_sha256s": {
+    "dev.jsonl": "a744f015ed01855a6e870baefa6c67ae0877adc49eb208cd048d9f90494d1699",
+    "heldout.jsonl": "ff0ebb2b445cdaa6590892f7ceba84027bce8b79fbf5dc72f259a9f9ef4b4ce6",
+    "pool.jsonl": "b1441c3a62aa7c0475c58f06d29fb14b2e8046965752b8a5a27224c1c670bbab",
+    "regression.jsonl": "56827d973e421b59bb97c84e0c6c8a37329f138473f34d4f889d8e7c26c5dfd5"
+  },
+  "seed": 20261028,
+  "split_counts": {
+    "dev": {
+      "by_intent": {
+        "account_payment": 102,
+        "order_status": 110,
+        "other": 169,
+        "returns_refunds": 88,
+        "shipping_policy": 50
+      },
+      "by_label_status": {
+        "disputed": 120,
+        "provisional": 309,
+        "verified": 90
+      },
+      "by_scenario": {
+        "ambiguous": 22,
+        "conflicting": 22,
+        "long": 20,
+        "missing_info": 22,
+        "noisy": 19,
+        "normal": 342,
+        "ood": 66,
+        "paraphrase": 12,
+        "perturbation": 17,
+        "prompt_injection": 13,
+        "rare": 19
+      },
+      "by_source": {
+        "public": 80,
+        "real": 297,
+        "synthetic": 142
+      },
+      "total": 519
+    },
+    "heldout": {
+      "by_intent": {
+        "account_payment": 83,
+        "order_status": 75,
+        "other": 140,
+        "returns_refunds": 63,
+        "shipping_policy": 39
+      },
+      "by_label_status": {
+        "disputed": 78,
+        "provisional": 322
+      },
+      "by_scenario": {
+        "ambiguous": 23,
+        "conflicting": 21,
+        "long": 23,
+        "missing_info": 20,
+        "noisy": 27,
+        "normal": 198,
+        "ood": 52,
+        "prompt_injection": 17,
+        "rare": 20
+      },
+      "by_source": {
+        "public": 82,
+        "real": 150,
+        "synthetic": 168
+      },
+      "total": 400
+    },
+    "pool": {
+      "by_intent": {
+        "account_payment": 172,
+        "order_status": 307,
+        "other": 364,
+        "returns_refunds": 224,
+        "shipping_policy": 93
+      },
+      "by_label_status": {
+        "disputed": 212,
+        "provisional": 400,
+        "verified": 548
+      },
+      "by_scenario": {
+        "ambiguous": 5,
+        "conflicting": 19,
+        "long": 19,
+        "missing_info": 20,
+        "noisy": 40,
+        "normal": 996,
+        "ood": 166,
+        "paraphrase": 108,
+        "perturbation": 123,
+        "prompt_injection": 20,
+        "rare": 3
+      },
+      "by_source": {
+        "public": 136,
+        "real": 894,
+        "synthetic": 130
+      },
+      "total": 1160
+    },
+    "regression": {
+      "by_intent": {
+        "account_payment": 36,
+        "order_status": 36,
+        "other": 18,
+        "returns_refunds": 41,
+        "shipping_policy": 19
+      },
+      "by_label_status": {
+        "provisional": 150
+      },
+      "by_scenario": {
+        "ambiguous": 1,
+        "missing_info": 1,
+        "noisy": 61,
+        "normal": 81,
+        "observed_failure": 150,
+        "ood": 9,
+        "perturbation": 60,
+        "prompt_injection": 62
+      },
+      "by_source": {
+        "synthetic": 150
+      },
+      "total": 150
+    }
+  }
+}

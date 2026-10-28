@@ -94,6 +94,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum thread worker concurrency (default: 8)",
     )
     parser.add_argument(
+        "--refresh-cache",
+        action="store_true",
+        help="Force live calls even on cache hits and overwrite cached entries for clean latency measurement",
+    )
+    parser.add_argument(
         "--run-dir",
         default=None,
         help="Explicit run directory path (if omitted, next_run_dir is used)",
@@ -119,8 +124,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "Register candidate configuration first using evals.routing.heldout.preregister."
         )
 
-    dataset_dir = Path(args.dataset)
-    split_file = dataset_dir / f"{args.split}.jsonl"
+    from evals.routing.report import resolve_dataset_path
+
+    resolved_dataset = resolve_dataset_path(args.dataset, split=args.split)
+    if resolved_dataset.is_file():
+        split_file = resolved_dataset
+        dataset_dir = resolved_dataset.parent
+    else:
+        dataset_dir = resolved_dataset
+        split_file = dataset_dir / f"{args.split}.jsonl"
 
     if not split_file.is_file():
         raise FileNotFoundError(f"Evaluation dataset split file not found at: {split_file}")
@@ -193,6 +205,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         reliability_k=args.reliability_k,
         with_model_armor=args.with_model_armor,
         dry_run=args.dry_run,
+        refresh_cache=args.refresh_cache,
         label=args.label or f"{args.split}_{args.candidate}",
         manifest_sha256=manifest_sha256,
     )

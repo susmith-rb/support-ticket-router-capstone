@@ -115,11 +115,21 @@ def breakdown(
     n_cases = len(traces)
     trace_dicts = [t.to_dict() if hasattr(t, "to_dict") else dict(t) for t in traces]
 
-    cost_total_usd = sum(float(t.get("cost_usd_total", 0.0)) for t in trace_dicts)
-    cost_per_1k_usd = (cost_total_usd / n_cases * 1000.0) if n_cases > 0 else 0.0
-    cost_per_ticket = (cost_total_usd / n_cases) if n_cases > 0 else 0.0
+    cost_decision_usd = 0.0
+    cost_reliability_usd = 0.0
 
-    total_latencies = [float(t.get("latency_ms_total", 0.0)) for t in trace_dicts]
+    total_latencies = [
+        float(
+            t.get("latency_ms_total")
+            if (t.get("latency_ms_total") is not None and float(t.get("latency_ms_total", 0.0)) > 0)
+            else sum(
+                float(c.get("latency_ms", 0.0))
+                for c in t.get("tier_calls", [])
+                if c.get("purpose") != "reliability" and (c.get("pass_index", 0) == 0)
+            )
+        )
+        for t in trace_dicts
+    ]
 
     tier_calls_map: Dict[str, Dict[str, Any]] = {}
     by_deciding_tier_map: Dict[str, Dict[str, Any]] = {}
@@ -141,26 +151,49 @@ def breakdown(
 
         # Per-tier call breakdowns
         calls = t.get("tier_calls", [])
+        if not calls:
+            cost_decision_usd += float(t.get("cost_usd_total", 0.0))
         for c in calls:
             tier_name = str(c.get("tier", "unknown"))
+            purpose = c.get("purpose")
+            if purpose is None:
+                purpose = "reliability" if c.get("pass_index", 0) > 0 else "decision"
+
+            call_cost_val = float(c.get("cost_usd", 0.0))
+            if purpose == "reliability":
+                cost_reliability_usd += call_cost_val
+            else:
+                cost_decision_usd += call_cost_val
+
             if tier_name not in tier_calls_map:
                 tier_calls_map[tier_name] = {
                     "calls": 0,
                     "cost_usd": 0.0,
-                    "latencies": [],
+                    "measured_latencies": [],
                 }
             tier_calls_map[tier_name]["calls"] += 1
-            tier_calls_map[tier_name]["cost_usd"] += float(c.get("cost_usd", 0.0))
-            tier_calls_map[tier_name]["latencies"].append(float(c.get("latency_ms", 0.0)))
+            tier_calls_map[tier_name]["cost_usd"] += call_cost_val
+            # Exclude reliability calls and unmeasured latency calls
+            if purpose != "reliability" and bool(c.get("latency_measured", False)):
+                tier_calls_map[tier_name]["measured_latencies"].append(float(c.get("latency_ms", 0.0)))
+
+    cost_total_usd = cost_decision_usd + cost_reliability_usd
+    cost_per_ticket = (cost_decision_usd / n_cases) if n_cases > 0 else 0.0
+    cost_per_1k_usd = (cost_per_ticket * 1000.0) if n_cases > 0 else 0.0
 
     # Assemble per_tier results
     per_tier: Dict[str, Any] = {}
     for tier_name, data in tier_calls_map.items():
+        meas_lats = data["measured_latencies"]
+        has_measured = len(meas_lats) > 0
         per_tier[tier_name] = {
             "calls": data["calls"],
             "cost_usd": round(data["cost_usd"], 6),
             "cost_share": round((data["cost_usd"] / cost_total_usd), 4) if cost_total_usd > 0 else 0.0,
-            "latency_ms": compute_percentiles(data["latencies"]),
+            "latency_measured": has_measured,
+            "latency_ms": compute_percentiles(meas_lats) if has_measured else {
+                "p50": None, "p95": None, "p99": None, "max": None, "mean": None
+            },
         }
 
     # Assemble deciding_tier results
@@ -173,16 +206,33 @@ def breakdown(
             "latency_ms_total": compute_percentiles(data["latencies"]),
         }
 
+    lat_summary = compute_percentiles(total_latencies)
+    policy_p50_seconds = round(lat_summary["p50"] / 1000.0, 4)
+    policy_p95_seconds = round(lat_summary["p95"] / 1000.0, 4)
+    policy_p99_seconds = round(lat_summary["p99"] / 1000.0, 4)
+    policy_max_seconds = round(lat_summary["max"] / 1000.0, 4)
+    proj_1m = round(cost_per_ticket * 1_000_000.0, 2)
+    proj_10m = round(cost_per_ticket * 10_000_000.0, 2)
+
     return {
         "n_cases": n_cases,
         "cost_total_usd": round(cost_total_usd, 6),
+        "total_cost_usd": round(cost_total_usd, 6),
+        "cost_decision_usd": round(cost_decision_usd, 6),
+        "cost_reliability_usd": round(cost_reliability_usd, 6),
         "cost_per_1k_usd": round(cost_per_1k_usd, 4),
         "cost_per_ticket_usd": round(cost_per_ticket, 8),
         "per_tier": per_tier,
-        "latency_ms_total": compute_percentiles(total_latencies),
+        "latency_ms_total": lat_summary,
+        "policy_p50_seconds": policy_p50_seconds,
+        "policy_p95_seconds": policy_p95_seconds,
+        "policy_p99_seconds": policy_p99_seconds,
+        "policy_max_seconds": policy_max_seconds,
+        "projected_monthly_1m_usd": proj_1m,
+        "projected_monthly_10m_usd": proj_10m,
         "by_deciding_tier": by_deciding_tier,
         "projected_monthly_cost": {
-            "at_1M": round(cost_per_ticket * 1_000_000.0, 2),
-            "at_10M": round(cost_per_ticket * 10_000_000.0, 2),
+            "at_1M": proj_1m,
+            "at_10M": proj_10m,
         },
     }
