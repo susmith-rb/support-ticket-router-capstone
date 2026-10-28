@@ -166,3 +166,12 @@ python scripts/deploy_agents/deploy_triage_agent_runtime.py \
   --project susmith-fde-ticket-router \
   --region us-central1
 ```
+
+## Change-aware Agent Engine update (REQ-CD-011)
+
+- CD hashes the TriageRouter package (`scripts/deploy_agents/ae_fingerprint.py compute`) and compares it with
+  `gs://susmith-fde-ticket-router-laya/cd/agent_engine_deployed.json` (written right after each successful update).
+  Match → the Agent Engine step logs `SKIP:` and exits in seconds; mismatch or missing record → `DEPLOY:`.
+- FAQ, HumanQueue, MCP, store, retrieval, docs, eval and CI-only changes do not change the fingerprint.
+- Force an update (e.g. after a manual console change): run the trigger with `_FORCE_AGENT_ENGINE=true`.
+- Check what's live: `gcloud storage cat gs://susmith-fde-ticket-router-laya/cd/agent_engine_deployed.json`.
