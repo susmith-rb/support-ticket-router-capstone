@@ -221,12 +221,12 @@ def test_cd_post_deploy_smoke():
     assert smoke_script_path.is_file(), f"Missing smoke script: {smoke_script_path}"
     smoke_code = smoke_script_path.read_text(encoding="utf-8")
 
-    assert "fetch_id_token" in smoke_code
+    assert "get_id_token" in smoke_code  # shared helper with Cloud Build generateIdToken fallback
     assert "upsert_ticket" in smoke_code
     assert "get_order" in smoke_code
     assert "403" in smoke_code
     assert "400" in smoke_code
-    assert "404" in smoke_code
+    assert "unverified_customer" in smoke_code  # asserted ids fail closed
     assert "print(token" not in smoke_code
 
     with open(DEPLOY_YAML, encoding="utf-8") as f:
