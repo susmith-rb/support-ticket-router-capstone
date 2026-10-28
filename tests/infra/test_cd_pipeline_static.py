@@ -100,7 +100,8 @@ def test_cd_builds_single_image():
     """Verify CD pipeline builds and pushes unified agents container image once.
 
     Invariants:
-    1. Step build-and-push-image exists and runs after require-ci-green.
+    1. Step build-and-push-image exists; it may overlap the CI gate, but every deploy
+       step depends on fetch-last-good, which waits for require-ci-green.
     2. Builds Dockerfile from services/Dockerfile.
     3. Tags image as us-central1-docker.pkg.dev/$PROJECT_ID/serving/agents:$SHORT_SHA.
     4. Pushes image to Artifact Registry.
@@ -110,7 +111,13 @@ def test_cd_builds_single_image():
 
     build_step = next((s for s in config.get("steps", []) if s.get("id") == "build-and-push-image"), None)
     assert build_step is not None, "Missing step 'build-and-push-image'"
-    assert build_step.get("waitFor") == ["require-ci-green"]
+    steps = config.get("steps", [])
+    by_id = {st["id"]: st for st in steps}
+    assert "require-ci-green" in by_id["fetch-last-good"]["waitFor"]
+    assert "build-and-push-image" in by_id["fetch-last-good"]["waitFor"]
+    for dep in ("deploy-cloud-run", "deploy-gke", "deploy-agent-engine"):
+        assert "fetch-last-good" in by_id[dep]["waitFor"], dep  # no deploy before CI is green
+    assert set(by_id["post-deploy-smoke"]["waitFor"]) == {"deploy-cloud-run", "deploy-gke", "deploy-agent-engine"}
 
     script = " ".join(build_step.get("args", []))
     assert "docker build" in script
@@ -202,7 +209,9 @@ def test_cd_updates_agent_engine():
     assert ae_step.get("name") == "python:3.11-slim"
 
     script = " ".join(ae_step.get("args", []))
-    assert ".[deploy]" in script
+    assert "/workspace/.venv/bin/python" in script  # venv built by prepare-python
+    prep = next(st for st in config.get("steps", []) if st["id"] == "prepare-python")
+    assert ".[deploy" in " ".join(prep["args"])
     assert "deploy_triage_agent_runtime.py" in script
     assert "--update" in script
 

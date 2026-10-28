@@ -77,7 +77,7 @@ steps:
   # ===========================================================================
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build-and-push-image'
-    waitFor: ['require-ci-green']
+    waitFor: ['-']  # overlaps the CI gate; nothing deploys until require-ci-green passes
     entrypoint: 'bash'
     args:
       - '-c'
@@ -90,11 +90,25 @@ steps:
         docker push "$${IMAGE_TAG}"
 
   # ===========================================================================
+  # Step 2b: Shared Python venv for Agent Engine deploy + smoke (parallel)
+  # ===========================================================================
+  - name: 'python:3.11-slim'
+    id: 'prepare-python'
+    waitFor: ['-']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        python -m venv /workspace/.venv
+        /workspace/.venv/bin/pip install --no-cache-dir -q -e .[deploy,runtime,agents]
+
+  # ===========================================================================
   # Step 3: Fetch Last-Good Record & Setup Rollback Helper (REQ-CD-008)
   # ===========================================================================
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
     id: 'fetch-last-good'
-    waitFor: ['build-and-push-image']
+    waitFor: ['require-ci-green', 'build-and-push-image']
     entrypoint: 'bash'
     args:
       - '-c'
@@ -166,7 +180,7 @@ steps:
       - |
         [ -f /workspace/FAILED ] && { echo "Skipping: earlier failure"; exit 0; }
         set -euo pipefail
-        trap 'echo "deploy-cloud-run" > /workspace/FAILED; exit 0' ERR
+        trap 'echo "deploy-cloud-run" >> /workspace/FAILED; exit 0' ERR
           IMAGE_TAG="${_REGION}-docker.pkg.dev/${PROJECT_ID}/serving/agents:${SHORT_SHA}"
           for svc in ticket-db-mcp order-lookup-mcp human-queue; do
             echo "Updating Cloud Run service $${svc} -> $${IMAGE_TAG}"
@@ -178,14 +192,14 @@ steps:
   # ===========================================================================
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
     id: 'deploy-gke'
-    waitFor: ['deploy-cloud-run']
+    waitFor: ['fetch-last-good']  # parallel with Cloud Run and Agent Engine
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         [ -f /workspace/FAILED ] && { echo "Skipping: earlier failure"; exit 0; }
         set -euo pipefail
-        trap 'echo "deploy-gke" > /workspace/FAILED; exit 0' ERR
+        trap 'echo "deploy-gke" >> /workspace/FAILED; exit 0' ERR
           IMAGE_TAG="${_REGION}-docker.pkg.dev/${PROJECT_ID}/serving/agents:${SHORT_SHA}"
           apt-get update -qq && apt-get install -y -qq kubectl google-cloud-cli-gke-gcloud-auth-plugin >/dev/null
           gcloud container clusters get-credentials "${_GKE_CLUSTER}" --region "${_REGION}" --dns-endpoint
@@ -202,16 +216,15 @@ steps:
   # ===========================================================================
   - name: 'python:3.11-slim'
     id: 'deploy-agent-engine'
-    waitFor: ['deploy-gke']
+    waitFor: ['fetch-last-good', 'prepare-python']  # parallel with Cloud Run and GKE
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         [ -f /workspace/FAILED ] && { echo "Skipping: earlier failure"; exit 0; }
         set -euo pipefail
-        trap 'echo "deploy-agent-engine" > /workspace/FAILED; exit 0' ERR
-          pip install --no-cache-dir -q -e .[deploy]
-          python scripts/deploy_agents/deploy_triage_agent_runtime.py \
+        trap 'echo "deploy-agent-engine" >> /workspace/FAILED; exit 0' ERR
+          /workspace/.venv/bin/python scripts/deploy_agents/deploy_triage_agent_runtime.py \
             --update "${_TRIAGE_RESOURCE}" --project "${PROJECT_ID}" --region "${_REGION}"
 
   # ===========================================================================
@@ -219,26 +232,26 @@ steps:
   # ===========================================================================
   - name: 'python:3.11-slim'
     id: 'post-deploy-smoke'
-    waitFor: ['deploy-agent-engine']
+    waitFor: ['deploy-cloud-run', 'deploy-gke', 'deploy-agent-engine']
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         [ -f /workspace/FAILED ] && { echo "Skipping: earlier failure"; exit 0; }
         set -euo pipefail
-        trap 'echo "post-deploy-smoke" > /workspace/FAILED; exit 0' ERR
-          pip install --no-cache-dir -q -e .[deploy,runtime,agents]
+        trap 'echo "post-deploy-smoke" >> /workspace/FAILED; exit 0' ERR
+          PY=/workspace/.venv/bin/python
           echo "=== 1. Cloud Run MCP smoke ==="
-          python scripts/smoke/cloud_run_smoke.py
-          echo "=== 2. Live identity e2e (60 s warm-up after Agent Engine update; one retry) ==="
-          sleep 60
-          python scripts/e2e_identity_check.py --resource-name "${_TRIAGE_RESOURCE}" \
+          $${PY} scripts/smoke/cloud_run_smoke.py
+          echo "=== 2. Model Armor functional smoke ==="
+          $${PY} scripts/model_armor_smoke.py --timeout-s 5
+          echo "=== 3. Live identity e2e (Agent Engine warm-up, one retry) ==="
+          sleep 30
+          $${PY} scripts/e2e_identity_check.py --resource-name "${_TRIAGE_RESOURCE}" \
               --project "${PROJECT_ID}" --region "${_REGION}" \
             || { echo "e2e failed once; retrying after 30 s"; sleep 30; \
-                 python scripts/e2e_identity_check.py --resource-name "${_TRIAGE_RESOURCE}" \
+                 $${PY} scripts/e2e_identity_check.py --resource-name "${_TRIAGE_RESOURCE}" \
                    --project "${PROJECT_ID}" --region "${_REGION}"; }
-          echo "=== 3. Model Armor functional smoke ==="
-          python scripts/model_armor_smoke.py --timeout-s 5
 
   # ===========================================================================
   # Step 7b: Roll back on any failure (REQ-CD-008)
@@ -251,7 +264,7 @@ steps:
       - '-c'
       - |
         if [ ! -f /workspace/FAILED ]; then echo "All deploy and smoke steps passed."; exit 0; fi
-        echo "FAILED STEP: $(cat /workspace/FAILED)"
+        echo "FAILED STEP(S): $(tr '\n' ' ' < /workspace/FAILED)"
         apt-get update -qq && apt-get install -y -qq kubectl google-cloud-cli-gke-gcloud-auth-plugin >/dev/null || true
         /workspace/rollback.sh
 

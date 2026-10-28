@@ -134,3 +134,6 @@ CD never runs `terraform`.
 
 - Terraform Cloud Run services: `lifecycle { ignore_changes = [template[0].containers[0].image, client, client_version] }`; `agents_image` var remains the bootstrap image for first create only.
 - Runbook `docs/runbooks/deploy.md`: infra = Terraform on laya-tune; versions = CD. Manual operator deploy scripts are removed once CD is verified live.
+
+### Execution graph (2026-10-28)
+`require-ci-green` ∥ `build-and-push-image` ∥ `prepare-python` (shared venv) → `fetch-last-good` (needs CI green + image) → `deploy-cloud-run` ∥ `deploy-gke` ∥ `deploy-agent-engine` → `post-deploy-smoke` → `rollback-if-failed` → `record-last-good`. Serial run d8317336 took 699 s (deploys 76 + 54 + 210 s back to back); deploys now overlap so wall time is bounded by Agent Engine (~210 s). Parallel failures append to `/workspace/FAILED`.
