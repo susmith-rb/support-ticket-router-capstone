@@ -21,6 +21,7 @@ substitutions:
   _CORPUS_BUCKET: 'susmith-fde-ticket-router-laya'
   _REGION: 'us-central1'
   _GKE_CLUSTER: 'support-agents'
+  _FAQ_DOMAIN: 'faq.8-232-184-225.sslip.io'
 
 steps:
   # ===========================================================================
@@ -147,8 +148,9 @@ steps:
   # ---------------------------------------------------------------------------
   # Failure handling (REQ-CD-008): Cloud Build stops at the first failing step,
   # and python:3.11-slim steps have no gcloud/kubectl, so in-step traps cannot
-  # roll back. Each deploy/smoke step instead records its id in
-  # /workspace/FAILED and exits 0; later steps skip; `rollback-if-failed`
+  # roll back. Each deploy/smoke step runs with set -e and an ERR trap that
+  # records its id in /workspace/FAILED and exits 0 (NOT `( ... ) || mark`:
+  # bash ignores set -e inside a subshell on the left of ||); later steps skip; `rollback-if-failed`
   # (cloud-sdk image, kubectl installed) rolls back and fails the build.
   # ---------------------------------------------------------------------------
 
@@ -163,14 +165,13 @@ steps:
       - '-c'
       - |
         [ -f /workspace/FAILED ] && { echo "Skipping: earlier failure"; exit 0; }
-        (
-          set -euo pipefail
+        set -euo pipefail
+        trap 'echo "deploy-cloud-run" > /workspace/FAILED; exit 0' ERR
           IMAGE_TAG="${_REGION}-docker.pkg.dev/${PROJECT_ID}/serving/agents:${SHORT_SHA}"
           for svc in ticket-db-mcp order-lookup-mcp human-queue; do
             echo "Updating Cloud Run service $${svc} -> $${IMAGE_TAG}"
             gcloud run services update "$${svc}" --image "$${IMAGE_TAG}" --region "${_REGION}" --quiet
           done
-        ) || echo "deploy-cloud-run" > /workspace/FAILED
 
   # ===========================================================================
   # Step 5: Deploy FaqResolver to GKE Autopilot via DNS Endpoint (REQ-CD-005)
@@ -183,17 +184,18 @@ steps:
       - '-c'
       - |
         [ -f /workspace/FAILED ] && { echo "Skipping: earlier failure"; exit 0; }
-        (
-          set -euo pipefail
+        set -euo pipefail
+        trap 'echo "deploy-gke" > /workspace/FAILED; exit 0' ERR
           IMAGE_TAG="${_REGION}-docker.pkg.dev/${PROJECT_ID}/serving/agents:${SHORT_SHA}"
           apt-get update -qq && apt-get install -y -qq kubectl google-cloud-cli-gke-gcloud-auth-plugin >/dev/null
           gcloud container clusters get-credentials "${_GKE_CLUSTER}" --region "${_REGION}" --dns-endpoint
           mkdir -p /workspace/k8s-render
           cp deploy/k8s/faq-resolver/*.yaml /workspace/k8s-render/
-          sed -i "s|image: .*|image: $${IMAGE_TAG}|g" /workspace/k8s-render/deployment.yaml
+          sed -i -e "s|image: .*|image: $${IMAGE_TAG}|g" -e "s|https://faq\.sslip\.io|https://${_FAQ_DOMAIN}|g" /workspace/k8s-render/deployment.yaml
+          sed -i "s|DOMAIN_PLACEHOLDER|${_FAQ_DOMAIN}|g" /workspace/k8s-render/ingress.yaml /workspace/k8s-render/managed-cert.yaml
+          if grep -rn "DOMAIN_PLACEHOLDER" /workspace/k8s-render/; then echo "unrendered placeholder"; false; fi
           kubectl apply -f /workspace/k8s-render/
           kubectl rollout status deployment/faq-resolver -n faq-resolver --timeout=300s
-        ) || echo "deploy-gke" > /workspace/FAILED
 
   # ===========================================================================
   # Step 6: Deploy / Update Agent Engine Runtime (REQ-CD-006)
@@ -206,12 +208,11 @@ steps:
       - '-c'
       - |
         [ -f /workspace/FAILED ] && { echo "Skipping: earlier failure"; exit 0; }
-        (
-          set -euo pipefail
+        set -euo pipefail
+        trap 'echo "deploy-agent-engine" > /workspace/FAILED; exit 0' ERR
           pip install --no-cache-dir -q -e .[deploy]
           python scripts/deploy_agents/deploy_triage_agent_runtime.py \
             --update "${_TRIAGE_RESOURCE}" --project "${PROJECT_ID}" --region "${_REGION}"
-        ) || echo "deploy-agent-engine" > /workspace/FAILED
 
   # ===========================================================================
   # Step 7: Post-Deploy Smoke Verification (REQ-CD-007)
@@ -224,8 +225,8 @@ steps:
       - '-c'
       - |
         [ -f /workspace/FAILED ] && { echo "Skipping: earlier failure"; exit 0; }
-        (
-          set -euo pipefail
+        set -euo pipefail
+        trap 'echo "post-deploy-smoke" > /workspace/FAILED; exit 0' ERR
           pip install --no-cache-dir -q -e .[deploy,runtime,agents]
           echo "=== 1. Cloud Run MCP smoke ==="
           python scripts/smoke/cloud_run_smoke.py
@@ -238,7 +239,6 @@ steps:
                    --project "${PROJECT_ID}" --region "${_REGION}"; }
           echo "=== 3. Model Armor functional smoke ==="
           python scripts/model_armor_smoke.py --timeout-s 5
-        ) || echo "post-deploy-smoke" > /workspace/FAILED
 
   # ===========================================================================
   # Step 7b: Roll back on any failure (REQ-CD-008)

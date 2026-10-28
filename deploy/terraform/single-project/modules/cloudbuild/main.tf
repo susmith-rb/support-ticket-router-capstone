@@ -124,6 +124,14 @@ resource "google_storage_bucket_iam_member" "cd_corpus_storage" {
   member = "serviceAccount:${google_service_account.cd_sa.email}"
 }
 
+# Agent Engine SDK calls storage.buckets.get on the staging bucket (objectAdmin
+# lacks it; first CD run failed 403). legacyBucketReader = buckets.get + objects.list.
+resource "google_storage_bucket_iam_member" "cd_corpus_bucket_reader" {
+  bucket = var.corpus_bucket_name
+  role   = "roles/storage.legacyBucketReader"
+  member = "serviceAccount:${google_service_account.cd_sa.email}"
+}
+
 # Secret Manager secretAccessor on the 3 identity secrets only
 resource "google_secret_manager_secret_iam_member" "cd_identity_secrets" {
   for_each  = toset(local.cd_secret_ids)
