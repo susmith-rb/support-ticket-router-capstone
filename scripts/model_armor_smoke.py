@@ -185,15 +185,16 @@ def run_latency_benchmark(client: ModelArmorClient, n_calls: int = 50) -> bool:
     print(f"  Max:      {max_lat:.1f} ms")
     print("-----------------------------------------------------------------")
 
-    # In-region SLA: p99 <= 300 ms (REQ-MA-005)
-    # Note: On remote cloudtop (outside GCP VPC), latency includes corp egress WAN overhead.
+    # REQ-MA-005: production timeout = max(500 ms, measured p99 x 1.5).
+    print(f"  Suggested timeout: {max(500.0, p99 * 1.5):.0f} ms (max(500, p99*1.5))")
+    if degraded_count:
+        print(f"LATENCY BENCHMARK INVALID: {degraded_count}/{n} calls degraded [FAIL]\n")
+        return False
     if p99 <= 300.0:
         print("SLA VERIFICATION: p99 <= 300.0 ms PASS [OK]\n")
         return True
-    print(f"SLA NOTICE: p99 ({p99:.1f} ms) > 300.0 ms target.")
-    print("Note: If running from corp cloudtop, WAN network overhead adds ~50-100 ms.")
-    print("      Execute on in-region VM 'laya-tune' for authoritative SLA verification.\n")
-    return True  # Informative for non-VM environments
+    print(f"SLA NOTICE: p99 ({p99:.1f} ms) > 300.0 ms target [FAIL]\n")
+    return False
 
 
 def main() -> int:
@@ -225,12 +226,21 @@ def main() -> int:
         default=DEFAULT_TIMEOUT_S,
         help="Per-call timeout in seconds (default: production timeout)",
     )
+    parser.add_argument(
+        "--use-env-token",
+        action="store_true",
+        help="Use GOOGLE_OAUTH_ACCESS_TOKEN (forwarded operator token) instead of ADC",
+    )
     args = parser.parse_args()
+    token_provider = None
+    if args.use_env_token:
+        token_provider = lambda: os.environ["GOOGLE_OAUTH_ACCESS_TOKEN"]  # noqa: E731
 
     client = ModelArmorClient(
         template=args.template,
         endpoint_base_url=args.base_url,
         timeout_s=args.timeout_s,
+        token_provider=token_provider,
     )
 
     if args.latency:
