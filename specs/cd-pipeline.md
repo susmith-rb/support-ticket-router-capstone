@@ -145,3 +145,6 @@ CD never runs `terraform`.
 - **Acceptance**: `tests/infra/test_ae_fingerprint.py::test_fingerprint_change_detection`
 - **Status**: done
 - **Owner**: platform
+
+### Image layer cache (2026-10-28)
+`services/Dockerfile` installs dependencies from `pyproject.toml` alone (`services/requirements_from_pyproject.py`) before copying sources, then `pip install --no-deps .`. The build step uses BuildKit inline cache: `docker pull agents:cache`, `--cache-from agents:cache`, and pushes `:<sha>` and `:cache`. The dependency layer is rebuilt only when `pyproject.toml` changes. Guarded by `tests/infra/test_cd_pipeline_static.py::test_image_build_uses_layer_cache`.
