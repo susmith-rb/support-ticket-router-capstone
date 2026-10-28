@@ -26,6 +26,7 @@ from typing import List
 
 from ticket_router.security.model_armor import (
     DEFAULT_MODEL_ARMOR_BASE_URL,
+    DEFAULT_TIMEOUT_S,
     ModelArmorClient,
     ModelArmorVerdict,
 )
@@ -218,11 +219,18 @@ def main() -> int:
         default=DEFAULT_MODEL_ARMOR_BASE_URL,
         help="Model Armor regional base URL",
     )
+    parser.add_argument(
+        "--timeout-s",
+        type=float,
+        default=DEFAULT_TIMEOUT_S,
+        help="Per-call timeout in seconds (default: production timeout)",
+    )
     args = parser.parse_args()
 
     client = ModelArmorClient(
-        template_name=args.template,
-        base_url=args.base_url,
+        template=args.template,
+        endpoint_base_url=args.base_url,
+        timeout_s=args.timeout_s,
     )
 
     if args.latency:
