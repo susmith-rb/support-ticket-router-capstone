@@ -82,6 +82,9 @@ module "cloudbuild" {
   github_oauth_secret_version = var.github_oauth_secret_version
   enable_nightly_schedule     = var.enable_nightly_schedule
   enable_ci_triggers          = var.enable_ci_triggers
+  enable_cd_trigger           = var.enable_cd_trigger
+  cd_approvers                = var.cd_approvers
+  triage_resource_name        = var.triage_resource_name
 
   depends_on = [module.project_services]
 }

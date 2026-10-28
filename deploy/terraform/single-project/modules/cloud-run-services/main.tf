@@ -11,9 +11,8 @@ locals {
 # -----------------------------------------------------------------------------
 
 resource "google_cloud_run_v2_service" "ticket_db_mcp" {
-  # API returns service-level scaling {min,manual}=0 which the provider reports as a permadiff (0 -> null).
   lifecycle {
-    ignore_changes = [scaling, client, client_version]
+    ignore_changes = [template[0].containers[0].image, client, client_version, scaling]
   }
 
   count    = local.service_count
@@ -100,9 +99,8 @@ resource "google_cloud_run_v2_service_iam_member" "ticket_db_invoker" {
 # -----------------------------------------------------------------------------
 
 resource "google_cloud_run_v2_service" "order_lookup_mcp" {
-  # API returns service-level scaling {min,manual}=0 which the provider reports as a permadiff (0 -> null).
   lifecycle {
-    ignore_changes = [scaling, client, client_version]
+    ignore_changes = [template[0].containers[0].image, client, client_version, scaling]
   }
 
   count    = local.service_count
@@ -179,9 +177,8 @@ resource "google_cloud_run_v2_service_iam_member" "order_lookup_invoker" {
 # -----------------------------------------------------------------------------
 
 resource "google_cloud_run_v2_service" "human_queue" {
-  # API returns service-level scaling {min,manual}=0 which the provider reports as a permadiff (0 -> null).
   lifecycle {
-    ignore_changes = [scaling, client, client_version]
+    ignore_changes = [template[0].containers[0].image, client, client_version, scaling]
   }
 
   count    = local.service_count

@@ -72,6 +72,24 @@ variable "enable_ci_triggers" {
   default     = true
 }
 
+variable "enable_cd_trigger" {
+  description = "Whether the CD deployment trigger is enabled (push to main)"
+  type        = bool
+  default     = true
+}
+
+variable "cd_approvers" {
+  description = "List of identities granted roles/cloudbuild.builds.approver for CD deployment"
+  type        = list(string)
+  default     = ["user:susmith@gcp.altostrat.com"]
+}
+
+variable "triage_resource_name" {
+  description = "Resource name of the TriageRouter Agent Engine instance for deployment update"
+  type        = string
+  default     = "projects/620485621180/locations/us-central1/reasoningEngines/8384262420809383936"
+}
+
 variable "laya_region" {
   description = "Region for router-s1 endpoint and serving Artifact Registry repository"
   type        = string

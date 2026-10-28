@@ -39,6 +39,14 @@ resource "google_model_armor_template" "support_router_lean" {
       }
     }
   }
+
+  # API requires template_metadata on update; pin server defaults to avoid a
+  # permadiff that nulls the block (400 "The 'template_metadata' field is required").
+  template_metadata {
+    log_sanitize_operations            = false
+    log_template_operations            = false
+    ignore_partial_invocation_failures = false
+  }
 }
 
 resource "google_project_iam_member" "model_armor_user_triage" {

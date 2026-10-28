@@ -27,3 +27,14 @@ output "github_repository_id" {
   description = "ID of the Cloud Build v2 repository resource (if enabled)"
   value       = var.github_connection_ready ? google_cloudbuildv2_repository.repo[0].id : null
 }
+
+output "cd_service_account" {
+  description = "Email of the CD deployment service account"
+  value       = google_service_account.cd_sa.email
+}
+
+output "cd_trigger_id" {
+  description = "ID of the CD Cloud Build trigger (if enabled)"
+  value       = var.github_connection_ready && var.enable_cd_trigger && length(google_cloudbuild_trigger.cd) > 0 ? google_cloudbuild_trigger.cd[0].trigger_id : null
+}
+

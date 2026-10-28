@@ -60,6 +60,135 @@ resource "google_cloudbuildv2_connection" "github" {
   }
 }
 
+# -----------------------------------------------------------------------------
+# CD Deployment Service Account & Least-Privilege IAM (REQ-CD-009)
+# -----------------------------------------------------------------------------
+
+resource "google_service_account" "cd_sa" {
+  account_id   = "sa-cd-deployer"
+  display_name = "Cloud Build CD Service Account for Ticket Router Deployments"
+  project      = var.project_id
+}
+
+locals {
+  cd_project_roles = [
+    "roles/run.developer",
+    "roles/container.developer",
+    "roles/aiplatform.user",
+    "roles/cloudbuild.builds.viewer",
+    "roles/logging.logWriter",
+    "roles/modelarmor.user",
+  ]
+
+  cd_secret_ids = [
+    "identity-demo-user-1001",
+    "identity-demo-user-1002",
+    "identity-web-api-key",
+  ]
+
+  cd_cloud_run_services = [
+    "ticket-db-mcp",
+    "order-lookup-mcp",
+    "human-queue",
+  ]
+
+  cd_runtime_service_account_emails = [
+    "sa-ticket-mcp@${var.project_id}.iam.gserviceaccount.com",
+    "sa-order-mcp@${var.project_id}.iam.gserviceaccount.com",
+    "sa-queue@${var.project_id}.iam.gserviceaccount.com",
+    "sa-triage@${var.project_id}.iam.gserviceaccount.com",
+  ]
+}
+
+# Project-level permissions
+resource "google_project_iam_member" "cd_project_roles" {
+  for_each = toset(local.cd_project_roles)
+  project  = var.project_id
+  role     = each.value
+  member   = "serviceAccount:${google_service_account.cd_sa.email}"
+}
+
+# Artifact Registry writer on serving repo
+resource "google_artifact_registry_repository_iam_member" "cd_serving_writer" {
+  project    = var.project_id
+  location   = var.region
+  repository = "serving"
+  role       = "roles/artifactregistry.writer"
+  member     = "serviceAccount:${google_service_account.cd_sa.email}"
+}
+
+# Storage objectAdmin on laya staging/corpus bucket (staging + last_good.json)
+resource "google_storage_bucket_iam_member" "cd_corpus_storage" {
+  bucket = var.corpus_bucket_name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.cd_sa.email}"
+}
+
+# Secret Manager secretAccessor on the 3 identity secrets only
+resource "google_secret_manager_secret_iam_member" "cd_identity_secrets" {
+  for_each  = toset(local.cd_secret_ids)
+  project   = var.project_id
+  secret_id = each.value
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.cd_sa.email}"
+}
+
+# Cloud Run invoker on the 3 services for smoke testing
+resource "google_cloud_run_v2_service_iam_member" "cd_run_invoker" {
+  for_each = toset(local.cd_cloud_run_services)
+  project  = var.project_id
+  location = var.region
+  name     = each.value
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.cd_sa.email}"
+}
+
+# Service Account User only on runtime service accounts
+resource "google_service_account_iam_member" "cd_sa_user" {
+  for_each           = toset(local.cd_runtime_service_account_emails)
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${each.value}"
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.cd_sa.email}"
+}
+
+# Approvers for CD deployments (REQ-CD-001)
+resource "google_project_iam_member" "cd_approvers" {
+  for_each = toset(var.cd_approvers)
+  project  = var.project_id
+  role     = "roles/cloudbuild.builds.approver"
+  member   = each.value
+}
+
+# -----------------------------------------------------------------------------
+# CD Deployment Trigger (push to main with manual approval gate) (REQ-CD-001)
+# -----------------------------------------------------------------------------
+
+resource "google_cloudbuild_trigger" "cd" {
+  count           = var.github_connection_ready && var.enable_cd_trigger ? 1 : 0
+  project         = var.project_id
+  location        = var.region
+  name            = "support-ticket-router-cd"
+  description     = "CD pipeline executed on push to main branch with manual approval gate"
+  service_account = google_service_account.cd_sa.id
+  filename        = "cicd/cloudbuild-deploy.yaml"
+
+  approval_config {
+    approval_required = true
+  }
+
+  substitutions = {
+    _CI_TRIGGER_ID   = length(google_cloudbuild_trigger.ci) > 0 ? google_cloudbuild_trigger.ci[0].trigger_id : ""
+    _TRIAGE_RESOURCE = var.triage_resource_name
+  }
+
+  repository_event_config {
+    repository = google_cloudbuildv2_repository.repo[0].id
+    push {
+      branch = "^main$"
+    }
+  }
+}
+
 resource "google_cloudbuildv2_repository" "repo" {
   count             = var.github_connection_ready ? 1 : 0
   project           = var.project_id

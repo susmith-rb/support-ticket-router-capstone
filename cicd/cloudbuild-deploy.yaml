@@ -1,0 +1,289 @@
+# cicd/cloudbuild-deploy.yaml
+# Human-approved Continuous Deployment (CD) pipeline for Support Ticket Router.
+# Implements REQ-CD-001 through REQ-CD-010 (specs/cd-pipeline.md).
+#
+# Pipeline execution flow:
+# 1. require-ci-green: Verifies CI pipeline on the same commit has passed (REQ-CD-002)
+# 2. build-and-push-image: Builds unified container image agents:$SHORT_SHA (REQ-CD-003)
+# 3. fetch-last-good: Retrieves last known good deployment artifact state (REQ-CD-008)
+# 4. deploy-cloud-run: Updates Cloud Run microservices (REQ-CD-004)
+# 5. deploy-gke: Updates FaqResolver on GKE via DNS endpoint (REQ-CD-005)
+# 6. deploy-agent-engine: Updates TriageRouter on Vertex AI Agent Engine (REQ-CD-006)
+# 7. post-deploy-smoke: Executes post-deploy smoke verification suite (REQ-CD-007)
+# 8. record-last-good: Updates gs://$PROJECT_ID-laya/cd/last_good.json on success (REQ-CD-008)
+#
+# Any deploy or smoke failure triggers rollback of Cloud Run and GKE to last_good.json,
+# prints the manual Agent Engine re-run command, and exits non-zero.
+
+substitutions:
+  _CI_TRIGGER_ID: ''
+  _TRIAGE_RESOURCE: 'projects/620485621180/locations/us-central1/reasoningEngines/8384262420809383936'
+  _CORPUS_BUCKET: 'susmith-fde-ticket-router-laya'
+  _REGION: 'us-central1'
+  _GKE_CLUSTER: 'support-agents'
+
+steps:
+  # ===========================================================================
+  # Step 1: CI-Green Gate (REQ-CD-002)
+  # ===========================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'require-ci-green'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        echo "=== Verifying CI pipeline status for commit ${SHORT_SHA} ==="
+        CI_TRIGGER_ID="${_CI_TRIGGER_ID}"
+        if [ -z "$${CI_TRIGGER_ID}" ]; then
+          echo "Resolving CI trigger ID for support-ticket-router-ci..."
+          CI_TRIGGER_ID=$(gcloud builds triggers describe support-ticket-router-ci --region="${_REGION}" --format="value(id)" 2>/dev/null || true)
+        fi
+
+        START_TIME=$(date +%s)
+        TIMEOUT=1800 # 30 min cap
+
+        while true; do
+          ELAPSED=$(( $(date +%s) - START_TIME ))
+          if [ $ELAPSED -ge $TIMEOUT ]; then
+            echo "ERROR: Timed out after 30 minutes waiting for CI build on commit ${SHORT_SHA}"
+            exit 1
+          fi
+
+          FILTER="substitutions.SHORT_SHA=${SHORT_SHA}"
+          if [ -n "$${CI_TRIGGER_ID}" ]; then
+            FILTER="$${FILTER} AND buildTriggerId=$${CI_TRIGGER_ID}"
+          fi
+
+          STATUSES=$(gcloud builds list --region="${_REGION}" --filter="$${FILTER}" --format="value(status)" --limit=5 || true)
+          echo "Polling CI status for commit ${SHORT_SHA} ($${ELAPSED}s elapsed): $${STATUSES:-NONE}"
+
+          if echo "$${STATUSES}" | grep -q "SUCCESS"; then
+            echo "SUCCESS: CI build is green for commit ${SHORT_SHA}."
+            break
+          fi
+
+          if echo "$${STATUSES}" | grep -Eq "FAILURE|TIMEOUT|CANCELLED"; then
+            echo "ERROR: CI build failed, timed out, or was cancelled for commit ${SHORT_SHA}."
+            exit 1
+          fi
+
+          sleep 15
+        done
+
+  # ===========================================================================
+  # Step 2: Build & Push Unified Container Image (REQ-CD-003)
+  # ===========================================================================
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-and-push-image'
+    waitFor: ['require-ci-green']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        IMAGE_TAG="${_REGION}-docker.pkg.dev/${PROJECT_ID}/serving/agents:${SHORT_SHA}"
+        echo "=== Building unified agent container image: $${IMAGE_TAG} ==="
+        docker build -f services/Dockerfile -t "$${IMAGE_TAG}" .
+        echo "=== Pushing image to Artifact Registry ==="
+        docker push "$${IMAGE_TAG}"
+
+  # ===========================================================================
+  # Step 3: Fetch Last-Good Record & Setup Rollback Helper (REQ-CD-008)
+  # ===========================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'fetch-last-good'
+    waitFor: ['build-and-push-image']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        echo "=== Fetching previous last_good.json state from GCS ==="
+        gsutil cat "gs://${_CORPUS_BUCKET}/cd/last_good.json" > /workspace/last_good.json 2>/dev/null || echo '{}' > /workspace/last_good.json
+        cat /workspace/last_good.json
+
+        cat << 'EOF' > /workspace/rollback.sh
+        #!/usr/bin/env bash
+        set -uo pipefail
+        echo "=========================================================================="
+        echo "CRITICAL: Deployment or smoke verification failed! Triggering rollback..."
+        echo "=========================================================================="
+        LAST_IMAGE=""
+        LAST_SHA=""
+        if [ -s /workspace/last_good.json ]; then
+          LAST_IMAGE=$(python3 -c "import json; d=json.load(open('/workspace/last_good.json')); print(d.get('image', ''))" 2>/dev/null || true)
+          LAST_SHA=$(python3 -c "import json; d=json.load(open('/workspace/last_good.json')); print(d.get('sha', ''))" 2>/dev/null || true)
+        fi
+
+        if [ -n "$${LAST_IMAGE}" ]; then
+          echo "Rolling back Cloud Run services to last-good image: $${LAST_IMAGE}"
+          for svc in ticket-db-mcp order-lookup-mcp human-queue; do
+            echo "Rolling back Cloud Run service: $${svc}..."
+            gcloud run services update "$${svc}" --image "$${LAST_IMAGE}" --region "${_REGION}" --quiet || true
+          done
+
+          echo "Rolling back GKE faq-resolver deployment to last-good image: $${LAST_IMAGE}"
+          gcloud container clusters get-credentials "${_GKE_CLUSTER}" --region "${_REGION}" --dns-endpoint || true
+          kubectl set image deployment/faq-resolver faq-resolver="$${LAST_IMAGE}" -n faq-resolver || true
+          kubectl rollout status deployment/faq-resolver -n faq-resolver --timeout=300s || true
+        else
+          echo "WARNING: No valid last_good image found in /workspace/last_good.json; cannot rollback images automatically."
+        fi
+
+        echo "=========================================================================="
+        echo "AGENT ENGINE ROLLBACK PROCEDURE:"
+        echo "Agent Engine rollback requires re-running the CD trigger on the last-good SHA:"
+        if [ -n "$${LAST_SHA}" ]; then
+          echo "  gcloud builds triggers run support-ticket-router-cd --region=${_REGION} --sha=$${LAST_SHA}"
+        else
+          echo "  gcloud builds triggers run support-ticket-router-cd --region=${_REGION} --sha=<LAST_GOOD_SHA>"
+        fi
+        echo "=========================================================================="
+        exit 1
+        EOF
+        chmod +x /workspace/rollback.sh
+
+  # ---------------------------------------------------------------------------
+  # Failure handling (REQ-CD-008): Cloud Build stops at the first failing step,
+  # and python:3.11-slim steps have no gcloud/kubectl, so in-step traps cannot
+  # roll back. Each deploy/smoke step instead records its id in
+  # /workspace/FAILED and exits 0; later steps skip; `rollback-if-failed`
+  # (cloud-sdk image, kubectl installed) rolls back and fails the build.
+  # ---------------------------------------------------------------------------
+
+  # ===========================================================================
+  # Step 4: Deploy Cloud Run MCP & Queue Services (REQ-CD-004)
+  # ===========================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'deploy-cloud-run'
+    waitFor: ['fetch-last-good']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        [ -f /workspace/FAILED ] && { echo "Skipping: earlier failure"; exit 0; }
+        (
+          set -euo pipefail
+          IMAGE_TAG="${_REGION}-docker.pkg.dev/${PROJECT_ID}/serving/agents:${SHORT_SHA}"
+          for svc in ticket-db-mcp order-lookup-mcp human-queue; do
+            echo "Updating Cloud Run service $${svc} -> $${IMAGE_TAG}"
+            gcloud run services update "$${svc}" --image "$${IMAGE_TAG}" --region "${_REGION}" --quiet
+          done
+        ) || echo "deploy-cloud-run" > /workspace/FAILED
+
+  # ===========================================================================
+  # Step 5: Deploy FaqResolver to GKE Autopilot via DNS Endpoint (REQ-CD-005)
+  # ===========================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'deploy-gke'
+    waitFor: ['deploy-cloud-run']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        [ -f /workspace/FAILED ] && { echo "Skipping: earlier failure"; exit 0; }
+        (
+          set -euo pipefail
+          IMAGE_TAG="${_REGION}-docker.pkg.dev/${PROJECT_ID}/serving/agents:${SHORT_SHA}"
+          apt-get update -qq && apt-get install -y -qq kubectl google-cloud-cli-gke-gcloud-auth-plugin >/dev/null
+          gcloud container clusters get-credentials "${_GKE_CLUSTER}" --region "${_REGION}" --dns-endpoint
+          mkdir -p /workspace/k8s-render
+          cp deploy/k8s/faq-resolver/*.yaml /workspace/k8s-render/
+          sed -i "s|image: .*|image: $${IMAGE_TAG}|g" /workspace/k8s-render/deployment.yaml
+          kubectl apply -f /workspace/k8s-render/
+          kubectl rollout status deployment/faq-resolver -n faq-resolver --timeout=300s
+        ) || echo "deploy-gke" > /workspace/FAILED
+
+  # ===========================================================================
+  # Step 6: Deploy / Update Agent Engine Runtime (REQ-CD-006)
+  # ===========================================================================
+  - name: 'python:3.11-slim'
+    id: 'deploy-agent-engine'
+    waitFor: ['deploy-gke']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        [ -f /workspace/FAILED ] && { echo "Skipping: earlier failure"; exit 0; }
+        (
+          set -euo pipefail
+          pip install --no-cache-dir -q -e .[deploy]
+          python scripts/deploy_agents/deploy_triage_agent_runtime.py \
+            --update "${_TRIAGE_RESOURCE}" --project "${PROJECT_ID}" --region "${_REGION}"
+        ) || echo "deploy-agent-engine" > /workspace/FAILED
+
+  # ===========================================================================
+  # Step 7: Post-Deploy Smoke Verification (REQ-CD-007)
+  # ===========================================================================
+  - name: 'python:3.11-slim'
+    id: 'post-deploy-smoke'
+    waitFor: ['deploy-agent-engine']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        [ -f /workspace/FAILED ] && { echo "Skipping: earlier failure"; exit 0; }
+        (
+          set -euo pipefail
+          pip install --no-cache-dir -q -e .[deploy,runtime,agents]
+          echo "=== 1. Cloud Run MCP smoke ==="
+          python scripts/smoke/cloud_run_smoke.py
+          echo "=== 2. Live identity e2e (60 s warm-up after Agent Engine update; one retry) ==="
+          sleep 60
+          python scripts/e2e_identity_check.py --resource-name "${_TRIAGE_RESOURCE}" \
+              --project "${PROJECT_ID}" --region "${_REGION}" \
+            || { echo "e2e failed once; retrying after 30 s"; sleep 30; \
+                 python scripts/e2e_identity_check.py --resource-name "${_TRIAGE_RESOURCE}" \
+                   --project "${PROJECT_ID}" --region "${_REGION}"; }
+          echo "=== 3. Model Armor functional smoke ==="
+          python scripts/model_armor_smoke.py --timeout-s 5
+        ) || echo "post-deploy-smoke" > /workspace/FAILED
+
+  # ===========================================================================
+  # Step 7b: Roll back on any failure (REQ-CD-008)
+  # ===========================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'rollback-if-failed'
+    waitFor: ['post-deploy-smoke']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if [ ! -f /workspace/FAILED ]; then echo "All deploy and smoke steps passed."; exit 0; fi
+        echo "FAILED STEP: $(cat /workspace/FAILED)"
+        apt-get update -qq && apt-get install -y -qq kubectl google-cloud-cli-gke-gcloud-auth-plugin >/dev/null || true
+        /workspace/rollback.sh
+
+  # ===========================================================================
+  # Step 8: Record Last-Good Deployment State (REQ-CD-008)
+  # ===========================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'record-last-good'
+    waitFor: ['rollback-if-failed']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        IMAGE_TAG="${_REGION}-docker.pkg.dev/${PROJECT_ID}/serving/agents:${SHORT_SHA}"
+        echo "=== Recording new last-good deployment state to GCS ==="
+        python3 - << EOF
+        import datetime, json, os, subprocess
+        data = {
+            "sha": "${SHORT_SHA}",
+            "image": "${IMAGE_TAG}",
+            "build_id": "${BUILD_ID}",
+            "time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }
+        with open("/workspace/last_good.json", "w") as f:
+            json.dump(data, f, indent=2)
+        subprocess.run(["gsutil", "cp", "/workspace/last_good.json", "gs://${_CORPUS_BUCKET}/cd/last_good.json"], check=True)
+        EOF
+        echo "Recorded last_good.json:"
+        cat /workspace/last_good.json
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '3600s'

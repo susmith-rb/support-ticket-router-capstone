@@ -27,6 +27,12 @@ resource "google_container_cluster" "support_agents" {
     enable_private_endpoint = false
   }
 
+  control_plane_endpoints_config {
+    dns_endpoint_config {
+      allow_external_traffic = true
+    }
+  }
+
   # ARCHITECTURAL DECISION & SECURITY NOTE ON NODE SERVICE ACCOUNT:
   # Autopilot clusters default to the Compute Engine default service account
   # (<project_number>-compute@developer.gserviceaccount.com).

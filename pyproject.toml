@@ -47,6 +47,16 @@ agents = [
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
 ]
+deploy = [
+    "google-cloud-aiplatform[agent_engines,adk]>=1.75.0",
+    "google-adk>=2.2.0",
+    "cloudpickle==3.0.0",
+    "pydantic>=2.0.0",
+    "google-genai>=0.1.0",
+    "requests>=2.32.0",
+    "google-auth>=2.27.0",
+    "pyyaml>=6.0.1",
+]
 
 [tool.setuptools]
 package-dir = { "" = "src", "evals" = "evals", "corpus" = "corpus", "experiments" = "experiments", "training" = "training" }

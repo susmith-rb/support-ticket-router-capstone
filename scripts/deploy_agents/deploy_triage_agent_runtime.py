@@ -33,6 +33,7 @@ import argparse
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -177,6 +178,51 @@ def build_agent_app() -> Any:
     return root_agent
 
 
+def wait_for_reasoning_engine_idle(
+    resource_name: str,
+    project: str,
+    region: str,
+    max_wait_seconds: int = 600,
+    poll_interval_seconds: int = 15,
+) -> None:
+    """Poll until the target reasoning engine is not UPDATING (≤10 min).
+
+    Implements REQ-CD-006: Before calling update, wait until the engine is not
+    UPDATING (poll ≤10 min) — a concurrent update returns 400.
+    """
+    logger.info("Checking if Agent Engine %s is UPDATING...", resource_name)
+    start_time = time.time()
+    try:
+        from google.cloud import aiplatform_v1
+        client = aiplatform_v1.ReasoningEngineServiceClient(
+            client_options={"api_endpoint": f"{region}-aiplatform.googleapis.com"}
+        )
+        parent = f"projects/{project}/locations/{region}"
+        while time.time() - start_time < max_wait_seconds:
+            resp = client.list_operations(request={"name": parent})
+            active_ops = [
+                op.name for op in resp.operations
+                if resource_name in op.name and not op.done
+            ]
+            if not active_ops:
+                logger.info("Agent Engine %s is idle (no active operations).", resource_name)
+                return
+            logger.info(
+                "Agent Engine %s is UPDATING (%d active operation(s)); waiting %ds...",
+                resource_name,
+                len(active_ops),
+                poll_interval_seconds,
+            )
+            time.sleep(poll_interval_seconds)
+        raise TimeoutError(
+            f"Timed out after {max_wait_seconds}s waiting for Agent Engine {resource_name} to finish UPDATING"
+        )
+    except Exception as exc:
+        if isinstance(exc, TimeoutError):
+            raise
+        logger.warning("Could not check active operations for %s: %s", resource_name, exc)
+
+
 def deploy_reasoning_engine(
     project: str,
     region: str,
@@ -244,6 +290,11 @@ def deploy_reasoning_engine(
 
     resource_name: str | None = None
     if update_resource_name:
+        wait_for_reasoning_engine_idle(
+            resource_name=update_resource_name,
+            project=project,
+            region=region,
+        )
         logger.info("Updating existing Agent Engine: %s", update_resource_name)
         if has_agent_engines:
             from vertexai import agent_engines
