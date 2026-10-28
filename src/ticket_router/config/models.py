@@ -158,6 +158,24 @@ def model_id(role: str, env: Optional[str] = None, config_path: Optional[pathlib
     return str(get(role, env=env, config_path=config_path)["id"])
 
 
+def model_location(
+    role: str,
+    default: Optional[str] = None,
+    env: Optional[str] = None,
+    config_path: Optional[pathlib.Path] = None,
+) -> Optional[str]:
+    """Retrieve model serving location string for a logical model role if present else default.
+
+    # REQ-AGENT-013: Centralized Model Configuration Resolution.
+    """
+    try:
+        cfg = get(role, env=env, config_path=config_path)
+    except KeyError:
+        return default
+    loc = cfg.get("location")
+    return str(loc) if loc is not None else default
+
+
 def list_roles(config_path: Optional[pathlib.Path] = None) -> Dict[str, str]:
     """Return dictionary of role -> resolved model ID."""
     data = load_registry(config_path=config_path)

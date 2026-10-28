@@ -561,13 +561,13 @@ def test_invoke_tier2_gemini_json_parsing_and_invoker_wiring(monkeypatch):
     assert pred_esc.urgency == "immediate"
     assert pred_esc.intent == "returns_refunds"
 
-    # 3. create_tier2_invoker forwards project & location and is picklable
+    # 3. create_tier2_invoker forwards project & location (with registry precedence) and is picklable
     invoker = create_tier2_invoker("router_tier2", project="proj-custom", location="us-west1")
     unpickled_invoker = pickle.loads(pickle.dumps(invoker))
     res = unpickled_invoker("What are your shipping options?")
     assert res.escalate is False
     assert res.intent == "shipping_policy"
-    assert recorded_clients[-1] == {"project": "proj-custom", "vertexai": True, "location": "us-west1"}
+    assert recorded_clients[-1] == {"project": "proj-custom", "vertexai": True, "location": "global"}
 
 
 def test_triage_a2a_handoff_failure_degrades_to_escalation():

@@ -94,7 +94,7 @@ src/ticket_router/
 | `REQ-AGENT-010` | MCP Tool Contracts, JSON Schemas, and Role-Based DB Access | `done` | `tests/mcp/test_tool_contracts.py::test_schemas_and_roles` |
 | `REQ-AGENT-011` | Distributed Circuit Breakers and Fallback Hierarchies | `done` | `tests/common/test_resilience.py::test_circuit_breakers_and_fallbacks` |
 | `REQ-AGENT-012` | Execution Budgets, Service Timeouts, and Latency SLAs | `done` | `tests/common/test_resilience.py::test_latency_budgets_and_timeouts` |
-| `REQ-AGENT-013` | Centralized Model Configuration Resolution | `done` | `tests/config/test_agent_models.py::test_model_registry_resolution` |
+| `REQ-AGENT-013` | Centralized Model Configuration Resolution | `done` | `tests/agents/test_tier2_location.py::test_tier2_invoker_location_precedence` |
 | `REQ-AGENT-014` | Observability: Distributed Tracing & PII-Free Structured Logging | `done` | `tests/common/test_observability.py::test_otel_spans_and_pii_free_logs` |
 | `REQ-AGENT-015` | Test Strategy: Hermetic Unit Tests, Schema Contracts, and E2E Smoke | `done` | `tests/agents/test_agent_smoke.py::test_e2e_triage_smoke` |
 | `REQ-AGENT-016` | Dedicated Agent Service Accounts and Least-Privilege IAM | `done` | `tests/infra/test_agent_infra_static.py::test_agents_iam_least_privilege` |
@@ -199,9 +199,9 @@ src/ticket_router/
 - **Owner**: agent-service
 
 ### REQ-AGENT-013: Centralized Model Configuration Resolution
-- **Statement**: Agents and helper services MUST load all model IDs, endpoint URLs, model serving locations (e.g. `global` for `gemini-3.8-flash` in `GeminiAnswerClient`), and generation parameters dynamically from `src/ticket_router/config` using `models.get(role)` or `models.model_id(role)` (resolving roles `answer`, `router_tier2`, `tier3_multihop`). Hardcoded model identifier strings are strictly prohibited in application source code.
+- **Statement**: Agents and helper services MUST load all model IDs, endpoint URLs, model serving locations (e.g. `global` for `gemini-3.8-flash` in `GeminiAnswerClient` and `router_tier2` in `Tier2GeminiInvoker`), and generation parameters dynamically from `src/ticket_router/config` using `models.get(role)`, `models.model_id(role)`, or `models.model_location(role)` (resolving roles `answer`, `router_tier2`, `tier3_multihop`). The model's registry `location` MUST take strict precedence over `GOOGLE_CLOUD_LOCATION` / `Settings.location` for every Gemini caller, including the Tier 2 router (`router_tier2` → `global`); `Settings.location` is only the fallback when a role has no configured location in the registry. Hardcoded model identifier strings and hardcoded location literals are strictly prohibited in application source code.
 - **Rationale**: Decouples model version upgrades from application deployments and complies with AGENTS.md Non-negotiable 2.
-- **Acceptance**: `tests/config/test_agent_models.py::test_model_registry_resolution`
+- **Acceptance**: `tests/agents/test_tier2_location.py::test_tier2_invoker_location_precedence`
 - **Status**: done
 - **Owner**: agent-service
 

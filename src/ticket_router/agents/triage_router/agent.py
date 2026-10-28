@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Callable, Dict, Optional
@@ -41,7 +42,7 @@ from ticket_router.common.observability import (
     start_span,
 )
 from ticket_router.common.settings import Settings
-from ticket_router.config.models import model_id
+from ticket_router.config.models import model_id, model_location
 from ticket_router.identity import resolve_identity
 from ticket_router.models.router_s1_client import RouterPrediction, RouterS1Client
 from ticket_router.security.model_armor import (
@@ -70,12 +71,13 @@ def invoke_tier2_gemini(
     project: Optional[str] = None,
     location: Optional[str] = None,
 ) -> RouterPrediction:
-    """Execute Tier 2 fallback inference using Gemini Flash (REQ-AGENT-002)."""
+    """Execute Tier 2 fallback inference using Gemini Flash (REQ-AGENT-002, REQ-AGENT-013)."""
     try:
         from google import genai  # type: ignore[import-untyped]
         client_kwargs: Dict[str, Any] = {}
-        if project:
-            client_kwargs["project"] = project
+        effective_project = project or os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("PROJECT_ID")
+        if effective_project:
+            client_kwargs["project"] = effective_project
             client_kwargs["vertexai"] = True
         if location:
             client_kwargs["location"] = location
@@ -163,18 +165,28 @@ class Tier2GeminiInvoker:
 
     def __call__(self, text: str) -> RouterPrediction:
         target_model = model_id(self.model_role)
+        resolved_location = model_location(self.model_role) or self.location
+        proj = self.project or os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("PROJECT_ID")
         return invoke_tier2_gemini(
             text,
             target_model,
-            project=self.project,
-            location=self.location,
+            project=proj,
+            location=resolved_location,
         )
 
 
 def default_tier2_invoker(text: str) -> RouterPrediction:
     """Default module-scope Tier 2 invoker resolving model dynamically."""
-    target_model = model_id("router_tier2")
-    return invoke_tier2_gemini(text, target_model)
+    model_role = "router_tier2"
+    target_model = model_id(model_role)
+    resolved_location = model_location(model_role) or os.environ.get("GOOGLE_CLOUD_LOCATION")
+    proj = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("PROJECT_ID")
+    return invoke_tier2_gemini(
+        text,
+        target_model,
+        project=proj,
+        location=resolved_location,
+    )
 
 
 def create_tier2_invoker(
