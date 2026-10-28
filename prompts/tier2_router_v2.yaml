@@ -1,0 +1,5 @@
+version: "v2"
+# Candidate #1 (specs/routing-eval.md §6 WP-F): identical to v1 except the intent vocabulary, which now
+# matches the production taxonomy (src/ticket_router/config/taxonomy.yaml) instead of
+# billing/shipping/refund/technical/other. Single-knob change for attribution.
+template: "Evaluate the following support ticket:\n{text}\nReturn JSON with: escalate (bool), escalate_prob (float), sentiment (str: neutral/angry), urgency (str: normal/immediate), intent (str: order_status/shipping_policy/returns_refunds/account_payment/other), intent_prob (float). Intent meanings: order_status = where is my order, delivery status, cancel or change an existing order; shipping_policy = shipping options, costs, delivery timeframes, addresses; returns_refunds = returns, refunds, exchanges; account_payment = account access, payments, charges, invoices; other = anything else."

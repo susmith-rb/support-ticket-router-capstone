@@ -1,0 +1,96 @@
+# Single Source of Truth for Routing Taxonomy and Expected Behaviour Policy
+# REQ-REVAL-001: Taxonomy single source of truth & label validation
+
+intents:
+  order_status:
+    definition: "Tracking, status, delivery estimates, or delays for existing customer orders."
+    positive_examples:
+      - "Where is my order #12345? The tracking has not updated in three days."
+      - "Can you tell me if my package was delivered? I checked my porch and it is not there."
+      - "Has order 98765 shipped yet?"
+    boundary_notes: "Focuses on order location and delivery status. If the customer requests a return or refund for a delivered item, route to returns_refunds."
+
+  shipping_policy:
+    definition: "General shipping rules, standard/express delivery times, international shipping options, and costs."
+    positive_examples:
+      - "Do you offer next-day delivery to Alaska?"
+      - "How much does standard shipping cost for orders under $50?"
+      - "What is your cutoff time for same-day dispatch?"
+    boundary_notes: "General policy questions. If asking about a specific delayed or missing order, route to order_status."
+
+  returns_refunds:
+    definition: "Return policies, initiating returns, exchange requests, damaged items, or refund status."
+    positive_examples:
+      - "The shoes I received are the wrong size; how do I exchange them?"
+      - "I returned my item last week, when will my refund be posted?"
+      - "My order arrived broken; I need a replacement or refund."
+    boundary_notes: "Covers returns, replacements, and refunds. If asking about an initial order delivery without return/refund intent, route to order_status."
+
+  account_payment:
+    definition: "Account login, password reset, payment method failures, billing charges, and gift cards."
+    positive_examples:
+      - "My credit card was declined at checkout but my bank says it is fine."
+      - "I forgot my password and the reset email is not arriving."
+      - "How do I apply a promotional gift card balance to my account?"
+    boundary_notes: "Covers account credentials, payment methods, and billing. For fraud or unauthorized charges, escalate to human-standard."
+
+  other:
+    definition: "Inquiries outside standard support categories, technical app issues, feedback, or out-of-scope requests."
+    positive_examples:
+      - "Your mobile app keeps crashing whenever I open the camera."
+      - "Do you have any physical retail stores in Seattle?"
+      - "I want to submit feedback about your website navigation."
+    boundary_notes: "Catch-all for topics not fitting the other four intents. Vague or out-of-distribution queries route here."
+
+sentiments:
+  angry: "Hostile, insulting, threatening, or furious tone."
+  frustrated: "Annoyed, disappointed, repeated problem, or sarcastic tone."
+  neutral: "Matter-of-fact inquiry, objective question, or neutral statement."
+  positive: "Thankful, appreciative, happy, or complimentary tone."
+
+urgency:
+  0: "can wait days"
+  1: "within a day"
+  2: "within hours"
+  3: "immediate"
+
+decisions:
+  - "auto_rag"
+  - "escalate"
+
+queues:
+  - "none"
+  - "human-urgent"
+  - "human-standard"
+  - "human-low"
+
+tiers:
+  - "tier0_rules"
+  - "tier1_router_s1"
+  - "tier2_flash"
+  - "model_armor"
+  - "fallback_degraded"
+
+expected_behaviour:
+  escalate_triggers:
+    - "sentiment == 'angry'"
+    - "urgency == 3"
+    - "explicit request for a human"
+    - "abuse or toxicity"
+    - "legal threat or safety emergency"
+    - "account security, fraud, or unauthorized charge"
+    - "out-of-distribution or non-support request (intent == 'other' and scenario == 'ood')"
+    - "request requires account-specific human action with no self-service FAQ"
+
+  queue_rules:
+    - "human-urgent only for legal threat or safety emergency"
+    - "human-standard for all other escalations"
+    - "none for auto_rag"
+    - "human-low is reserved and unused in v1"
+
+  decision_rules:
+    - "auto_rag otherwise with best-fitting answerable intent; frustrated alone does not force escalation"
+    - "ambiguous boundary: intent is best label, acceptable_intents lists defensible labels"
+    - "conflicting info: label by most recent explicit customer statement; safety-relevant content wins"
+    - "missing info: label what is answerable; if no intent is inferable, intent=other and escalate to human-standard"
+    - "prompt injection: label underlying request; injected instructions never change expected labels"

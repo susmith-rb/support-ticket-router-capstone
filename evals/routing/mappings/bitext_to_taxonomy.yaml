@@ -1,0 +1,219 @@
+# Mapping of all 27 Bitext Customer Support intents to Canonical Routing Taxonomy
+# REQ-REVAL-004: Public Bitext source mapping table
+
+intents:
+  track_order:
+    intent: "order_status"
+    acceptable_intents: ["order_status"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Tracking status, location, or delivery estimate of an existing order."
+
+  delivery_period:
+    intent: "order_status"
+    acceptable_intents: ["order_status", "shipping_policy"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Questions regarding delivery time frame for an order or general shipping timeframe."
+
+  cancel_order:
+    intent: "order_status"
+    acceptable_intents: ["order_status"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Order cancellation self-service FAQ or status lookup."
+
+  change_order:
+    intent: "order_status"
+    acceptable_intents: ["order_status"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Modifying items or details of an existing pending order."
+
+  place_order:
+    intent: "other"
+    acceptable_intents: ["other"]
+    decision: "escalate"
+    queue: "human-standard"
+    scenarios_extra: ["ood"]
+    rationale: "Pre-sales purchasing and placing new orders is out of scope for support FAQ resolver."
+
+  delivery_options:
+    intent: "shipping_policy"
+    acceptable_intents: ["shipping_policy"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Inquiries about shipping speeds, courier options, and delivery methods."
+
+  change_shipping_address:
+    intent: "shipping_policy"
+    acceptable_intents: ["shipping_policy", "order_status"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Updating destination address policy or order destination update."
+
+  set_up_shipping_address:
+    intent: "shipping_policy"
+    acceptable_intents: ["shipping_policy", "order_status"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Setting default delivery addresses in account or for checkout."
+
+  get_refund:
+    intent: "returns_refunds"
+    acceptable_intents: ["returns_refunds"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Requesting a refund for a returned or damaged item."
+
+  track_refund:
+    intent: "returns_refunds"
+    acceptable_intents: ["returns_refunds"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Checking status of pending refund or credit balance."
+
+  check_refund_policy:
+    intent: "returns_refunds"
+    acceptable_intents: ["returns_refunds"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Inquiries about return windows, condition requirements, or refund eligibility."
+
+  check_cancellation_fee:
+    intent: "account_payment"
+    acceptable_intents: ["account_payment", "returns_refunds"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Fee assessment on order or subscription cancellation; billing charge related."
+
+  check_payment_methods:
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Questions about accepted credit cards, PayPal, gift cards, or payment methods."
+
+  payment_issue:
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Credit card decline, checkout payment error, or billing discrepancy."
+
+  check_invoice:
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Viewing billing statements, receipts, or invoices."
+
+  get_invoice:
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Downloading or requesting an invoice copy."
+
+  create_account:
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "User registration and new profile setup."
+
+  edit_account:
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Updating account profile, email, or credentials."
+
+  switch_account:
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Switching active profiles or linked accounts."
+
+  delete_account:
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Account termination or profile deletion procedure."
+
+  recover_password:
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Password reset and account unlock assistance."
+
+  registration_problems:
+    intent: "account_payment"
+    acceptable_intents: ["account_payment"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "Issues encountered while signing up or verifying account credentials."
+
+  contact_human_agent:
+    intent: "other"
+    acceptable_intents: ["other"]
+    decision: "escalate"
+    queue: "human-standard"
+    scenarios_extra: []
+    rationale: "Explicit request to speak with a human agent per rule 1."
+
+  contact_customer_service:
+    intent: "other"
+    acceptable_intents: ["other"]
+    decision: "auto_rag"
+    queue: "none"
+    scenarios_extra: []
+    rationale: "General inquiry on how to reach support; answerable by contact info FAQ."
+
+  complaint:
+    intent: "other"
+    acceptable_intents: ["other"]
+    decision: "escalate"
+    queue: "human-standard"
+    scenarios_extra: []
+    rationale: "Formal customer complaints require human attention per rule 1."
+
+  review:
+    intent: "other"
+    acceptable_intents: ["other"]
+    decision: "escalate"
+    queue: "human-standard"
+    scenarios_extra: ["ood"]
+    rationale: "Submitting product or seller reviews is out-of-scope for support router."
+
+  newsletter_subscription:
+    intent: "other"
+    acceptable_intents: ["other"]
+    decision: "escalate"
+    queue: "human-standard"
+    scenarios_extra: ["ood"]
+    rationale: "Marketing and newsletter subscription management is out of distribution."

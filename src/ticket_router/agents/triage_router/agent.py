@@ -88,6 +88,27 @@ def invoke_tier2_gemini(
             model=target_model,
             contents=prompt,
         )
+
+        usage_data: Optional[Dict[str, int]] = None
+        usage_meta = getattr(resp, "usage_metadata", None)
+        if usage_meta is not None:
+            pt = getattr(usage_meta, "prompt_token_count", None)
+            ct = getattr(usage_meta, "candidates_token_count", None)
+            tt = getattr(usage_meta, "total_token_count", None)
+            if pt is not None or ct is not None or tt is not None:
+                p_int = int(pt) if pt is not None else 0
+                c_int = int(ct) if ct is not None else 0
+                t_int = int(tt) if tt is not None else (p_int + c_int)
+                usage_data = {
+                    "prompt_tokens": p_int,
+                    "output_tokens": c_int,
+                    "total_tokens": t_int,
+                }
+        extra_raw: Dict[str, Any] = {
+            "model_id": target_model,
+            "usage": usage_data,
+        }
+
         raw_text = ""
         try:
             raw_text = str(resp.text)
@@ -123,6 +144,7 @@ def invoke_tier2_gemini(
                 intent = str(parsed.get("intent") or ("other" if is_esc else "faq")).strip()
                 esc_prob = float(parsed.get("escalate_prob", 0.85 if is_esc else 0.10))
                 intent_prob = float(parsed.get("intent_prob", 0.80))
+                merged_raw = {**parsed, **extra_raw}
                 return RouterPrediction(
                     escalate=is_esc,
                     escalate_prob=esc_prob,
@@ -133,6 +155,7 @@ def invoke_tier2_gemini(
                     intent=intent,
                     intent_prob=intent_prob,
                     latency_ms=120.0,
+                    raw=merged_raw,
                 )
         except Exception:
             pass
@@ -140,6 +163,7 @@ def invoke_tier2_gemini(
         is_angry = "angry" in raw_text.lower()
         is_urgent = "immediate" in raw_text.lower()
         is_esc = "escalate" in raw_text.lower() or is_angry or is_urgent
+        fallback_raw = {"raw_text": raw_text, **extra_raw}
         return RouterPrediction(
             escalate=is_esc,
             escalate_prob=0.85 if is_esc else 0.10,
@@ -150,6 +174,7 @@ def invoke_tier2_gemini(
             intent="other" if is_esc else "faq",
             intent_prob=0.80,
             latency_ms=120.0,
+            raw=fallback_raw,
         )
     except Exception as exc:
         raise RuntimeError(f"Tier 2 model call failed ({target_model}): {exc}") from exc

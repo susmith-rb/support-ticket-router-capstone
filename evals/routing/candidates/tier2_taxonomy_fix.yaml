@@ -1,0 +1,4 @@
+# Candidate overlay: switch Tier 2 prompt to v2 for taxonomy fix.
+# REQ-REVAL-011: Evaluates system with updated Tier 2 prompt version v2.
+prompts:
+  tier2_router_version: "v2"

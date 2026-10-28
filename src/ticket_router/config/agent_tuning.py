@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -85,10 +86,30 @@ def load_yaml_simple(path: Path) -> Dict[str, Any]:
     return result
 
 
-def load_tuning_config(path: Optional[Path] = None) -> AgentTuningConfig:
-    """Load agent tuning config from file or environment override."""
+_CONTEXT_TIER2_VERSION: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "tier2_version", default=None
+)
+
+
+def _deep_merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(base)
+    for k, v in override.items():
+        if k in merged and isinstance(merged[k], dict) and isinstance(v, dict):
+            merged[k] = _deep_merge_dict(merged[k], v)
+        else:
+            merged[k] = v
+    return merged
+
+
+def load_tuning_config(
+    path: Optional[Path] = None,
+    overlay: Optional[Dict[str, Any]] = None,
+) -> AgentTuningConfig:
+    """Load agent tuning config from file or environment override, optionally merged with overlay."""
     target_path = path or Path(os.environ.get("AGENT_TUNING_CONFIG_PATH", str(DEFAULT_TUNING_FILE)))
     data = load_yaml_simple(target_path) if target_path.is_file() else {}
+    if overlay:
+        data = _deep_merge_dict(data, overlay)
 
     router_data = data.get("router", {})
     prompts_data = data.get("prompts", {})
@@ -107,9 +128,14 @@ def load_tuning_config(path: Optional[Path] = None) -> AgentTuningConfig:
     )
 
 
-def get_tuning_config(reload: bool = False) -> AgentTuningConfig:
-    """Retrieve global cached tuning config."""
+def get_tuning_config(
+    reload: bool = False,
+    overlay: Optional[Dict[str, Any]] = None,
+) -> AgentTuningConfig:
+    """Retrieve global cached tuning config, optionally merged with overlay."""
     global _ACTIVE_CONFIG
+    if overlay is not None:
+        return load_tuning_config(overlay=overlay)
     if _ACTIVE_CONFIG is None or reload:
         _ACTIVE_CONFIG = load_tuning_config()
     return _ACTIVE_CONFIG
@@ -118,7 +144,7 @@ def get_tuning_config(reload: bool = False) -> AgentTuningConfig:
 def get_tier2_prompt(message: str, version: Optional[str] = None) -> str:
     """Render Tier 2 Flash router prompt using configured version."""
     cfg = get_tuning_config()
-    ver = version or cfg.tier2_router_version
+    ver = version or _CONTEXT_TIER2_VERSION.get() or cfg.tier2_router_version
     template_file = PROMPTS_DIR / f"tier2_router_{ver}.yaml"
 
     if template_file.is_file():

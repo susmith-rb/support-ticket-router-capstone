@@ -25,3 +25,6 @@ override.tf.json
 
 # Agent e2e eval datasets (small, required by tests/evals)
 !evals/data/
+
+.cache/routing_eval/
+
