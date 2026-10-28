@@ -1240,34 +1240,69 @@ Repo layout `agents/`, `router/`, `mcp/`, `corpus/`, `eval/`, `deploy/terraform/
 
 ---
 
-## 17. AI-Driven Development Harness
+## 17. AI-Driven Development Harness & Spec-Driven Development (SDD)
 
-**Set up before the first line of product code (Sprint 1, day 1–2):**
+### 17.1 Multi-Model Conductor–Worker Orchestration ("Elephant and Goldfish" Pattern)
 
-- **`AGENTS.md` (repo root)** — the contract the coding agent (Jetski/AGY) works under: architecture summary with the managed-over-DIY rule and the "rules add-only" invariant; command palette (`make lint test eval deploy`); non-negotiables (no PII in logs/tests, no `roles/editor`, `:rawPredict` only, pin `google-adk` to the runtime version, every router change must add or update a golden case); definition of done per PR (PR suite green, coverage ≥ 80%, CHANGELOG eval delta).
-- **Rules** (`.jetski/rules/`): `security.md` (secrets, IAM patterns), `testing.md` (spec → failing test → implementation → refactor; property tests for invariants), `terraform.md` (module conventions, `plan` before `apply`, no manual console changes), `docs.md` (ADR template, update TDD section when a decision changes).
-- **Skills** (`.jetski/skills/`): `adk-agent-dev` (ADK callbacks, A2A cards, local `adk web` with fakes), `router-eval` (how to run the golden set and read `eval_runs`), `argolis-terraform` (org-policy gotchas, quota requests), `chaos-run` (fault proxy usage), `jev-client` (wire format, key order, limits).
-- **Spec-first TDD prompts:** each feature starts from a short spec file (`specs/feature-name.md`: behaviour, interfaces, acceptance tests); the agent is asked to write the failing tests first, then implement, then run `make test eval-pr`.
+Development follows a tiered multi-agent orchestration workflow that matches cognitive model capability to task complexity while isolating context windows:
+
+```mermaid
+flowchart LR
+  H["Human Engineer (@susmith)"] --> C["Conductor: Claude Opus (Architecture, Plans, Diff Review, Git Commits)"]
+  C -- "Bounded Implementation & Test Tasks (ASSIGNED_FILES_EXCLUSIVE)" --> F["Workers: Gemini 3.8 Flash (High Thinking)"]
+  C -- "Complex Reasoning, Multi-Hop Audits & Disagreement Adjudication" --> A["Specialist Subagents: Gemini Pro (Argon)"]
+  F --> V["Verification Gate: pytest + test_spec_traceability.py + ruff"]
+  A --> V
+  V --> C
+```
+
+| Role | Model Tier | Scope & Engineering Guardrails |
+| --- | --- | --- |
+| **Conductor (Orchestrator)** | **Claude Opus** | Maintains long-horizon architectural state; authors phased workstream plans (`docs/plans/PLAN.md`, `PLAN2.md`–`PLAN8.md`); partitions work with exclusive file locks (`ASSIGNED_FILES_EXCLUSIVE`) so parallel workers never conflict; audits worker diffs against `specs/`; re-runs `pytest` and recomputes metrics from raw files before committing (**workers never commit**). |
+| **Fast Execution Workers** | **Gemini 3.8 Flash** *(High Thinking)* | Executes bounded implementation slices, unit/property test suites, Terraform modules, and parallel offline data/eval shards (e.g., 50-article FAQ synthesis, 600-query blind retrieval annotation with Cohen's $\kappa = 0.84$, disambiguation mining). |
+| **Complex Reasoning Subagents** | **Gemini Pro (Argon)** | Dispatched for high-complexity reasoning tasks: architectural trade-off reviews, adjudicating inter-annotator disagreements (`labels_c2.jsonl`), and grading hard-negative reranker training sets (`1,323` graded queries across 8 shards). |
+| **Offline Cost & Quota Isolation** | **Jetski Subagents vs. Argolis Vertex** | All offline LLM work (corpus synthesis, theme regrouping, eval labeling, and judging) runs on Jetski subagents (`REQ-BILLING-001`), keeping the customer's Argolis Vertex quota strictly reserved for live `Agent Search` queries and runtime serving. |
+
+### 17.2 Spec-Driven Development (SDD) Framework (`specs/`)
+
+Specifications live directly in the repository under `specs/` (`specs/README.md`) as the single source of truth for architectural requirements, functional invariants, and verification criteria:
+
+1. **Normative Specification Index (`specs/*.md`):**
+   - Divided into domain specs (platform, RAG corpus/retrieval, Agent Search, router-s1, billing/models, model serving, CI/CD, agent service, customer identity, Model Armor, agent evals, CD pipeline, …) tracking 86 requirements (`REQ-<AREA>-<NNN>`) as of 2026-10-28.
+   - Every requirement block declares a normative `Statement`, `Rationale` (citing TDD sections), executable `Acceptance` check (`pytest` node ID or `manual:` CLI runbook), `Status` (`open | partial | done | deferred`), and `Owner`.
+2. **Four-Step SDD Lifecycle (`Read Spec → Declare REQ IDs → Implement & Test → Conductor Review`):**
+   - No code or test change is accepted without a corresponding spec update. The spec update, `# REQ-...` annotated `pytest` test, and implementation code **must land in the same commit**.
+   - When implementation findings diverge from the TDD, workers must record the delta under **Open Questions / Deltas** in the spec rather than altering design invariants unilaterally.
+3. **Automated Bidirectional Traceability Gate (`tests/test_spec_traceability.py`):**
+   - Runs offline in `< 1 s` on every local test run and as a blocking stage in Cloud Build (`cicd/cloudbuild.yaml`).
+   - Enforces that all `REQ-*` IDs are unique, every `done` requirement has at least one `# REQ-...` test in `tests/**` (or an explicit `manual:` verification command), and no test references a dangling or deleted requirement ID.
+
+### 17.3 Repository Harness & Continuous Feedback Loop (`AGENTS.md` & `docs/LESSONS.md`)
+
+**Set up before product code and continuously updated after each workstream:**
+
+- **`AGENTS.md` (repo root)** — the contract every coding agent works under: SDD rules, non-negotiables (`rules add-only` escalation invariant, config-externalized model IDs and thresholds, zero PII in logs/tests, `:rawPredict` for Laya endpoints, VM-only Terraform via `scripts/tf_vm.sh`, Jetski-only offline LLM work), and verified environment commands.
+- **Skills & Rules** (`.jetski/`): `adk-agent-dev`, `router-eval`, `argolis-terraform` (org-policy gotchas: no external VM IPs, Cloud NAT + IAP SSH, Shielded VM, no SA keys), `jev-client` (`:rawPredict` key ordering).
 
 **In the loop vs outside the loop:**
 
 | Mode | When | Example from this project |
 | --- | --- | --- |
-| **In the loop** (spec-bound quick fixes; I review every diff) | Security-sensitive code, schema changes, threshold logic | "Add `urgency` score head to `RouterDecision`, update schema, Pydantic model, 4 unit tests; do not touch thresholds." Agent produced the diff; I reviewed the schema migration and the property test. |
-| **Outside the loop** (goal-driven; agent iterates lint → unit → integration → PR-suite eval until green, then opens a PR) | Well-specified, well-tested surfaces: MCP mock server, corpus cleaning transforms, Locust scenarios, Terraform modules with `validate`/`tflint` | "Goal: `make chaos-agent-search` must pass with 0 dropped tickets and breaker overhead < 50 ms; you may change `breaker/` and `tests/chaos/` only." Agent ran 6 iterations, fixed the half-open probe race, and reported the final metrics. |
+| **In the loop** (spec-bound changes; human + Opus conductor review every diff) | Security-sensitive code, IAM, schema changes, threshold logic, PII redaction | "Centralize all model IDs into `src/ticket_router/config/models.yaml` (`REQ-BILL-MODELS-001..003`) and add static guard `tests/test_no_hardcoded_models.py`." Worker produced the diff; Conductor verified in a clean git worktree before committing. |
+| **Outside the loop** (goal-driven; Flash/Argon workers iterate lint → unit → eval until green) | Well-specified, well-tested surfaces: corpus synthesis, disambiguation mining, reranker training data, Terraform modules with `validate`/`tflint` | "Goal: build 1,323 leakage-safe graded reranker queries (`REQ-RAG-RETR-016`) with 0 thread/query overlap against DEV/TEST and verify all 5 leakage invariants." 8 parallel subagent shards graded candidates and passed all automated leakage assertions. |
 
-**Lessons log (`docs/LESSONS.md`), fed back into rules/skills — examples recorded so far:**
+**Lessons log (`docs/LESSONS.md`), fed back into automated guards — examples recorded so far:**
 
-| # | Mistake | Feedback into harness |
+| # | Mistake | Feedback into harness & automated guard |
 | --- | --- | --- |
-| L1 | Agent called the Vertex endpoint with `:predict`; choice options came back reordered and confidences shifted | Rule: "always `:rawPredict`; test asserts key order in the recorded request" |
-| L2 | Agent deployed to Agent Runtime with unpinned `google-adk`; runtime pulled a newer major and every query failed with an attribute error while the eval run still reported SUCCEEDED | Rule: pin `google-adk` to the local version in `requirements`; skill `adk-agent-dev` includes a version check step; eval gate asserts non-empty `metric_results` |
-| L3 | Agent "fixed" a failing G1 case by raising a threshold in code | Rule: thresholds only in `config/`, changes require a threshold ADR line and a golden-set sweep artifact |
-| L4 | Agent logged raw message text at DEBUG while debugging | Rule + lint: a custom `ruff` rule bans `text`/`message` fields in log calls; DLP scan in CI over test logs |
-| L5 | Agent wrote a retry loop around a 429 | Rule: 429 never retried synchronously; breaker counts it immediately |
-| L6 | Agent reached for a hand-rolled eval loop | Rule: evals run through the Gen AI Evaluation Service wrapper in `eval/`; raw loops rejected in review |
+| L1 | Calling Vertex endpoint with `:predict` sorted JSON keys and reordered `choice` options, shifting confidences | Rule + test: always call `:rawPredict`; unit test asserts choice key order in serialized request |
+| L2 | Deploying to Agent Runtime with unpinned `google-adk` pulled a newer major version and failed at runtime | Rule: pin `google-adk` to the exact local version in runtime dependencies |
+| L3 | Raising a threshold or hard-coding a model ID in Python to make a test pass | Guard test `tests/test_no_hardcoded_models.py` scans repo for literal model IDs; thresholds and models live strictly in `config/` |
+| L4 | Worker reported "lint & eval gate green" after linting only its new file and masking download errors with `\|\| true` | Conductor rule: always run exact `cicd/cloudbuild.yaml` step commands end-to-end and recompute metrics from raw output files |
+| L5 | Cloud Build 2nd-gen shallow clones (`depth=1`) failed `git diff HEAD~1`, and `${BRANCH_NAME:-}` evaluated to empty | Replaced git-diff with SHA-256 content fingerprinting (`scripts/ci_changes.py` + GCS `ci/state.json`) and added `tests/infra/test_cicd_static.py` banning unescaped bash fallbacks |
+| L6 | Amazon order IDs (`3-7-7` digits) matched credit-card regexes during PII redaction | Rule + `tests/training/test_redact.py`: extract `[ORDER]` tokens before card matching and require Luhn checksum verification (`REQ-ROUTER-S1-002`) |
 
-The harness is itself versioned and reviewed in PRs; a weekly 20-minute "harness retro" promotes repeated lessons into rules.
+The harness is itself versioned and reviewed in PRs; every repeated agent mistake is promoted into a `REQ-*` specification item and an automated `pytest` guard.
 
 ---
 

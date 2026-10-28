@@ -477,3 +477,49 @@ The evaluation suite runs against a **30-case PR gate suite** (Cloud Build block
 | **SLO & Drift Alerting** | **Cloud Monitoring Alerts** | Multi-window SLO burn alerts (**2% / 1 h**, **5% / 6 h**); pages on breaker open > 5 min, DLQ ≥ 1, Tier-1 share < 70%, escalation shift ±5 pts, sampled angry recall < 0.995, or intent PSI > 0.2. |
 | **Online Eval & Drift Loop** | **Gen AI Eval Service + Flash Shadow** | Async re-judges **2%** of auto-replies (`G6`, `G7`) and shadow-labels **2%** of Tier-1 decisions with Gemini Flash + **200/wk** human audit; weekly KL/PSI drift job triggers retrain runbook. |
 | **Compliance & Audit** | **Cloud Audit Logs + BigQuery** | Admin/Data Access logs + app-level `audit_events` (PII re-ID calls, threshold edits, model promotions, human claims) streamed to a 400-day BigQuery sink + locked GCS bucket. |
+
+---
+
+## 9. Agentic Engineering & Spec-Driven Development (SDD)
+
+To build, verify, and evolve this system within an accelerated delivery window while maintaining strict engineering rigor, development follows a **Multi-Model Conductor–Worker Orchestration** model paired with **Spec-Driven Development (SDD)** enforced in CI.
+
+### 9.1 Multi-Model Orchestration ("Elephant and Goldfish" Pattern)
+
+We separate long-horizon architectural state from bounded execution by routing development tasks across model tiers based on cognitive complexity:
+
+```mermaid
+flowchart LR
+  H["Human Engineer (@susmith)"] --> C["Conductor: Claude Opus (Architecture, Plans, Diff Review, Git Commits)"]
+  C -- "Bounded Implementation & Test Tasks (ASSIGNED_FILES_EXCLUSIVE)" --> F["Workers: Gemini 3.8 Flash (High Thinking)"]
+  C -- "Complex Reasoning, Multi-Hop Audits & Disagreement Adjudication" --> A["Specialist Subagents: Gemini Pro (Argon)"]
+  F --> V["Verification Gate: pytest + test_spec_traceability.py + ruff"]
+  A --> V
+  V --> C
+```
+
+| Role | Model Tier | Responsibilities & Guardrails |
+| :--- | :--- | :--- |
+| **Conductor (Orchestrator)** | **Claude Opus** | Holds full-repo architectural context; authors staged execution plans (`docs/plans/PLAN.md`, `PLAN2.md`–`PLAN8.md`); assigns exclusive file boundaries (`ASSIGNED_FILES_EXCLUSIVE`) so parallel workers never collide; audits worker diffs against `specs/`; re-runs `pytest` and recomputes metrics from raw files before committing (**workers never commit**). |
+| **Fast Execution Workers** | **Gemini 3.8 Flash** *(High Thinking)* | Executes bounded implementation slices, unit/property test suites, Terraform modules, and parallel offline data/evaluation shards (e.g., FAQ synthesis, 600-query blind retrieval labeling with Cohen's $\kappa = 0.84$, disambiguation mining). |
+| **Complex Reasoning Subagents** | **Gemini Pro (Argon)** | Invoked for high-complexity reasoning tasks: architectural trade-off verification, adjudicating inter-annotator disagreements (`labels_c2.jsonl`), and grading hard-negative reranker training sets (`1,323` graded queries across 8 parallel shards). |
+| **Offline Cost & Quota Isolation** | **Jetski Agent Runtime vs. Argolis Vertex** | All offline LLM workloads (FAQ synthesis, theme regrouping, eval dataset labeling, and LLM judging) run on Jetski subagents (`REQ-BILLING-001`), reserving the customer's Argolis GCP quota strictly for live `Agent Search` queries and runtime serving. |
+
+### 9.2 Spec-Driven Development (SDD) Framework (`specs/`)
+
+Specifications live directly in the repository under [`specs/`](../specs/README.md) as the single source of truth for both human engineers and coding agents (`AGENTS.md`):
+
+1. **Four-Step SDD Workflow (`Read Spec → Declare REQ IDs → Implement & Test → Conductor Review`):**
+   - Every change starts by reading and updating the normative domain specification in `specs/` (`platform.md`, `rag-corpus.md`, `rag-retrieval.md`, `infra-agent-search.md`, `router-s1.md`, `billing-and-models.md`, `model-serving.md`, `ci-cd.md`).
+   - Every requirement has a unique ID (`REQ-<AREA>-<NNN>`) with a normative `Statement`, `Rationale` (linked to TDD sections), executable `Acceptance` check, `Status` (`open | partial | done | deferred`), and `Owner`.
+   - The spec update, `# REQ-...` annotated `pytest` tests, and implementation code **must land in the same commit**.
+2. **Automated Bidirectional Traceability (`tests/test_spec_traceability.py`):**
+   - Executed on every local run and as a blocking step in Cloud Build (`cicd/cloudbuild.yaml`).
+   - Asserts that all `REQ-*` IDs (86 across 15+ specs as of 2026-10-28) are unique, every `done` requirement is verified by at least one `# REQ-...` test in `tests/**` (or an explicit `manual:` operational runbook), and zero tests reference non-existent requirement IDs.
+3. **Continuous Harness Feedback Loop (`AGENTS.md` & `docs/LESSONS.md`):**
+   - Repeated agent mistakes are codified into automated lint/test guards—such as `tests/test_no_hardcoded_models.py` (enforcing that all model IDs come from `src/ticket_router/config/models.yaml`), `tests/infra/test_cicd_static.py` (preventing unescaped bash parameter expansions in Cloud Build YAML), and `scripts/tf_vm.sh` (enforcing VM-only Terraform execution against remote GCS state).
+
+4. **How changes ship (verification beyond tests):**
+   - **CI** (`cicd/cloudbuild.yaml`) runs on every push to `main`: unit/resilience tests, spec traceability, ruff, Terraform static checks, and the golden retrieval eval gate.
+   - **CD** (`cicd/cloudbuild-deploy.yaml`, `specs/cd-pipeline.md`) is **human-approved**: after approval it requires green CI for the same commit, builds one `agents:<sha>` image, deploys Cloud Run, GKE, and Agent Engine **in parallel**, then gates on live smoke (Cloud Run MCP checks, identity/BOLA e2e, Model Armor), recording `last_good.json` or rolling back. Terraform (infra only) runs on the Argolis VM, never from CI/CD.
+   - **Runtime guardrails** verified live after each deploy: Model Armor screens inbound prompts (TriageRouter) and generated answers (FaqResolver; GKE egress via Cloud NAT because Private Google Access does not cover regional `*.rep.googleapis.com` endpoints).
