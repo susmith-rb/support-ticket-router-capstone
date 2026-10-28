@@ -1,0 +1,2 @@
+version: "v1"
+template: "Evaluate the following support ticket:\n{text}\nReturn JSON with: escalate (bool), escalate_prob (float), sentiment (str: neutral/angry), urgency (str: normal/immediate), intent (str: billing/shipping/refund/technical/other), intent_prob (float)."

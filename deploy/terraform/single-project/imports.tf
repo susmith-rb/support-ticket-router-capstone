@@ -27,3 +27,10 @@ import {
   id = "projects/susmith-fde-ticket-router/locations/us-central1/endpoints/router-s1-dedicated"
 }
 
+# Import block for existing enabled Model Armor API service
+import {
+  to = module.project_services.google_project_service.services["modelarmor.googleapis.com"]
+  id = "susmith-fde-ticket-router/modelarmor.googleapis.com"
+}
+
+

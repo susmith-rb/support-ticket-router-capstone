@@ -1,0 +1,1 @@
+2026-10-28T02:00:00Z | FINAL_TEST_RUN_PRE_REGISTERED | configs=agent_tuning_v1 | queries=evals/data/agent_e2e_v1/test.jsonl | n=534 | gates=recall>=0.98,bola==0,gaming==0,p95_esc<=3.0s,p95_faq<=20.0s,cost<=5.00 | operator=conductor

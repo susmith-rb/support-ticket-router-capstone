@@ -50,6 +50,10 @@ from ticket_router.common.resilience import (
 from ticket_router.common.settings import Settings
 from ticket_router.config.models import get, model_id
 from ticket_router.models.router_s1_client import RouterS1Client
+from ticket_router.security.model_armor import (
+    ModelArmorClient,
+    ModelArmorClientProtocol,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -194,19 +198,12 @@ class GeminiAnswerClient(LLMClientProtocol):
         docs_context = json.dumps(list(retrieved_docs), indent=2)
         order_context = json.dumps(order_info or {}, indent=2)
 
-        prompt = (
-            f"Customer Inquiry: {query}\n\n"
-            f"Retrieved Documents:\n{docs_context}\n\n"
-            f"Order Context:\n{order_context}\n\n"
-        )
-        if feedback:
-            prompt += f"Correction Feedback:\n{feedback}\n\n"
-
-        prompt += (
-            "Provide a helpful answer grounded strictly in the provided documents.\n"
-            "Return valid JSON strictly matching:\n"
-            '{\n  "answer": "your answer here",\n  "citations": [{"doc_id": "document_id", "quote": "verbatim text quotation"}]\n}\n'
-            "Every answer MUST include at least one citation with a verbatim quotation from the retrieved documents."
+        from ticket_router.config.agent_tuning import get_faq_answer_prompt
+        prompt = get_faq_answer_prompt(
+            query=query,
+            docs_context=docs_context,
+            order_context=order_context,
+            feedback=feedback,
         )
 
         target_model = model_id or self.resolved_model_id
@@ -260,6 +257,7 @@ class FaqResolverAgent:
         llm_client: Optional[LLMClientProtocol] = None,
         validator: Optional[CitationValidator] = None,
         circuit_breaker: Optional[CircuitBreaker] = None,
+        model_armor_client: Optional[ModelArmorClientProtocol] = None,
         clock: Optional[Clock] = None,
         model_role: str = "answer",
         total_budget_s: float = FAQ_OVERALL_BUDGET_S,
@@ -274,6 +272,7 @@ class FaqResolverAgent:
         self.llm_client = llm_client
         self.validator = validator or CitationValidator()
         self.circuit_breaker = circuit_breaker
+        self.model_armor_client = model_armor_client
         self._clock: Clock = clock if clock is not None else time.monotonic
         self.model_role = model_role
         self.total_budget_s = total_budget_s
@@ -295,6 +294,11 @@ class FaqResolverAgent:
             return
 
         settings = Settings.from_env()
+        if self.model_armor_client is None and settings.model_armor_enabled:
+            self.model_armor_client = ModelArmorClient(
+                template=settings.model_armor_template,
+            )
+
         if settings.require_real_deps:
             settings.validate_for_faq()
             from ticket_router.retrieval.search_client import SearchClient
@@ -579,10 +583,43 @@ class FaqResolverAgent:
                 latency_ms=self._elapsed_ms(t_start),
             )
 
+        # -----------------------------------------------------------------
+        # Step 7: Model Armor Egress Sanitization (REQ-MA-004)
+        # -----------------------------------------------------------------
+        raw_answer = answer_payload.get("answer", "")
+        if self.model_armor_client is not None:
+            ma_verdict = self.model_armor_client.sanitize_model_response(raw_answer)
+            if ma_verdict.blocked:
+                return ResolutionResult(
+                    status="ESCALATED",
+                    route="human",
+                    queue="human-standard",
+                    reason="model_armor_response_blocked",
+                    degraded=False,
+                    message="To ensure your issue is safely and accurately handled, I have escalated your ticket to our customer support specialists.",
+                    tool_calls_count=tool_calls_count,
+                    retrieval_passes_count=retrieval_passes_count,
+                    regeneration_count=regeneration_count,
+                    latency_ms=self._elapsed_ms(t_start),
+                )
+            if ma_verdict.degraded:
+                return ResolutionResult(
+                    status="ESCALATED",
+                    route="human",
+                    queue="human-standard",
+                    reason="model_armor_degraded",
+                    degraded=True,
+                    message="Our system is temporarily experiencing technical delays. A support specialist will follow up with you.",
+                    tool_calls_count=tool_calls_count,
+                    retrieval_passes_count=retrieval_passes_count,
+                    regeneration_count=regeneration_count,
+                    latency_ms=self._elapsed_ms(t_start),
+                )
+
         return ResolutionResult(
             status="AUTO_RESOLVED",
             route="resolved",
-            answer=answer_payload.get("answer", ""),
+            answer=raw_answer,
             citations=[c.to_dict() for c in val_result.citations],
             degraded=False,
             tool_calls_count=tool_calls_count,

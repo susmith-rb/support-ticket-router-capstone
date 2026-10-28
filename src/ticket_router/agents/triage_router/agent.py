@@ -44,6 +44,10 @@ from ticket_router.common.settings import Settings
 from ticket_router.config.models import model_id
 from ticket_router.identity import resolve_identity
 from ticket_router.models.router_s1_client import RouterPrediction, RouterS1Client
+from ticket_router.security.model_armor import (
+    ModelArmorClient,
+    ModelArmorClientProtocol,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,12 +80,8 @@ def invoke_tier2_gemini(
         if location:
             client_kwargs["location"] = location
         client = genai.Client(**client_kwargs)
-        prompt = (
-            f"Evaluate the following support ticket:\n{text}\n"
-            "Return JSON with: escalate (bool), escalate_prob (float), "
-            "sentiment (str: neutral/angry), urgency (str: normal/immediate), "
-            "intent (str: billing/shipping/refund/technical/other), intent_prob (float)."
-        )
+        from ticket_router.config.agent_tuning import get_tier2_prompt
+        prompt = get_tier2_prompt(text)
         resp = client.models.generate_content(
             model=target_model,
             contents=prompt,
@@ -208,12 +208,14 @@ class TriageRouterAgent:
         policy: Optional[TriagePolicy] = None,
         mcp_client: Optional[TicketDbMcpClientProtocol] = None,
         a2a_client: Optional[A2AClientProtocol] = None,
+        model_armor_client: Optional[ModelArmorClientProtocol] = None,
         logger: Optional[StructuredJsonLogger] = None,
         lazy_init: bool = False,
     ) -> None:
         self._policy = policy
         self._mcp_client = mcp_client
         self._a2a_client = a2a_client
+        self._model_armor_client = model_armor_client
         self.logger = logger or StructuredJsonLogger(name="triage_router")
         self.lazy_init = lazy_init
         if not lazy_init:
@@ -225,6 +227,11 @@ class TriageRouterAgent:
             return
 
         settings = Settings.from_env()
+        if self._model_armor_client is None and settings.model_armor_enabled:
+            self._model_armor_client = ModelArmorClient(
+                template=settings.model_armor_template,
+            )
+
         if settings.require_real_deps:
             settings.validate_for_triage()
             s1_client = RouterS1Client(
@@ -237,9 +244,10 @@ class TriageRouterAgent:
                 location=settings.location,
             )
             self._policy = TriagePolicy(
-                thresholds=RouterThresholds(),
+                thresholds=RouterThresholds.from_tuning_config(),
                 s1_client=s1_client,
                 tier2_invoker=tier2_invoker,
+                model_armor_client=self._model_armor_client,
             )
             self._mcp_client = HttpTicketDbMcpClient(
                 base_url=settings.ticket_db_mcp_url or "http://localhost:8080",
@@ -251,9 +259,10 @@ class TriageRouterAgent:
         else:
             if self._policy is None:
                 self._policy = TriagePolicy(
-                    thresholds=RouterThresholds(),
+                    thresholds=RouterThresholds.from_tuning_config(),
                     s1_client=RouterS1Client(),
                     tier2_invoker=create_tier2_invoker("router_tier2"),
+                    model_armor_client=self._model_armor_client,
                 )
             if self._mcp_client is None:
                 self._mcp_client = InMemoryTicketDbMcpClient()
@@ -326,22 +335,33 @@ class TriageRouterAgent:
                 identity_reason=identity_reason,
             )
 
+            # Determine body_redacted (use Model Armor de-identified text if present)
+            body_to_persist = message_text
+            if decision.details.get("sanitized_text"):
+                body_to_persist = decision.details["sanitized_text"]
+
             calming_ack: Optional[str] = None
             handoff_resp: Optional[Dict[str, Any]] = None
 
             # 2. Branch: Escalation path vs. Auto-RAG path
             if decision.decision == "escalate":
-                calming_ack = render_calming_acknowledgement(
-                    queue=decision.queue,
-                    ticket_id=t_id,
-                    category=decision.details.get("category"),
-                )
+                if decision.reason == "model_armor_security_trigger":
+                    calming_ack = (
+                        f"Thank you for contacting support. We have logged ticket #{t_id} and our "
+                        "support team is reviewing your inquiry. A representative will follow up with you shortly."
+                    )
+                else:
+                    calming_ack = render_calming_acknowledgement(
+                        queue=decision.queue,
+                        ticket_id=t_id,
+                        category=decision.details.get("category"),
+                    )
 
                 self.mcp_client.upsert_ticket(
                     idempotency_key=idempotency_key,
                     customer_id=ticket_customer_id,
                     channel=channel,
-                    body_redacted=message_text,
+                    body_redacted=body_to_persist,
                     decision=asdict(decision),
                 )
             else:
@@ -349,7 +369,7 @@ class TriageRouterAgent:
                     idempotency_key=idempotency_key,
                     customer_id=ticket_customer_id,
                     channel=channel,
-                    body_redacted=message_text,
+                    body_redacted=body_to_persist,
                     decision=asdict(decision),
                 )
 
@@ -357,7 +377,7 @@ class TriageRouterAgent:
                     ticket_id=t_id,
                     session_id=session_id,
                     predicted_intent=decision.predicted_intent,
-                    redacted_message=message_text,
+                    redacted_message=body_to_persist,
                     memory_summary=memory_summary,
                     customer_id=cust_ctx.customer_id if cust_ctx.verified else None,
                     customer_verified=customer_verified,

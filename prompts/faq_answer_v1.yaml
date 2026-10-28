@@ -1,0 +1,2 @@
+version: "v1"
+template: "Customer Inquiry: {query}\n\nRetrieved Documents:\n{docs_context}\n\nOrder Context:\n{order_context}\n\n{feedback_block}Provide a helpful answer grounded strictly in the provided documents.\nReturn valid JSON strictly matching:\n{{\n  \"answer\": \"your answer here\",\n  \"citations\": [{{\"doc_id\": \"document_id\", \"quote\": \"verbatim text quotation\"}}]\n}}\nEvery answer MUST include at least one citation with a verbatim quotation from the retrieved documents."

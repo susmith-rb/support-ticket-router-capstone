@@ -32,7 +32,8 @@ module "project_services" {
     "pubsub.googleapis.com",
     "compute.googleapis.com",
     "identitytoolkit.googleapis.com",
-    "apikeys.googleapis.com"
+    "apikeys.googleapis.com",
+    "modelarmor.googleapis.com"
   ]
 }
 
@@ -178,5 +179,18 @@ module "identity" {
 
   depends_on = [module.project_services]
 }
+
+module "model_armor" {
+  source          = "./modules/model-armor"
+  project_id      = var.project_id
+  region          = var.region
+  template_id     = "support-router-lean"
+  triage_sa_email = module.agents_iam.sa_triage_email
+  faq_sa_email    = module.agents_iam.sa_faq_email
+  labels          = var.labels
+
+  depends_on = [module.project_services, module.agents_iam]
+}
+
 
 

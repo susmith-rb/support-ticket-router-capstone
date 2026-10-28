@@ -57,6 +57,7 @@ packages = [
     "ticket_router.retrieval",
     "ticket_router.store",
     "ticket_router.identity",
+    "ticket_router.security",
     "ticket_router.models",
     "ticket_router.mcp",
     "ticket_router.mcp.ticket_db",

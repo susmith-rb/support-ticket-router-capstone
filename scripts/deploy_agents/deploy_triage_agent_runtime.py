@@ -97,6 +97,10 @@ def prepare_environment(
     agent_search_location: str = "global",
     agent_search_engine_id: str = "support-kb-search",
     allowed_callers: str = DEFAULT_SERVICE_ACCOUNT,
+    model_armor_template: str = (
+        "projects/susmith-fde-ticket-router/locations/us-central1/templates/support-router-lean"
+    ),
+    model_armor_enabled: str = "1",
     require_real_deps: str = "1",
     service: str = "triage_router",
 ) -> dict[str, str]:
@@ -120,6 +124,8 @@ def prepare_environment(
         "FAQ_RESOLVER_URL": faq_resolver_url,
         "FAQ_RESOLVER_AUDIENCE": faq_resolver_audience,
         "ALLOWED_CALLERS": allowed_callers,
+        "MODEL_ARMOR_TEMPLATE": model_armor_template,
+        "MODEL_ARMOR_ENABLED": model_armor_enabled,
         "REQUIRE_REAL_DEPS": require_real_deps,
         "SERVICE": service,
         "PYTHONPATH": "/code/src:src:.",
@@ -370,6 +376,19 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         help=f"Router Base URL (default: {DEFAULT_ROUTER_BASE_URL})",
     )
     parser.add_argument(
+        "--model-armor-template",
+        default=os.environ.get(
+            "MODEL_ARMOR_TEMPLATE",
+            f"projects/{DEFAULT_PROJECT}/locations/us-central1/templates/support-router-lean",
+        ),
+        help="Model Armor template resource path",
+    )
+    parser.add_argument(
+        "--model-armor-enabled",
+        default=os.environ.get("MODEL_ARMOR_ENABLED", "1"),
+        help="Enable Model Armor sanitization (1/0)",
+    )
+    parser.add_argument(
         "--extra-packages",
         nargs="*",
         default=DEFAULT_EXTRA_PACKAGES,
@@ -399,6 +418,8 @@ def main() -> None:
         "FAQ_RESOLVER_AUDIENCE": args.faq_resolver_audience,
         "ROUTER_S1_ENDPOINT": args.router_endpoint,
         "ROUTER_S1_BASE_URL": args.router_base_url,
+        "MODEL_ARMOR_TEMPLATE": args.model_armor_template,
+        "MODEL_ARMOR_ENABLED": args.model_armor_enabled,
     }
     try:
         resource_name = deploy_reasoning_engine(

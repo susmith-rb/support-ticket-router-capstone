@@ -1,0 +1,591 @@
+"""Model Armor security and sanitization client for Support Ticket Router.
+
+# REQ-MA-002: Regional Keep-Alive REST Client, Typed Verdicts & Measured Timeout
+# REQ-MA-003: Ingress Concurrent Evaluation, Security Policy & Fail-Safe Escalation
+# REQ-MA-004: Egress Sanitization for FaqResolver Answers & Fallback Handoff
+# REQ-MA-005: In-Region Latency Budget, Concurrent SLA & Degraded Metrics
+
+Provides typed ingress and egress sanitization via Google Cloud Model Armor:
+- Targets regional endpoint https://modelarmor.us-central1.rep.googleapis.com
+- Persistent pooled keep-alive session (requests.Session + HTTPAdapter)
+- Automatic ADC bearer token resolution via ticket_router.common.auth
+- CircuitBreaker protection with measured timeout and fail-safe degradation
+- Emits model_armor_degraded structured telemetry on outage/timeout
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional, Protocol, runtime_checkable
+
+import requests
+from requests.adapters import HTTPAdapter
+
+from ticket_router.common.auth import get_access_token
+from ticket_router.common.observability import StructuredJsonLogger
+from ticket_router.common.resilience import (
+    CircuitBreaker,
+    CircuitBreakerError,
+    CircuitBreakerOpenError,
+    ServiceTimeoutError,
+)
+
+logger = logging.getLogger(__name__)
+
+# Default regional endpoint per TDD §3.7 and REQ-MA-002
+DEFAULT_MODEL_ARMOR_BASE_URL: str = (
+    "https://modelarmor.us-central1.rep.googleapis.com/v1"
+)
+DEFAULT_TIMEOUT_S: float = 0.500  # 500 ms baseline HTTP timeout
+
+
+@dataclass(frozen=True)
+class FilterVerdict:
+    """Individual filter outcome from Model Armor (PI/JB, URI, or RAI)."""
+
+    tripped: bool = False
+    confidence: str = "UNKNOWN"
+    execution_state: str = "EXECUTION_SUCCESS"
+    message: Optional[str] = None
+    details: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class SdpFinding:
+    """Sensitive Data Protection inspection finding."""
+
+    info_type: str = ""
+    likelihood: str = ""
+    location: str = ""
+
+
+@dataclass(frozen=True)
+class ModelArmorVerdict:
+    """Comprehensive typed verdict from a Model Armor sanitization operation."""
+
+    is_clean: bool
+    blocked: bool
+    action: str  # "ALLOW" | "BLOCK" | "DEGRADE"
+    pi_jb: Optional[FilterVerdict] = None
+    malicious_uri: Optional[FilterVerdict] = None
+    rai_categories: Dict[str, FilterVerdict] = field(default_factory=dict)
+    sdp_findings: List[SdpFinding] = field(default_factory=list)
+    sanitized_text: Optional[str] = None
+    degraded: bool = False
+    reason: Optional[str] = None
+    latency_ms: float = 0.0
+    raw_filter_results: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def has_pi_jb(self) -> bool:
+        return self.pi_jb is not None and self.pi_jb.tripped
+
+    @property
+    def has_malicious_uri(self) -> bool:
+        return self.malicious_uri is not None and self.malicious_uri.tripped
+
+    @property
+    def has_rai_violation(self) -> bool:
+        return any(v.tripped for v in self.rai_categories.values())
+
+    @property
+    def has_sdp_findings(self) -> bool:
+        return len(self.sdp_findings) > 0
+
+    def to_summary_dict(self) -> Dict[str, Any]:
+        """PII-free summary dictionary for ticket metadata and structured logs (REQ-AGENT-014)."""
+        rai_tripped = [k for k, v in self.rai_categories.items() if v.tripped]
+        return {
+            "action": self.action,
+            "blocked": self.blocked,
+            "is_clean": self.is_clean,
+            "degraded": self.degraded,
+            "pi_jb_tripped": self.has_pi_jb,
+            "malicious_uri_tripped": self.has_malicious_uri,
+            "rai_tripped": rai_tripped,
+            "sdp_findings_count": len(self.sdp_findings),
+            "sdp_info_types": [f.info_type for f in self.sdp_findings if f.info_type],
+            "reason": self.reason,
+            "latency_ms": self.latency_ms,
+        }
+
+
+@runtime_checkable
+class ModelArmorClientProtocol(Protocol):
+    """Protocol contract for Model Armor security clients."""
+
+    def sanitize_user_prompt(self, text: str) -> ModelArmorVerdict:
+        """Sanitize inbound user prompt before routing or LLM processing."""
+        ...
+
+    def sanitize_model_response(self, text: str) -> ModelArmorVerdict:
+        """Sanitize outbound synthesized model answer before customer delivery."""
+        ...
+
+
+def parse_model_armor_response(
+    data: Dict[str, Any], latency_ms: float = 0.0
+) -> ModelArmorVerdict:
+    """Parse Model Armor REST response payload into typed ModelArmorVerdict."""
+    sanitization_result = (
+        data.get("sanitizationResult")
+        or data.get("sanitization_result")
+        or {}
+    )
+    filter_results = (
+        sanitization_result.get("filterResults")
+        or sanitization_result.get("filter_results")
+        or {}
+    )
+
+    # 1. Prompt Injection and Jailbreak
+    pi_data = (
+        filter_results.get("piAndJailbreakFilterResult")
+        or filter_results.get("pi_and_jailbreak_filter_result")
+        or {}
+    )
+    pi_match = (
+        pi_data.get("matchState") == "MATCH_FOUND"
+        or pi_data.get("match_state") == "MATCH_FOUND"
+        or pi_data.get("filterMatchState") == "MATCH_FOUND"
+        or pi_data.get("filter_match_state") == "MATCH_FOUND"
+        or pi_data.get("filterResult") == "MATCH_FOUND"
+        or pi_data.get("filter_result") == "MATCH_FOUND"
+        or pi_data.get("tripped") is True
+    )
+    pi_verdict = FilterVerdict(
+        tripped=pi_match,
+        confidence=str(
+            pi_data.get("confidenceLevel")
+            or pi_data.get("confidence_level")
+            or "UNKNOWN"
+        ),
+        execution_state=str(
+            pi_data.get("executionState")
+            or pi_data.get("execution_state")
+            or "EXECUTION_SUCCESS"
+        ),
+        message=pi_data.get("message"),
+        details=pi_data,
+    )
+
+    # 2. Malicious URI
+    uri_data = (
+        filter_results.get("maliciousUriFilterResult")
+        or filter_results.get("malicious_uri_filter_result")
+        or {}
+    )
+    uri_match = (
+        uri_data.get("matchState") == "MATCH_FOUND"
+        or uri_data.get("match_state") == "MATCH_FOUND"
+        or uri_data.get("filterMatchState") == "MATCH_FOUND"
+        or uri_data.get("filter_match_state") == "MATCH_FOUND"
+        or uri_data.get("filterResult") == "MATCH_FOUND"
+        or uri_data.get("filter_result") == "MATCH_FOUND"
+        or uri_data.get("tripped") is True
+    )
+    uri_verdict = FilterVerdict(
+        tripped=uri_match,
+        confidence=str(
+            uri_data.get("confidenceLevel")
+            or uri_data.get("confidence_level")
+            or "UNKNOWN"
+        ),
+        execution_state=str(
+            uri_data.get("executionState")
+            or uri_data.get("execution_state")
+            or "EXECUTION_SUCCESS"
+        ),
+        message=uri_data.get("message"),
+        details=uri_data,
+    )
+
+    # 3. Responsible AI (RAI) Filters
+    rai_data = (
+        filter_results.get("raiFilterResult")
+        or filter_results.get("rai_filter_result")
+        or {}
+    )
+    rai_categories: Dict[str, FilterVerdict] = {}
+    type_results = (
+        rai_data.get("raiFilterTypeResults")
+        or rai_data.get("rai_filter_type_results")
+        or {}
+    )
+    for cat_name, cat_res in type_results.items():
+        if isinstance(cat_res, dict):
+            cat_match = (
+                cat_res.get("matchState") == "MATCH_FOUND"
+                or cat_res.get("match_state") == "MATCH_FOUND"
+                or cat_res.get("filterMatchState") == "MATCH_FOUND"
+                or cat_res.get("filter_match_state") == "MATCH_FOUND"
+                or cat_res.get("filterResult") == "MATCH_FOUND"
+                or cat_res.get("filter_result") == "MATCH_FOUND"
+                or cat_res.get("tripped") is True
+            )
+            rai_categories[cat_name] = FilterVerdict(
+                tripped=cat_match,
+                confidence=str(
+                    cat_res.get("confidenceLevel")
+                    or cat_res.get("confidence_level")
+                    or "UNKNOWN"
+                ),
+                execution_state=str(
+                    cat_res.get("executionState")
+                    or cat_res.get("execution_state")
+                    or "EXECUTION_SUCCESS"
+                ),
+                message=cat_res.get("message"),
+                details=cat_res,
+            )
+
+    # 4. Sensitive Data Protection (SDP)
+    sdp_data = (
+        filter_results.get("sdpFilterResult")
+        or filter_results.get("sdp_filter_result")
+        or {}
+    )
+    sdp_findings: List[SdpFinding] = []
+    inspect_res = (
+        sdp_data.get("sdpInspectionResult")
+        or sdp_data.get("sdp_inspection_result")
+        or {}
+    )
+    raw_findings = inspect_res.get("findings") or []
+    for f in raw_findings:
+        if isinstance(f, dict):
+            sdp_findings.append(
+                SdpFinding(
+                    info_type=str(f.get("infoType") or f.get("info_type") or ""),
+                    likelihood=str(f.get("likelihood") or ""),
+                    location=str(f.get("location") or ""),
+                )
+            )
+
+    sanitized_item = (
+        sanitization_result.get("sanitizedItem")
+        or sanitization_result.get("sanitized_item")
+        or {}
+    )
+    deidentify_res = (
+        sdp_data.get("sdpDeidentifyResult")
+        or sdp_data.get("sdp_deidentify_result")
+        or {}
+    )
+    sanitized_text: Optional[str] = (
+        sanitized_item.get("text")
+        or deidentify_res.get("deidentifiedContent")
+        or deidentify_res.get("deidentified_content")
+        or deidentify_res.get("sanitized_text")
+    )
+
+    has_pi = pi_verdict.tripped
+    has_uri = uri_verdict.tripped
+    has_rai = any(v.tripped for v in rai_categories.values())
+    has_sdp = len(sdp_findings) > 0
+
+    blocked = has_pi or has_uri or has_rai
+    is_clean = not blocked and not has_sdp
+    action = "BLOCK" if blocked else "ALLOW"
+
+    return ModelArmorVerdict(
+        is_clean=is_clean,
+        blocked=blocked,
+        action=action,
+        pi_jb=pi_verdict,
+        malicious_uri=uri_verdict,
+        rai_categories=rai_categories,
+        sdp_findings=sdp_findings,
+        sanitized_text=sanitized_text,
+        degraded=False,
+        reason=None,
+        latency_ms=latency_ms,
+        raw_filter_results=filter_results,
+    )
+
+
+class ModelArmorClient(ModelArmorClientProtocol):
+    """Regional HTTP client communicating with Google Cloud Model Armor REST API.
+
+    Implements:
+    - REQ-MA-002: Regional pooled keep-alive session, ADC token, CircuitBreaker
+    - REQ-MA-005: Measured latency budgets and degraded structured telemetry
+    """
+
+    def __init__(
+        self,
+        template: str,
+        endpoint_base_url: str = DEFAULT_MODEL_ARMOR_BASE_URL,
+        timeout_s: float = DEFAULT_TIMEOUT_S,
+        circuit_breaker: Optional[CircuitBreaker] = None,
+        session: Optional[requests.Session] = None,
+        token_provider: Optional[Callable[[], str]] = None,
+        logger: Optional[StructuredJsonLogger] = None,
+    ) -> None:
+        self.template = template
+        self.endpoint_base_url = endpoint_base_url.rstrip("/")
+        self.timeout_s = timeout_s
+        self.circuit_breaker = circuit_breaker or CircuitBreaker(
+            name="model_armor",
+            failure_threshold=3,
+            base_cooldown_s=30.0,
+            max_cooldown_s=300.0,
+            jitter_ratio=0.20,
+        )
+        self.token_provider = token_provider or get_access_token
+        self.logger = logger or StructuredJsonLogger(name="model_armor_client")
+
+        if session is not None:
+            self._session = session
+        else:
+            self._session = requests.Session()
+            adapter = HTTPAdapter(
+                pool_connections=10, pool_maxsize=20, max_retries=0
+            )
+            self._session.mount("https://", adapter)
+            self._session.mount("http://", adapter)
+
+    @property
+    def template_name(self) -> str:
+        return self.template
+
+    @property
+    def session(self) -> requests.Session:
+        return self._session
+
+    def _call_api(self, rpc_name: str, request_body: Dict[str, Any]) -> ModelArmorVerdict:
+        """Execute Model Armor REST RPC within circuit breaker and timeout guards."""
+        url = f"{self.endpoint_base_url}/{self.template}:{rpc_name}"
+        start_t = time.monotonic()
+
+        def _do_post() -> requests.Response:
+            token = self.token_provider()
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            }
+            return self._session.post(
+                url,
+                json=request_body,
+                headers=headers,
+                timeout=self.timeout_s,
+            )
+
+        try:
+            resp: requests.Response = self.circuit_breaker.call_with_timeout(
+                _do_post, self.timeout_s
+            )
+            latency_ms = (time.monotonic() - start_t) * 1000.0
+            if resp.status_code != 200:
+                self.circuit_breaker.record_failure()
+                msg = f"Model Armor returned HTTP {resp.status_code}: {resp.text[:200]}"
+                self._emit_degraded(msg)
+                return ModelArmorVerdict(
+                    is_clean=False,
+                    blocked=False,
+                    action="DEGRADE",
+                    degraded=True,
+                    reason=msg,
+                    latency_ms=latency_ms,
+                )
+
+            data = resp.json()
+            return parse_model_armor_response(data, latency_ms=latency_ms)
+
+        except (
+            CircuitBreakerOpenError,
+            CircuitBreakerError,
+            ServiceTimeoutError,
+            requests.Timeout,
+            requests.RequestException,
+            Exception,
+        ) as exc:
+            latency_ms = (time.monotonic() - start_t) * 1000.0
+            self.circuit_breaker.record_failure()
+            reason_msg = f"Model Armor call failed ({type(exc).__name__}): {exc}"
+            self._emit_degraded(reason_msg)
+            return ModelArmorVerdict(
+                is_clean=False,
+                blocked=False,
+                action="DEGRADE",
+                degraded=True,
+                reason=reason_msg,
+                latency_ms=latency_ms,
+            )
+
+    def _emit_degraded(self, reason: str) -> None:
+        """Emit structured log with model_armor_degraded metric flag (REQ-MA-002, REQ-MA-005)."""
+        logger.warning(
+            "model_armor_degraded: %s",
+            reason,
+            extra={"model_armor_degraded": True, "reason": reason, "degraded": True},
+        )
+        self.logger.logger.warning(
+            "model_armor_degraded",
+            extra={"model_armor_degraded": True, "degraded": True, "reason": reason},
+        )
+
+    def sanitize_user_prompt(self, text: str) -> ModelArmorVerdict:
+        """Sanitize inbound user prompt via Model Armor sanitizeUserPrompt."""
+        body = {"user_prompt_data": {"text": text}}
+        return self._call_api("sanitizeUserPrompt", body)
+
+    def sanitize_model_response(self, text: str) -> ModelArmorVerdict:
+        """Sanitize outbound model response via Model Armor sanitizeModelResponse."""
+        body = {"model_response_data": {"text": text}}
+        return self._call_api("sanitizeModelResponse", body)
+
+
+class FakeModelArmorClient(ModelArmorClientProtocol):
+    """Hermetic in-memory test fake for Model Armor."""
+
+    def __init__(
+        self,
+        default_clean: bool = True,
+        block_pi_jb: bool = False,
+        block_malicious_uri: bool = False,
+        block_rai: bool = False,
+        rai_categories: Optional[List[str]] = None,
+        sdp_findings: Optional[List[SdpFinding]] = None,
+        sdp_sanitized_text: Optional[str] = None,
+        fail_with_timeout: bool = False,
+        fail_with_error: bool = False,
+        circuit_open: bool = False,
+        latency_ms: float = 15.0,
+    ) -> None:
+        self.default_clean = default_clean
+        self.block_pi_jb = block_pi_jb
+        self.block_malicious_uri = block_malicious_uri
+        self.block_rai = block_rai
+        self.rai_categories = rai_categories or (["HARASSMENT"] if block_rai else [])
+        self.sdp_findings = sdp_findings or []
+        self.sdp_sanitized_text = sdp_sanitized_text
+        self.fail_with_timeout = fail_with_timeout
+        self.fail_with_error = fail_with_error
+        self.circuit_open = circuit_open
+        self.latency_ms = latency_ms
+        self.prompt_calls: List[str] = []
+        self.response_calls: List[str] = []
+
+    @property
+    def template_name(self) -> str:
+        return "projects/test-proj/locations/us-central1/templates/support-router-lean"
+
+    def set_outage(self, enabled: bool) -> None:
+        self.circuit_open = enabled
+
+    def _build_verdict(self, text: str) -> ModelArmorVerdict:
+        if self.circuit_open:
+            return ModelArmorVerdict(
+                is_clean=False,
+                blocked=False,
+                action="DEGRADE",
+                degraded=True,
+                reason="model_armor_degraded: CircuitBreaker is OPEN",
+                latency_ms=self.latency_ms,
+            )
+        if self.fail_with_timeout:
+            return ModelArmorVerdict(
+                is_clean=False,
+                blocked=False,
+                action="DEGRADE",
+                degraded=True,
+                reason="model_armor_degraded: ServiceTimeoutError (500 ms)",
+                latency_ms=self.latency_ms,
+            )
+        if self.fail_with_error:
+            return ModelArmorVerdict(
+                is_clean=False,
+                blocked=False,
+                action="DEGRADE",
+                degraded=True,
+                reason="model_armor_degraded: ConnectionError",
+                latency_ms=self.latency_ms,
+            )
+
+        lower = text.lower()
+        pi_tripped = self.block_pi_jb or (
+            ("ignore" in lower and ("instructions" in lower or "prompt" in lower))
+            or ("reveal" in lower and "keys" in lower)
+            or "dan" in lower
+        )
+        uri_tripped = self.block_malicious_uri or (
+            "malicious" in lower or "evil.com" in lower or "phish" in lower
+        )
+        abuse_tripped = self.block_rai or any(
+            bad_word in lower
+            for bad_word in ["stupid", "idiot", "useless", "go to hell", "f***"]
+        )
+
+        pi_v = FilterVerdict(
+            tripped=pi_tripped,
+            confidence="MEDIUM_AND_ABOVE" if pi_tripped else "UNKNOWN",
+        )
+        uri_v = FilterVerdict(
+            tripped=uri_tripped,
+            confidence="HIGH" if uri_tripped else "UNKNOWN",
+        )
+        rai_cats: Dict[str, FilterVerdict] = {}
+        for c in self.rai_categories:
+            rai_cats[c] = FilterVerdict(tripped=True, confidence="MEDIUM_AND_ABOVE")
+        if abuse_tripped and "HARASSMENT" not in rai_cats:
+            rai_cats["HARASSMENT"] = FilterVerdict(
+                tripped=True, confidence="MEDIUM_AND_ABOVE"
+            )
+
+        blocked = pi_tripped or uri_tripped or bool(rai_cats)
+
+        # SDP simulation
+        sanitized = self.sdp_sanitized_text
+        findings = list(self.sdp_findings)
+        if sanitized is None and "4111 1111 1111 1111" in text:
+            sanitized = text.replace("4111 1111 1111 1111", "[CREDIT_CARD_NUMBER]")
+            if not findings:
+                findings.append(
+                    SdpFinding(info_type="CREDIT_CARD_NUMBER", likelihood="VERY_LIKELY")
+                )
+
+        has_sdp = len(findings) > 0 or (sanitized is not None and sanitized != text)
+        is_clean = not blocked and not has_sdp
+
+        return ModelArmorVerdict(
+            is_clean=is_clean,
+            blocked=blocked,
+            action="BLOCK" if blocked else "ALLOW",
+            pi_jb=pi_v,
+            malicious_uri=uri_v,
+            rai_categories=rai_cats,
+            sdp_findings=findings,
+            sanitized_text=sanitized,
+            degraded=False,
+            latency_ms=self.latency_ms,
+        )
+
+    def sanitize_user_prompt(self, text: str) -> ModelArmorVerdict:
+        self.prompt_calls.append(text)
+        return self._build_verdict(text)
+
+    def sanitize_model_response(self, text: str) -> ModelArmorVerdict:
+        self.response_calls.append(text)
+        return self._build_verdict(text)
+
+
+def create_model_armor_client(
+    template: str,
+    enabled: bool = True,
+    endpoint_base_url: str = DEFAULT_MODEL_ARMOR_BASE_URL,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
+    fake_client: Optional[ModelArmorClientProtocol] = None,
+) -> Optional[ModelArmorClientProtocol]:
+    """Factory helper to construct Model Armor client respecting enabled flag."""
+    if fake_client is not None:
+        return fake_client
+    if not enabled:
+        return None
+    return ModelArmorClient(
+        template=template,
+        endpoint_base_url=endpoint_base_url,
+        timeout_s=timeout_s,
+    )

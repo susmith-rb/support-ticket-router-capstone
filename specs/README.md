@@ -51,6 +51,8 @@ Every requirement block in `specs/<area>.md` follows this exact structure:
 | **Agent Service** | [`specs/agent-service.md`](agent-service.md) | Multi-agent service topology, TriageRouter policy, FaqResolver RAG ReAct loop, HumanQueue, MCP tool contracts, and resilience. | `REQ-AGENT-` |
 | **Ticket Store** | [`specs/ticket-store.md`](ticket-store.md) | Cloud SQL PostgreSQL 16 persistence, IAM DB auth, RLS, idempotent migrations, seed data, and repository layer. | `REQ-STORE-` |
 | **Customer Identity** | [`specs/customer-identity.md`](customer-identity.md) | Cloud Identity Platform IdP, Firebase JWT verification, relational customer identity schema, fail-closed anonymous handling, trust chain propagation, and threat mitigations. | `REQ-IDENT-` |
+| **Agent Evals & Hill-Climbing** | [`specs/agent-evals.md`](agent-evals.md) | End-to-end multi-agent evaluation harness, deterministic metrics, Wilson bounds, offline LLM-as-judge rubrics, hill-climb protocol, and CI gates. | `REQ-EVAL-` |
+| **Model Armor** | [`specs/model-armor.md`](model-armor.md) | Ingress/egress sanitization, regional keep-alive REST client, PI/JB and RAI filters, SDP de-identification, fail-safe routing, and latency budgets. | `REQ-MA-` |
 
 ---
 

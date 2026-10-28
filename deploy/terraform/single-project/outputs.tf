@@ -212,6 +212,17 @@ output "identity_web_api_key_secret_id" {
   value       = module.identity.identity_web_api_key_secret_id
 }
 
+output "model_armor_template_id" {
+  description = "ID of the Model Armor template"
+  value       = module.model_armor.template_id
+}
+
+output "model_armor_template_name" {
+  description = "Full resource name of the Model Armor template"
+  value       = module.model_armor.template_name
+}
+
+
 
 
 

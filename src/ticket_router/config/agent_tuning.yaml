@@ -1,0 +1,18 @@
+# agent_tuning.yaml — Centralized Hill-Climbing Tuning Knobs Registry
+# REQ-EVAL-008: Controlled Hill-Climbing Protocol & Config Registry
+# All knobs default to existing production operating points (zero behavior change).
+
+router:
+  tau_esc: 0.35      # Escalation confidence floor
+  tau_low: 0.15      # Auto-RAG uncertainty lower bound
+  tau_intent: 0.70   # Intent classification confidence floor
+
+prompts:
+  tier2_router_version: "v1"
+  faq_answer_version: "v1"
+
+retrieval:
+  search_config: "intent_soft_noisy_0.2"
+  top_k: 5
+  rerank_enabled: false
+  citation_strictness: 0.70

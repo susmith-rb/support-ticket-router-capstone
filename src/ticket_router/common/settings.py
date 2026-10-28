@@ -30,6 +30,8 @@ class Settings:
     faq_resolver_audience: Optional[str]
     allowed_callers: Tuple[str, ...]
     require_real_deps: bool
+    model_armor_template: str
+    model_armor_enabled: bool
 
     @classmethod
     def from_env(cls, env: Optional[Dict[str, str]] = None) -> Settings:
@@ -93,6 +95,18 @@ class Settings:
         else:
             require_real_deps = True
 
+        # Model Armor settings
+        default_ma_template = f"projects/{project}/locations/us-central1/templates/support-router-lean"
+        model_armor_template = environ.get("MODEL_ARMOR_TEMPLATE", default_ma_template).strip()
+
+        raw_ma_enabled = environ.get("MODEL_ARMOR_ENABLED")
+        if raw_ma_enabled is not None:
+            model_armor_enabled = raw_ma_enabled.strip().lower() in ("1", "true", "yes", "on")
+        elif "PYTEST_CURRENT_TEST" in os.environ:
+            model_armor_enabled = False
+        else:
+            model_armor_enabled = True
+
         return cls(
             project=project,
             location=location,
@@ -107,6 +121,8 @@ class Settings:
             faq_resolver_audience=faq_resolver_audience,
             allowed_callers=allowed_callers,
             require_real_deps=require_real_deps,
+            model_armor_template=model_armor_template,
+            model_armor_enabled=model_armor_enabled,
         )
 
     def validate_for_faq(self) -> None:

@@ -55,6 +55,10 @@ spec:
           value: "https://faq.sslip.io"
         - name: ALLOWED_CALLERS
           value: "sa-triage@susmith-fde-ticket-router.iam.gserviceaccount.com"
+        - name: MODEL_ARMOR_TEMPLATE
+          value: "projects/susmith-fde-ticket-router/locations/us-central1/templates/support-router-lean"
+        - name: MODEL_ARMOR_ENABLED
+          value: "1"
         - name: REQUIRE_REAL_DEPS
           value: "1"
         - name: PORT

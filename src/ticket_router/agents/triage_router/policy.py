@@ -7,13 +7,18 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from ticket_router.common.resilience import CircuitBreakerError
 from ticket_router.models.router_s1_client import RouterPrediction, RouterS1Client
+from ticket_router.security.model_armor import (
+    ModelArmorClientProtocol,
+    ModelArmorVerdict,
+)
 
 
 class QueuePriority(str, Enum):
@@ -25,16 +30,30 @@ class QueuePriority(str, Enum):
 
 @dataclass(frozen=True)
 class RouterThresholds:
-    """Configurable routing policy thresholds (REQ-AGENT-002).
+    """Configurable routing policy thresholds (REQ-AGENT-002, REQ-EVAL-008).
 
-    Operating points per specs/agent-service.md:
-    tau_esc = 0.35: Definitive escalation floor
-    tau_low = 0.15: Auto-RAG uncertainty lower bound
-    tau_intent = 0.70: Intent confidence floor
+    Operating points per specs/agent-service.md & agent_tuning.yaml:
+    tau_esc: Definitive escalation floor
+    tau_low: Auto-RAG uncertainty lower bound
+    tau_intent: Intent confidence floor
     """
     tau_esc: float = 0.35
     tau_low: float = 0.15
     tau_intent: float = 0.70
+
+    @classmethod
+    def from_tuning_config(cls) -> "RouterThresholds":
+        """Load current thresholds from centralized agent tuning registry."""
+        try:
+            from ticket_router.config.agent_tuning import get_tuning_config
+            cfg = get_tuning_config()
+            return cls(
+                tau_esc=cfg.tau_esc,
+                tau_low=cfg.tau_low,
+                tau_intent=cfg.tau_intent,
+            )
+        except Exception:
+            return cls()
 
 
 @dataclass(frozen=True)
@@ -221,10 +240,23 @@ class TriagePolicy:
         thresholds: Optional[RouterThresholds] = None,
         s1_client: Optional[RouterS1Client] = None,
         tier2_invoker: Optional[Callable[[str], RouterPrediction]] = None,
+        model_armor_client: Optional[ModelArmorClientProtocol] = None,
     ) -> None:
         self.thresholds = thresholds or RouterThresholds()
         self.s1_client = s1_client
         self.tier2_invoker = tier2_invoker
+        self.model_armor_client = model_armor_client
+
+    def _call_s1(self, text: str) -> Tuple[Optional[RouterPrediction], Optional[str]]:
+        """Execute router-s1 encoder call with error handling."""
+        if self.s1_client is None:
+            return None, None
+        try:
+            return self.s1_client.route(text), None
+        except CircuitBreakerError as cb_exc:
+            return None, f"circuit_breaker_open: {cb_exc}"
+        except Exception as exc:
+            return None, f"endpoint_error: {exc}"
 
     def evaluate(
         self,
@@ -237,9 +269,7 @@ class TriagePolicy:
         """Execute tiered routing policy on inbound message text."""
         t_id = ticket_id or f"TICK-{session_id[:8]}"
 
-        # ---------------------------------------------------------------------
-        # Tier 0: Deterministic Safety, Abuse & Keyword Rules (REQ-AGENT-002)
-        # ---------------------------------------------------------------------
+        # Tier 0: Deterministic Safety, Abuse & Keyword Rules (REQ-AGENT-002) (<1 ms)
         tier0 = evaluate_tier0_rules(text)
         if tier0.matched and tier0.escalate:
             queue = evaluate_gaming_resistant_priority(
@@ -248,6 +278,7 @@ class TriagePolicy:
                 sentiment=tier0.sentiment,
                 urgency=tier0.urgency,
             )
+            details_t0: Dict[str, Any] = {"category": tier0.category}
             return RouterDecision(
                 ticket_id=t_id,
                 session_id=session_id,
@@ -260,22 +291,110 @@ class TriagePolicy:
                 urgency=tier0.urgency,
                 reason=tier0.reason or "tier0_rule_match",
                 degraded=False,
-                details={"category": tier0.category},
+                details=details_t0,
             )
 
-        # ---------------------------------------------------------------------
-        # Tier 1: Router-S1 Encoder (REQ-AGENT-002)
-        # ---------------------------------------------------------------------
+        ma_verdict: Optional[ModelArmorVerdict] = None
         s1_pred: Optional[RouterPrediction] = None
         s1_error: Optional[str] = None
 
-        if self.s1_client is not None:
-            try:
-                s1_pred = self.s1_client.route(text)
-            except CircuitBreakerError as cb_exc:
-                s1_error = f"circuit_breaker_open: {cb_exc}"
-            except Exception as exc:
-                s1_error = f"endpoint_error: {exc}"
+        # ---------------------------------------------------------------------
+        # Tier 1 & Model Armor: Concurrent Execution (REQ-MA-003, REQ-MA-005)
+        # ---------------------------------------------------------------------
+        if self.model_armor_client is not None:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                ma_future = executor.submit(self.model_armor_client.sanitize_user_prompt, text)
+                s1_future = executor.submit(self._call_s1, text)
+                ma_verdict = ma_future.result()
+                s1_pred, s1_error = s1_future.result()
+        else:
+            s1_pred, s1_error = self._call_s1(text)
+
+        # ---------------------------------------------------------------------
+        # Model Armor Security Gate (Pre-LLM / Pre-A2A) (REQ-MA-003)
+        # ---------------------------------------------------------------------
+        ma_details: Dict[str, Any] = {}
+        sanitized_text: Optional[str] = None
+        if ma_verdict is not None:
+            ma_details = ma_verdict.to_summary_dict()
+            if ma_verdict.sanitized_text:
+                sanitized_text = ma_verdict.sanitized_text
+
+            # 1. Prompt Injection, Jailbreak, or Malicious URI -> Hard Security Escalation
+            # NEVER forwarded to neural LLM tiers or FaqResolverAgent.
+            # Queue comes from verified facts only: an injection attempt must
+            # never buy a faster lane (priority-gaming invariant).
+            if ma_verdict.has_pi_jb or ma_verdict.has_malicious_uri:
+                sec_queue = evaluate_gaming_resistant_priority(
+                    facts=verified_facts,
+                    sentiment="neutral",
+                    urgency="normal",
+                )
+                return RouterDecision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="escalate",
+                    tier="model_armor",
+                    queue=sec_queue.value,
+                    predicted_intent="security_escalation",
+                    escalate=True,
+                    sentiment="neutral",
+                    urgency="normal",
+                    reason="model_armor_security_trigger",
+                    degraded=False,
+                    details={
+                        "category": "security",
+                        "model_armor": ma_details,
+                        "sanitized_text": sanitized_text,
+                    },
+                )
+
+            # 2. Responsible AI (RAI) Harassment / Abuse -> Boundary Ack + Human Review
+            # NEVER dropped, does NOT raise priority (REQ-AGENT-004).
+            if ma_verdict.has_rai_violation:
+                queue = evaluate_gaming_resistant_priority(
+                    facts=verified_facts,
+                    sentiment="angry",
+                    urgency="normal",
+                )
+                return RouterDecision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="escalate",
+                    tier="model_armor",
+                    queue=queue.value,
+                    predicted_intent="abuse_escalation",
+                    escalate=True,
+                    sentiment="angry",
+                    urgency="normal",
+                    reason="model_armor_rai_trigger",
+                    degraded=False,
+                    details={
+                        "category": "abuse",
+                        "model_armor": ma_details,
+                        "sanitized_text": sanitized_text,
+                    },
+                )
+
+            # 3. Model Armor Degraded / Timeout -> Fail-safe to human-standard (never drop)
+            if ma_verdict.degraded:
+                return RouterDecision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="escalate",
+                    tier="model_armor",
+                    queue=QueuePriority.P2_STANDARD.value,
+                    predicted_intent="degraded_escalation",
+                    escalate=True,
+                    sentiment="neutral",
+                    urgency="normal",
+                    reason="model_armor_degraded",
+                    degraded=True,
+                    details={
+                        "category": "degraded",
+                        "model_armor": ma_details,
+                    },
+                )
 
         # If router-s1 succeeded, inspect prediction against operating thresholds
         if s1_pred is not None:
@@ -293,6 +412,16 @@ class TriagePolicy:
                     sentiment=s1_pred.sentiment,
                     urgency=s1_pred.urgency,
                 )
+                details_s1: Dict[str, Any] = {
+                    "escalate_prob": s1_pred.escalate_prob,
+                    "sentiment_prob": s1_pred.sentiment_prob,
+                    "intent_prob": s1_pred.intent_prob,
+                }
+                if ma_details:
+                    details_s1["model_armor"] = ma_details
+                if sanitized_text:
+                    details_s1["sanitized_text"] = sanitized_text
+
                 return RouterDecision(
                     ticket_id=t_id,
                     session_id=session_id,
@@ -306,11 +435,7 @@ class TriagePolicy:
                     reason="tier1_definitive_escalation",
                     degraded=False,
                     latency_ms=s1_pred.latency_ms,
-                    details={
-                        "escalate_prob": s1_pred.escalate_prob,
-                        "sentiment_prob": s1_pred.sentiment_prob,
-                        "intent_prob": s1_pred.intent_prob,
-                    },
+                    details=details_s1,
                 )
 
             # 2. Definitive auto-RAG: p_esc < tau_low (0.15) and p_intent >= tau_intent (0.70)
@@ -321,6 +446,15 @@ class TriagePolicy:
             )
 
             if is_definitive_rag:
+                details_rag: Dict[str, Any] = {
+                    "escalate_prob": s1_pred.escalate_prob,
+                    "intent_prob": s1_pred.intent_prob,
+                }
+                if ma_details:
+                    details_rag["model_armor"] = ma_details
+                if sanitized_text:
+                    details_rag["sanitized_text"] = sanitized_text
+
                 return RouterDecision(
                     ticket_id=t_id,
                     session_id=session_id,
@@ -334,10 +468,7 @@ class TriagePolicy:
                     reason="tier1_definitive_auto_rag",
                     degraded=False,
                     latency_ms=s1_pred.latency_ms,
-                    details={
-                        "escalate_prob": s1_pred.escalate_prob,
-                        "intent_prob": s1_pred.intent_prob,
-                    },
+                    details=details_rag,
                 )
 
         # ---------------------------------------------------------------------
@@ -377,6 +508,12 @@ class TriagePolicy:
                     sentiment=t2_pred.sentiment,
                     urgency=t2_pred.urgency,
                 )
+                details_t2: Dict[str, Any] = {"s1_error": s1_error}
+                if ma_details:
+                    details_t2["model_armor"] = ma_details
+                if sanitized_text:
+                    details_t2["sanitized_text"] = sanitized_text
+
                 return RouterDecision(
                     ticket_id=t_id,
                     session_id=session_id,
@@ -390,8 +527,14 @@ class TriagePolicy:
                     reason="tier2_flash_escalation",
                     degraded=bool(s1_error),
                     latency_ms=t2_pred.latency_ms,
-                    details={"s1_error": s1_error},
+                    details=details_t2,
                 )
+
+            details_t2_rag: Dict[str, Any] = {"s1_error": s1_error}
+            if ma_details:
+                details_t2_rag["model_armor"] = ma_details
+            if sanitized_text:
+                details_t2_rag["sanitized_text"] = sanitized_text
 
             return RouterDecision(
                 ticket_id=t_id,
@@ -406,7 +549,7 @@ class TriagePolicy:
                 reason="tier2_flash_auto_rag",
                 degraded=bool(s1_error),
                 latency_ms=t2_pred.latency_ms,
-                details={"s1_error": s1_error},
+                details=details_t2_rag,
             )
 
         # ---------------------------------------------------------------------
@@ -414,6 +557,12 @@ class TriagePolicy:
         # ---------------------------------------------------------------------
         # Both Tier 1 and Tier 2 unavailable: route to human queue, NEVER drop ticket!
         fallback_queue = evaluate_gaming_resistant_priority(facts=verified_facts, tier0=tier0)
+        details_fb: Dict[str, Any] = {"s1_error": s1_error, "t2_error": t2_error}
+        if ma_details:
+            details_fb["model_armor"] = ma_details
+        if sanitized_text:
+            details_fb["sanitized_text"] = sanitized_text
+
         return RouterDecision(
             ticket_id=t_id,
             session_id=session_id,
@@ -426,5 +575,5 @@ class TriagePolicy:
             urgency="normal",
             reason=f"degraded_fallback: s1=({s1_error}), t2=({t2_error})",
             degraded=True,
-            details={"s1_error": s1_error, "t2_error": t2_error},
+            details=details_fb,
         )
