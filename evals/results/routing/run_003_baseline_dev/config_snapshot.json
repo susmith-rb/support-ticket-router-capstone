@@ -1,0 +1,37 @@
+{
+  "run_id": "run_003_baseline_dev",
+  "config_hash": "059ffe91f2e7a9e32140f6b8e7f798c5b4b022af39be8a6a5781094efb353c3a",
+  "target": "policy",
+  "candidate": "baseline",
+  "git_sha": "unknown",
+  "git_dirty": false,
+  "merged_agent_tuning": {
+    "tau_esc": 0.35,
+    "tau_low": 0.15,
+    "tau_intent": 0.7,
+    "tier2_router_version": "v1",
+    "faq_answer_version": "v1",
+    "search_config": "intent_soft_noisy_0.2",
+    "top_k": 5,
+    "rerank_enabled": false,
+    "citation_strictness": 0.7
+  },
+  "model_ids": {
+    "router_tier2": "gemini-3.8-flash",
+    "router_s1": "router-s1"
+  },
+  "prompt_versions": {
+    "tier2_router_version": "v1",
+    "faq_answer_version": "v1"
+  },
+  "dataset_manifest_sha256": "0d38917d032e4c0d084adf9b5f0d3f7161b42af9f54a899dee1343b6af191d9d",
+  "args": {
+    "max_cost_usd": 5.0,
+    "concurrency": 8,
+    "reliability_k": 3,
+    "with_model_armor": false,
+    "dry_run": false,
+    "mode": "live"
+  },
+  "created_at": "2026-10-28T19:10:27.384988+00:00"
+}

@@ -190,7 +190,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.target == "replay":
         eff_mode = "replay_or_live" if args.allow_live else "replay"
     elif args.target == "policy":
-        eff_mode = "replay_or_live" if args.allow_live else "live"
+        # Reuse cached tier outputs by default so baseline and candidate share identical Tier 1 results
+        # (paired comparison); --refresh-cache forces fresh live calls (e.g. for latency measurement).
+        eff_mode = "live" if args.refresh_cache else "replay_or_live"
     else:
         eff_mode = "live"
 

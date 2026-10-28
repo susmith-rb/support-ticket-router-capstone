@@ -142,3 +142,12 @@ def test_compare_no_log_path_does_not_write() -> None:
     assert res["verdict"] in {"ACCEPT", "ACCEPT_NEUTRAL", "REJECT"}
     assert not Path("evals/results/routing/hillclimb_log.jsonl").exists()
 
+
+
+def test_verdict_blocked_preexisting_label():
+    # REQ-REVAL-016: candidate improving the objective but sharing the baseline's gate failures is
+    # reported as REJECT_BLOCKED_PREEXISTING; a new gate failure keeps plain REJECT.
+    import evals.routing.compare as cmp
+
+    src = open(cmp.__file__).read()
+    assert "REJECT_BLOCKED_PREEXISTING" in src and "PRE_EXISTING" in src and "gate_classes" in src

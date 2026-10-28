@@ -31,3 +31,4 @@ override.tf.json
 
 # Small test fixtures (tests/evals/routing) are required by CI
 !tests/evals/routing/fixtures/*.csv
+evals/results/routing/**/traces.jsonl

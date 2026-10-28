@@ -194,8 +194,13 @@ def compare(
         _metric_fn_obj, paired_b_items, paired_c_items, paired_groups, n_resamples=n_bootstrap, seed=seed
     )
 
-    # 4. Gate status for both arms
-    b_gates, b_passed = evaluate_gates(baseline_scorecard, cfg) if "gate_thresholds" in cfg else ({}, True)
+    # 4. Gate status for both arms. Prefer the gates already computed and stored in the baseline
+    # scorecard (re-evaluating a loaded scorecard can miss in-memory-only fields and yield n=0).
+    stored_b = baseline_scorecard.get("gates") if isinstance(baseline_scorecard, dict) else None
+    if isinstance(stored_b, dict) and isinstance(stored_b.get("gates"), dict):
+        b_gates, b_passed = stored_b["gates"], bool(stored_b.get("overall_passed"))
+    else:
+        b_gates, b_passed = evaluate_gates(baseline_scorecard, cfg) if "gate_thresholds" in cfg else ({}, True)
     c_gates, c_passed = evaluate_gates(candidate_scorecard, cfg) if "gate_thresholds" in cfg else ({}, True)
 
     # 5. Cost and Latency deltas
@@ -238,15 +243,46 @@ def compare(
     reasons: List[str] = []
     verdict = "REJECT"
 
+    gate_classes: Dict[str, str] = {}
     if not c_passed:
         reasons.append("Candidate failed hard gates.")
+        b_gates_map = b_gates if isinstance(b_gates, dict) else {}
         for g_name, g_info in c_gates.items():
-            if g_name != "secondary_targets" and not g_info.get("passed", True):
-                reasons.append(f"Gate failure: {g_name} - {g_info.get('detail')}")
+            # Gate entries are dicts; skip summary/status scalars (e.g. overall status strings).
+            if g_name == "secondary_targets" or not isinstance(g_info, dict):
+                continue
+            status = g_info.get("status")
+            if status == "NOT_EVALUATED":
+                gate_classes[g_name] = "NOT_EVALUATED"
+            elif status == "FAIL" or not g_info.get("passed", True):
+                b_info = b_gates_map.get(g_name)
+                b_failed = isinstance(b_info, dict) and (
+                    b_info.get("status") == "FAIL"
+                    or (b_info.get("status") != "NOT_EVALUATED" and not b_info.get("passed", True))
+                )
+                gate_classes[g_name] = "PRE_EXISTING" if b_failed else "NEW"
+            else:
+                continue
+            reasons.append(f"Gate {gate_classes[g_name]}: {g_name} - {g_info.get('detail')}")
 
     if newly_failing_regression:
         reasons.append(
             f"Candidate introduced {len(newly_failing_regression)} newly failing regression cases."
+        )
+
+    # REQ-REVAL-016: improvements must not be hidden by gate failures inherited from the baseline.
+    if (
+        not c_passed
+        and gate_classes
+        and all(v in ("PRE_EXISTING", "NOT_EVALUATED") for v in gate_classes.values())
+        and not newly_failing_regression
+        and obj_ci[0] > 0.0
+    ):
+        verdict = "REJECT_BLOCKED_PREEXISTING"
+        reasons.append(
+            f"Improves the objective (delta={obj_delta:.4f}, 95% CI=[{obj_ci[0]:.4f}, {obj_ci[1]:.4f}]) "
+            "and introduces no new gate failures; blocked only by gates that also fail or are not "
+            "evaluated in the baseline."
         )
 
     if c_passed and not newly_failing_regression:
@@ -309,6 +345,7 @@ def compare(
         },
         "flagged_slices": flagged_slices,
         "verdict": verdict,
+        "gate_classes": gate_classes,
         "reasons": reasons,
     }
 
