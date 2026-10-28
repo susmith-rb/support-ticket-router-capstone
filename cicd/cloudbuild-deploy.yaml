@@ -183,10 +183,16 @@ steps:
         set -euo pipefail
         trap 'echo "deploy-cloud-run" >> /workspace/FAILED; exit 0' ERR
           IMAGE_TAG="${_REGION}-docker.pkg.dev/${PROJECT_ID}/serving/agents:${SHORT_SHA}"
+          # The 3 services update in parallel (serially they took up to 178 s and became
+          # the long pole once Agent Engine updates are skipped). `wait PID` returns each
+          # job's exit status, so any failure trips the ERR trap.
+          PIDS=""
           for svc in ticket-db-mcp order-lookup-mcp human-queue; do
             echo "Updating Cloud Run service $${svc} -> $${IMAGE_TAG}"
-            gcloud run services update "$${svc}" --image "$${IMAGE_TAG}" --region "${_REGION}" --quiet
+            gcloud run services update "$${svc}" --image "$${IMAGE_TAG}" --region "${_REGION}" --quiet &
+            PIDS="$${PIDS} $$!"
           done
+          for pid in $${PIDS}; do wait "$${pid}"; done
 
   # ===========================================================================
   # Step 5: Deploy FaqResolver to GKE Autopilot via DNS Endpoint (REQ-CD-005)
