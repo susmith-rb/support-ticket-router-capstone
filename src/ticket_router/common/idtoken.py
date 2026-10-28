@@ -45,11 +45,13 @@ _METADATA_SA = "http://metadata.google.internal/computeMetadata/v1/instance/serv
 
 
 def _fetch_id_token_with_fallback(req: Any, audience: str, fetch: Callable[[Any, str], str]) -> str:
-    """fetch_id_token, retrying with the explicit SA email when `default` is refused.
+    """fetch_id_token, falling back to IAM Credentials generateIdToken.
 
-    Cloud Build's metadata server returns 404 "please provide a user-specified
-    service account" for .../service-accounts/default/identity when the build
-    runs as a user-specified SA; the same call by email succeeds.
+    Cloud Build's metadata server refuses ID tokens for user-specified build SAs
+    (404 "please provide a user-specified service account" for `default`, and 404
+    for the explicit email too). The fallback mints the token through
+    iamcredentials.googleapis.com using the SA's own access token; the SA needs
+    roles/iam.serviceAccountTokenCreator on itself (granted in Terraform for sa-cd-deployer).
     """
     try:
         return fetch(req, audience)
@@ -58,16 +60,19 @@ def _fetch_id_token_with_fallback(req: Any, audience: str, fetch: Callable[[Any,
             raise
     import requests
 
-    headers = {"Metadata-Flavor": "Google"}
-    email = requests.get(f"{_METADATA_SA}/default/email", headers=headers, timeout=5).text.strip()
-    resp = requests.get(
-        f"{_METADATA_SA}/{email}/identity",
-        params={"audience": audience, "format": "full"},
-        headers=headers,
-        timeout=5,
+    from ticket_router.common.auth import get_access_token
+
+    email = requests.get(
+        f"{_METADATA_SA}/default/email", headers={"Metadata-Flavor": "Google"}, timeout=5
+    ).text.strip()
+    resp = requests.post(
+        f"https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{email}:generateIdToken",
+        json={"audience": audience, "includeEmail": True},
+        headers={"Authorization": f"Bearer {get_access_token()}"},
+        timeout=10,
     )
     resp.raise_for_status()
-    return resp.text.strip()
+    return str(resp.json()["token"])
 
 
 def get_id_token(

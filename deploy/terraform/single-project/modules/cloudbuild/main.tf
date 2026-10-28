@@ -132,6 +132,15 @@ resource "google_storage_bucket_iam_member" "cd_corpus_bucket_reader" {
   member = "serviceAccount:${google_service_account.cd_sa.email}"
 }
 
+# Cloud Build's metadata server will not mint OIDC ID tokens for user-specified
+# build SAs, so post-deploy smoke mints them via iamcredentials generateIdToken
+# on itself (src/ticket_router/common/idtoken.py). Scoped to its own SA only.
+resource "google_service_account_iam_member" "cd_self_token_creator" {
+  service_account_id = google_service_account.cd_sa.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${google_service_account.cd_sa.email}"
+}
+
 # Secret Manager secretAccessor on the 3 identity secrets only
 resource "google_secret_manager_secret_iam_member" "cd_identity_secrets" {
   for_each  = toset(local.cd_secret_ids)
