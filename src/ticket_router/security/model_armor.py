@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL_ARMOR_BASE_URL: str = (
     "https://modelarmor.us-central1.rep.googleapis.com/v1"
 )
-DEFAULT_TIMEOUT_S: float = 0.500  # 500 ms baseline HTTP timeout
+DEFAULT_TIMEOUT_S: float = 0.700  # REQ-MA-005: max(500 ms, p99 x 1.5); p99 457.7 ms measured from laya-tune 2026-10-28
 
 
 @dataclass(frozen=True)
@@ -125,14 +125,86 @@ class ModelArmorClientProtocol(Protocol):
         ...
 
 
+def _filter_entry(filter_results: Dict[str, Any], *keys: str) -> Dict[str, Any]:
+    """Return a filter's result dict from the live (and legacy flat) response shapes.
+
+    Live v1 ``sanitizeUserPrompt`` returns ``filterResults`` as a map keyed by filter
+    name, each wrapping a typed result, e.g.
+    ``{"pi_and_jailbreak": {"piAndJailbreakFilterResult": {...}}}``. Older fixtures
+    used the typed key directly at the top level. Both are accepted.
+    """
+    for key in keys:
+        val = filter_results.get(key)
+        if isinstance(val, dict) and val:
+            return val
+    for wrapper in filter_results.values():
+        if isinstance(wrapper, dict):
+            for key in keys:
+                val = wrapper.get(key)
+                if isinstance(val, dict) and val:
+                    return val
+    return {}
+
+
+def _is_match(d: Dict[str, Any]) -> bool:
+    return (
+        d.get("matchState") == "MATCH_FOUND"
+        or d.get("match_state") == "MATCH_FOUND"
+        or d.get("tripped") is True
+    )
+
+
+def _verdict(d: Dict[str, Any]) -> "FilterVerdict":
+    return FilterVerdict(
+        tripped=_is_match(d),
+        confidence=str(d.get("confidenceLevel") or d.get("confidence_level") or "UNKNOWN"),
+        execution_state=str(
+            d.get("executionState") or d.get("execution_state") or "EXECUTION_SUCCESS"
+        ),
+        message=d.get("message"),
+        details=d,
+    )
+
+
+def redact_sdp_findings(text: str, findings: List[Dict[str, Any]]) -> Optional[str]:
+    """Replace SDP finding spans (codepointRange) with ``[REDACTED_<INFO_TYPE>]``.
+
+    Basic SDP inspects only and never returns de-identified text, so redaction is
+    applied locally from the finding offsets (REQ-MA-004). Returns None when no
+    finding carries a usable range.
+    """
+    spans = []
+    for f in findings:
+        loc = f.get("location") or {}
+        rng = loc.get("codepointRange") or loc.get("codepoint_range") or {}
+        try:
+            start, end = int(rng.get("start", 0)), int(rng["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if 0 <= start < end <= len(text):
+            spans.append((start, end, str(f.get("infoType") or f.get("info_type") or "PII")))
+    if not spans:
+        return None
+    out = text
+    for start, end, info in sorted(spans, reverse=True):
+        out = out[:start] + f"[REDACTED_{info}]" + out[end:]
+    return out
+
+
+def _request_text(request_body: Dict[str, Any]) -> Optional[str]:
+    for key in ("userPromptData", "modelResponseData"):
+        part = request_body.get(key)
+        if isinstance(part, dict) and isinstance(part.get("text"), str):
+            return part["text"]
+    return None
+
+
 def parse_model_armor_response(
-    data: Dict[str, Any], latency_ms: float = 0.0
+    data: Dict[str, Any], latency_ms: float = 0.0, original_text: Optional[str] = None
 ) -> ModelArmorVerdict:
     """Parse Model Armor REST response payload into typed ModelArmorVerdict."""
     sanitization_result = (
-        data.get("sanitizationResult")
-        or data.get("sanitization_result")
-        or {}
+        data.get("sanitizationResult") or data.get("sanitization_result") or {}
     )
     filter_results = (
         sanitization_result.get("filterResults")
@@ -140,146 +212,62 @@ def parse_model_armor_response(
         or {}
     )
 
-    # 1. Prompt Injection and Jailbreak
-    pi_data = (
-        filter_results.get("piAndJailbreakFilterResult")
-        or filter_results.get("pi_and_jailbreak_filter_result")
-        or {}
+    pi_verdict = _verdict(
+        _filter_entry(filter_results, "piAndJailbreakFilterResult", "pi_and_jailbreak_filter_result")
     )
-    pi_match = (
-        pi_data.get("matchState") == "MATCH_FOUND"
-        or pi_data.get("match_state") == "MATCH_FOUND"
-        or pi_data.get("filterMatchState") == "MATCH_FOUND"
-        or pi_data.get("filter_match_state") == "MATCH_FOUND"
-        or pi_data.get("filterResult") == "MATCH_FOUND"
-        or pi_data.get("filter_result") == "MATCH_FOUND"
-        or pi_data.get("tripped") is True
+    uri_verdict = _verdict(
+        _filter_entry(filter_results, "maliciousUriFilterResult", "malicious_uri_filter_result")
     )
-    pi_verdict = FilterVerdict(
-        tripped=pi_match,
-        confidence=str(
-            pi_data.get("confidenceLevel")
-            or pi_data.get("confidence_level")
-            or "UNKNOWN"
-        ),
-        execution_state=str(
-            pi_data.get("executionState")
-            or pi_data.get("execution_state")
-            or "EXECUTION_SUCCESS"
-        ),
-        message=pi_data.get("message"),
-        details=pi_data,
-    )
+    csam = _filter_entry(filter_results, "csamFilterFilterResult", "csam_filter_filter_result")
 
-    # 2. Malicious URI
-    uri_data = (
-        filter_results.get("maliciousUriFilterResult")
-        or filter_results.get("malicious_uri_filter_result")
-        or {}
-    )
-    uri_match = (
-        uri_data.get("matchState") == "MATCH_FOUND"
-        or uri_data.get("match_state") == "MATCH_FOUND"
-        or uri_data.get("filterMatchState") == "MATCH_FOUND"
-        or uri_data.get("filter_match_state") == "MATCH_FOUND"
-        or uri_data.get("filterResult") == "MATCH_FOUND"
-        or uri_data.get("filter_result") == "MATCH_FOUND"
-        or uri_data.get("tripped") is True
-    )
-    uri_verdict = FilterVerdict(
-        tripped=uri_match,
-        confidence=str(
-            uri_data.get("confidenceLevel")
-            or uri_data.get("confidence_level")
-            or "UNKNOWN"
-        ),
-        execution_state=str(
-            uri_data.get("executionState")
-            or uri_data.get("execution_state")
-            or "EXECUTION_SUCCESS"
-        ),
-        message=uri_data.get("message"),
-        details=uri_data,
-    )
-
-    # 3. Responsible AI (RAI) Filters
-    rai_data = (
-        filter_results.get("raiFilterResult")
-        or filter_results.get("rai_filter_result")
-        or {}
-    )
+    rai_data = _filter_entry(filter_results, "raiFilterResult", "rai_filter_result")
     rai_categories: Dict[str, FilterVerdict] = {}
     type_results = (
-        rai_data.get("raiFilterTypeResults")
-        or rai_data.get("rai_filter_type_results")
-        or {}
+        rai_data.get("raiFilterTypeResults") or rai_data.get("rai_filter_type_results") or {}
     )
     for cat_name, cat_res in type_results.items():
         if isinstance(cat_res, dict):
-            cat_match = (
-                cat_res.get("matchState") == "MATCH_FOUND"
-                or cat_res.get("match_state") == "MATCH_FOUND"
-                or cat_res.get("filterMatchState") == "MATCH_FOUND"
-                or cat_res.get("filter_match_state") == "MATCH_FOUND"
-                or cat_res.get("filterResult") == "MATCH_FOUND"
-                or cat_res.get("filter_result") == "MATCH_FOUND"
-                or cat_res.get("tripped") is True
-            )
-            rai_categories[cat_name] = FilterVerdict(
-                tripped=cat_match,
-                confidence=str(
-                    cat_res.get("confidenceLevel")
-                    or cat_res.get("confidence_level")
-                    or "UNKNOWN"
-                ),
-                execution_state=str(
-                    cat_res.get("executionState")
-                    or cat_res.get("execution_state")
-                    or "EXECUTION_SUCCESS"
-                ),
-                message=cat_res.get("message"),
-                details=cat_res,
-            )
+            rai_categories[cat_name] = _verdict(cat_res)
+    if _is_match(csam):
+        rai_categories["csam"] = _verdict(csam)
 
-    # 4. Sensitive Data Protection (SDP)
-    sdp_data = (
-        filter_results.get("sdpFilterResult")
-        or filter_results.get("sdp_filter_result")
-        or {}
-    )
-    sdp_findings: List[SdpFinding] = []
+    sdp_data = _filter_entry(filter_results, "sdpFilterResult", "sdp_filter_result")
     inspect_res = (
-        sdp_data.get("sdpInspectionResult")
+        sdp_data.get("inspectResult")
+        or sdp_data.get("inspect_result")
+        or sdp_data.get("sdpInspectionResult")
         or sdp_data.get("sdp_inspection_result")
         or {}
     )
-    raw_findings = inspect_res.get("findings") or []
-    for f in raw_findings:
-        if isinstance(f, dict):
-            sdp_findings.append(
-                SdpFinding(
-                    info_type=str(f.get("infoType") or f.get("info_type") or ""),
-                    likelihood=str(f.get("likelihood") or ""),
-                    location=str(f.get("location") or ""),
-                )
-            )
+    raw_findings = [f for f in (inspect_res.get("findings") or []) if isinstance(f, dict)]
+    sdp_findings: List[SdpFinding] = [
+        SdpFinding(
+            info_type=str(f.get("infoType") or f.get("info_type") or ""),
+            likelihood=str(f.get("likelihood") or ""),
+            location=str(f.get("location") or ""),
+        )
+        for f in raw_findings
+    ]
 
-    sanitized_item = (
-        sanitization_result.get("sanitizedItem")
-        or sanitization_result.get("sanitized_item")
-        or {}
-    )
     deidentify_res = (
-        sdp_data.get("sdpDeidentifyResult")
+        sdp_data.get("deidentifyResult")
+        or sdp_data.get("deidentify_result")
+        or sdp_data.get("sdpDeidentifyResult")
         or sdp_data.get("sdp_deidentify_result")
         or {}
     )
+    deid_data = deidentify_res.get("data") or {}
+    sanitized_item = (
+        sanitization_result.get("sanitizedItem") or sanitization_result.get("sanitized_item") or {}
+    )
     sanitized_text: Optional[str] = (
-        sanitized_item.get("text")
+        (deid_data.get("text") if isinstance(deid_data, dict) else None)
         or deidentify_res.get("deidentifiedContent")
         or deidentify_res.get("deidentified_content")
-        or deidentify_res.get("sanitized_text")
+        or (sanitized_item.get("text") if isinstance(sanitized_item, dict) else None)
     )
+    if sanitized_text is None and original_text is not None and raw_findings:
+        sanitized_text = redact_sdp_findings(original_text, raw_findings)
 
     has_pi = pi_verdict.tripped
     has_uri = uri_verdict.tripped
@@ -392,7 +380,7 @@ class ModelArmorClient(ModelArmorClientProtocol):
                 )
 
             data = resp.json()
-            return parse_model_armor_response(data, latency_ms=latency_ms)
+            return parse_model_armor_response(data, latency_ms=latency_ms, original_text=_request_text(request_body))
 
         except (
             CircuitBreakerOpenError,
