@@ -38,9 +38,33 @@ resource "google_compute_global_address" "faq_resolver" {
   description = "Global static external IPv4 address for FaqResolver GKE Ingress"
 }
 
+# -----------------------------------------------------------------------------
+# Cloud NAT (egress for private GKE nodes)
+# -----------------------------------------------------------------------------
+# Private Google Access covers global *.googleapis.com only. FaqResolver must reach
+# Model Armor's REGIONAL endpoint (modelarmor.us-central1.rep.googleapis.com) to
+# screen generated answers (REQ-MA-004); without NAT those connections time out.
+# Decision 2026-10-28 (user): add NAT (~$3-5/mo at 2-3 Autopilot nodes + $0.045/GB).
+# Supersedes the earlier "no NAT" cost note.
 
-# ARCHITECTURAL DECISION NOTE ON CLOUD NAT:
-# Cloud NAT is deliberately omitted to preserve minimal capstone cost posture (~$30/mo savings).
-# Private GKE worker nodes reach all required services (Artifact Registry, Vertex AI, Agent Search)
-# via Private Google Access enabled on the subnetwork. FaqResolver does not connect to the public
-# internet or directly to Cloud SQL (all database queries route through Cloud Run MCP servers).
+resource "google_compute_router" "support_router" {
+  name    = "${var.network_name}-router"
+  project = var.project_id
+  region  = var.region
+  network = google_compute_network.support_vpc.id
+}
+
+resource "google_compute_router_nat" "support_nat" {
+  name                               = "${var.network_name}-nat"
+  project                            = var.project_id
+  region                             = var.region
+  router                             = google_compute_router.support_router.name
+  nat_ip_allocate_option             = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+
+  log_config {
+    enable = true
+    filter = "ERRORS_ONLY"
+  }
+}
+
