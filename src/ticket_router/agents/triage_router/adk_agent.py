@@ -9,12 +9,17 @@ Fulfills REQ-AGENT-001, REQ-AGENT-017:
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncGenerator, Iterator
 from typing import Any, Optional
 
 from pydantic import PrivateAttr
 
 from ticket_router.agents.triage_router.agent import TriageResult, TriageRouterAgent
+from ticket_router.common.observability import configure_tracing, flush_traces
+
+# Invariant: Force GenAI auto-instrumentation to never capture raw message content
+os.environ.setdefault("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "NO_CONTENT")
 
 logger = logging.getLogger(__name__)
 
@@ -252,6 +257,7 @@ class TriageRouterAdkAgent(BaseAgent):
 
     def _get_router(self) -> TriageRouterAgent:
         """Lazily initialize TriageRouterAgent on first invocation."""
+        configure_tracing(service_name="triage_router")
         router = getattr(self, "_router", None)
         if not isinstance(router, TriageRouterAgent):
             router = TriageRouterAgent(lazy_init=False)
@@ -273,6 +279,7 @@ class TriageRouterAdkAgent(BaseAgent):
             message_text=message,
             customer_id_token=customer_id_token,
         )
+        flush_traces(timeout_millis=1500)
         final_text = extract_answer_from_result(result)
 
         inv_id = ""
@@ -314,6 +321,7 @@ class TriageRouterAdkAgent(BaseAgent):
             message_text=message,
             customer_id_token=customer_id_token,
         )
+        flush_traces(timeout_millis=1500)
         answer = extract_answer_from_result(result)
         return {
             "ticket_id": result.ticket_id,

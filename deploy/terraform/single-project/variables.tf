@@ -163,4 +163,10 @@ variable "cloud_run_max_instances" {
   default     = 3
 }
 
+variable "manage_ge_search_engine" {
+  description = "Whether Terraform manages the google_discovery_engine_search_engine resource for the Gemini Enterprise Web App"
+  type        = bool
+  default     = true
+}
+
 

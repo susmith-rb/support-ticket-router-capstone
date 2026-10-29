@@ -20,9 +20,49 @@ import os
 import sys
 from typing import Any, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+
+from ticket_router.common.observability import (
+    configure_tracing,
+    parse_cloud_trace_context,
+    start_span,
+)
 
 logger = logging.getLogger("ticket_router.serve")
+
+
+def _instrument_fastapi_app(app: FastAPI, service_name: str) -> FastAPI:
+    """Configure distributed tracing and register W3C traceparent propagation middleware (REQ-AGENT-014)."""
+    configure_tracing(service_name=service_name)
+
+    if getattr(app.state, "_tracing_instrumented", False):
+        return app
+    app.state._tracing_instrumented = True
+
+    @app.middleware("http")
+    async def traceparent_middleware(request: Request, call_next: Any) -> Response:
+        if request.url.path in ("/health", "/healthz"):
+            return await call_next(request)
+
+        inbound_tp = request.headers.get("traceparent") or parse_cloud_trace_context(
+            request.headers.get("x-cloud-trace-context", "")
+        )
+
+        span_name = f"{service_name}.{request.method} {request.url.path}"
+        attributes = {
+            "service.name": service_name,
+            "http.method": request.method,
+            "http.route": request.url.path,
+        }
+
+        with start_span(span_name, attributes=attributes, traceparent=inbound_tp) as span:
+            response: Response = await call_next(request)
+            span.set_attribute("http.status_code", response.status_code)
+            if getattr(span, "traceparent", None):
+                response.headers.setdefault("traceparent", span.traceparent)
+            return response
+
+    return app
 
 
 def build_connection_manager(
@@ -80,17 +120,19 @@ def get_app(service_name: Optional[str] = None) -> FastAPI:
         if allow_fake:
             from ticket_router.store.fake import FakeCustomerRepo, FakeTicketRepo
 
-            return create_ticket_db_app(
+            raw_app = create_ticket_db_app(
                 repo=FakeTicketRepo(),
                 customer_repo=FakeCustomerRepo(),
             )
+            return _instrument_fastapi_app(raw_app, svc)
 
         conn_mgr = build_connection_manager()
         from ticket_router.store.postgres import PostgresCustomerRepo, PostgresTicketRepo
 
         ticket_repo = PostgresTicketRepo(connection_factory=conn_mgr.get_connection)
         customer_repo = PostgresCustomerRepo(connection_factory=conn_mgr.get_connection)
-        return create_ticket_db_app(repo=ticket_repo, customer_repo=customer_repo)
+        raw_app = create_ticket_db_app(repo=ticket_repo, customer_repo=customer_repo)
+        return _instrument_fastapi_app(raw_app, svc)
 
     if svc == "order_lookup":
         from ticket_router.mcp.order_lookup.server import create_app as create_order_lookup_app
@@ -98,19 +140,21 @@ def get_app(service_name: Optional[str] = None) -> FastAPI:
         if allow_fake:
             from ticket_router.store.fake import FakeOrderRepo
 
-            return create_order_lookup_app(
+            raw_app = create_order_lookup_app(
                 order_repo=FakeOrderRepo(),
                 require_verified_header=True,
             )
+            return _instrument_fastapi_app(raw_app, svc)
 
         conn_mgr = build_connection_manager()
         from ticket_router.store.postgres import PostgresOrderRepo
 
         order_repo = PostgresOrderRepo(connection_factory=conn_mgr.get_connection)
-        return create_order_lookup_app(
+        raw_app = create_order_lookup_app(
             order_repo=order_repo,
             require_verified_header=True,
         )
+        return _instrument_fastapi_app(raw_app, svc)
 
     if svc == "human_queue":
         from ticket_router.agents.human_queue.server import create_app as create_human_queue_app
@@ -118,18 +162,21 @@ def get_app(service_name: Optional[str] = None) -> FastAPI:
         if allow_fake:
             from ticket_router.store.fake import FakeTicketRepo
 
-            return create_human_queue_app(ticket_repo=FakeTicketRepo())
+            raw_app = create_human_queue_app(ticket_repo=FakeTicketRepo())
+            return _instrument_fastapi_app(raw_app, svc)
 
         conn_mgr = build_connection_manager()
         from ticket_router.store.postgres import PostgresTicketRepo
 
         ticket_repo = PostgresTicketRepo(connection_factory=conn_mgr.get_connection)
-        return create_human_queue_app(ticket_repo=ticket_repo)
+        raw_app = create_human_queue_app(ticket_repo=ticket_repo)
+        return _instrument_fastapi_app(raw_app, svc)
 
     if svc in ("faq_resolver", "faq"):
         from ticket_router.agents.faq_resolver.app import create_fastapi_app
 
-        return create_fastapi_app()
+        raw_app = create_fastapi_app()
+        return _instrument_fastapi_app(raw_app, svc)
 
     raise ValueError(
         f"Unknown SERVICE '{svc}'. Must be one of: ticket_db, order_lookup, human_queue, faq_resolver"

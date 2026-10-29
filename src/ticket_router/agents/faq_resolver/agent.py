@@ -43,6 +43,7 @@ from ticket_router.agents.faq_resolver.search import (
     execute_faq_search,
 )
 from ticket_router.agents.faq_resolver.validator import CitationValidator
+from ticket_router.common.observability import start_span
 from ticket_router.common.resilience import (
     FAQ_OVERALL_BUDGET_S,
     CircuitBreaker,
@@ -362,6 +363,42 @@ class FaqResolverAgent:
     ) -> ResolutionResult:
         """Execute bounded ReAct loop to resolve FAQ or order inquiry."""
         self._ensure_initialized()
+
+        with start_span(
+            "faq_resolver.resolve",
+            attributes={
+                "ticket_id": ticket_id,
+                "session_id": session_id,
+                "predicted_intent": predicted_intent or "",
+            },
+            traceparent=traceparent,
+        ) as resolve_span:
+            res = self._resolve_impl(
+                ticket_id=ticket_id,
+                session_id=session_id,
+                message=message,
+                customer_id=customer_id,
+                customer_verified=customer_verified,
+                identity_issuer=identity_issuer,
+                predicted_intent=predicted_intent,
+                memory_summary=memory_summary,
+                untrusted_customer_id=untrusted_customer_id,
+            )
+            resolve_span.set_attribute("status", res.status)
+            return res
+
+    def _resolve_impl(
+        self,
+        ticket_id: str,
+        session_id: str,
+        message: str,
+        customer_id: Optional[str] = None,
+        customer_verified: Optional[bool] = None,
+        identity_issuer: Optional[str] = None,
+        predicted_intent: Optional[str] = None,
+        memory_summary: Optional[str] = None,
+        untrusted_customer_id: Optional[str] = None,
+    ) -> ResolutionResult:
         t_start = self._clock()
 
         tool_calls_count = 0
@@ -472,12 +509,13 @@ class FaqResolverAgent:
             retrieval_passes_count += 1
             tool_calls_count += 1
 
-            search_res = execute_faq_search(
-                client=self.search_client,
-                query=message,
-                intent_family=predicted_intent,
-                circuit_breaker=self.circuit_breaker,
-            )
+            with start_span("faq_resolver.search"):
+                search_res = execute_faq_search(
+                    client=self.search_client,
+                    query=message,
+                    intent_family=predicted_intent,
+                    circuit_breaker=self.circuit_breaker,
+                )
 
             # Agent Search failure -> degraded escalation
             if not search_res.success or search_res.degraded:
@@ -513,7 +551,8 @@ class FaqResolverAgent:
         ):
             tool_calls_count += 1
             candidates = [retrieved_docs_map[did] for did in ordered_doc_ids if did in retrieved_docs_map]
-            reranked, _ = self.reranker.rerank(query=message, candidates=candidates)
+            with start_span("faq_resolver.rerank"):
+                reranked, _ = self.reranker.rerank(query=message, candidates=candidates)
             if reranked:
                 ordered_doc_ids = [r["id"] for r in reranked if "id" in r]
 
@@ -539,12 +578,13 @@ class FaqResolverAgent:
         if self.llm_client is None:
             self.llm_client = FakeLLMClient()
 
-        answer_payload = self.llm_client.generate_answer(
-            query=message,
-            retrieved_docs=candidate_docs_list,
-            order_info=order_info,
-            model_id=self.resolved_model_id,
-        )
+        with start_span("faq_resolver.generate_answer"):
+            answer_payload = self.llm_client.generate_answer(
+                query=message,
+                retrieved_docs=candidate_docs_list,
+                order_info=order_info,
+                model_id=self.resolved_model_id,
+            )
 
         val_result = self.validator.validate(answer_payload, retrieved_docs_map)
 
@@ -557,13 +597,14 @@ class FaqResolverAgent:
                 f"Citation validation rejected previous response: {val_result.reason} ({val_result.details}). "
                 "You MUST supply at least one citation with a quote verbatim present in the retrieved articles."
             )
-            answer_payload = self.llm_client.generate_answer(
-                query=message,
-                retrieved_docs=candidate_docs_list,
-                order_info=order_info,
-                model_id=self.resolved_model_id,
-                feedback=feedback,
-            )
+            with start_span("faq_resolver.generate_answer"):
+                answer_payload = self.llm_client.generate_answer(
+                    query=message,
+                    retrieved_docs=candidate_docs_list,
+                    order_info=order_info,
+                    model_id=self.resolved_model_id,
+                    feedback=feedback,
+                )
             val_result = self.validator.validate(answer_payload, retrieved_docs_map)
 
         # -----------------------------------------------------------------

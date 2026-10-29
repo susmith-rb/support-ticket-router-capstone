@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from ticket_router.agents.faq_resolver.agent import FaqResolverAgent, root_agent
+from ticket_router.common.observability import get_current_traceparent
 
 FAQ_RESOLVER_AGENT_CARD: Dict[str, Any] = {
     "name": "FaqResolverAgent",
@@ -34,6 +35,7 @@ FAQ_RESOLVER_AGENT_CARD: Dict[str, Any] = {
             "identity_issuer": {"type": ["string", "null"], "description": "Identity issuer of verified token"},
             "predicted_intent": {"type": "string", "description": "Intent predicted by router-s1"},
             "memory_summary": {"type": "string", "description": "Compact Memory Bank customer profile"},
+            "traceparent": {"type": ["string", "null"], "description": "W3C traceparent header for distributed trace correlation"},
         },
     },
     "output_schema": {
@@ -88,7 +90,7 @@ def handle_a2a_request(
     identity_issuer = str(identity_issuer_raw) if identity_issuer_raw is not None else None
     predicted_intent = payload.get("predicted_intent")
     memory_summary = payload.get("memory_summary")
-    traceparent = payload.get("traceparent")
+    traceparent = payload.get("traceparent") or get_current_traceparent()
     untrusted_customer_id = payload.get("untrusted_customer_id")
 
     if not ticket_id or not message:

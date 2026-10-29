@@ -42,6 +42,7 @@ from ticket_router.agents.triage_router.templates import (
 from ticket_router.common.observability import (
     StructuredJsonLogger,
     generate_traceparent,
+    get_current_traceparent,
     start_span,
 )
 from ticket_router.common.settings import Settings
@@ -387,14 +388,18 @@ class TriageRouterAgent:
                 "customer_id argument is deprecated and ignored; pass customer_id_token instead."
             )
 
-        # Resolve customer identity from token via ticket-db-mcp (REQ-IDENT-003, REQ-IDENT-004)
-        cust_ctx = resolve_identity(token=customer_id_token, ticket_db_client=self.mcp_client)
-        ticket_customer_id = cust_ctx.customer_id if cust_ctx.verified else f"anon:{session_id}"
-        customer_verified = cust_ctx.verified
-        identity_issuer = cust_ctx.issuer if cust_ctx.verified else None
-        identity_reason = cust_ctx.reason
+        with start_span(
+            "triage_router_turn",
+            attributes={"session_id": session_id, "ticket_id": t_id, "channel": channel},
+            traceparent=traceparent,
+        ) as turn_span:
+            # Resolve customer identity from token via ticket-db-mcp (REQ-IDENT-003, REQ-IDENT-004)
+            cust_ctx = resolve_identity(token=customer_id_token, ticket_db_client=self.mcp_client)
+            ticket_customer_id = cust_ctx.customer_id if cust_ctx.verified else f"anon:{session_id}"
+            customer_verified = cust_ctx.verified
+            identity_issuer = cust_ctx.issuer if cust_ctx.verified else None
+            identity_reason = cust_ctx.reason
 
-        with start_span("triage_router_turn", attributes={"session_id": session_id}, traceparent=traceparent):
             # 1. Evaluate tiered policy
             decision = self.policy.evaluate(
                 text=message_text,
@@ -403,6 +408,13 @@ class TriageRouterAgent:
                 verified_facts=verified_facts,
                 ticket_id=t_id,
             )
+            # Set PII-safe attributes on turn_span (REQ-AGENT-014)
+            turn_span.set_attribute("decision", decision.decision)
+            turn_span.set_attribute("tier", decision.tier)
+            turn_span.set_attribute("queue", decision.queue)
+            turn_span.set_attribute("degraded", decision.degraded)
+            turn_span.set_attribute("predicted_intent", decision.predicted_intent)
+
             # Attach verified customer identity claims to decision payload (no token, no email)
             decision = replace(
                 decision,
@@ -467,6 +479,7 @@ class TriageRouterAgent:
                     customer_id=cust_ctx.customer_id if cust_ctx.verified else None,
                     customer_verified=customer_verified,
                     identity_issuer=identity_issuer,
+                    traceparent=get_current_traceparent() or traceparent,
                 )
                 try:
                     handoff_resp = self.a2a_client.handoff(payload)

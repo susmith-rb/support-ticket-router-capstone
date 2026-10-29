@@ -33,4 +33,22 @@ import {
   id = "susmith-fde-ticket-router/modelarmor.googleapis.com"
 }
 
+# Import block for existing enabled Cloud Trace API service
+import {
+  to = module.project_services.google_project_service.services["cloudtrace.googleapis.com"]
+  id = "susmith-fde-ticket-router/cloudtrace.googleapis.com"
+}
+
+# Import block for existing enabled Cloud Telemetry API service
+import {
+  to = module.project_services.google_project_service.services["telemetry.googleapis.com"]
+  id = "susmith-fde-ticket-router/telemetry.googleapis.com"
+}
+
+# Import block for Gemini Enterprise Web App search engine (created with APP_TYPE_INTRANET via provision_ge_app.py)
+import {
+  to = module.ge_app.google_discovery_engine_search_engine.support_assistant_app[0]
+  id = "projects/susmith-fde-ticket-router/locations/global/collections/default_collection/engines/support-assistant-app"
+}
+
 

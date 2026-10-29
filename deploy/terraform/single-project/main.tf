@@ -33,7 +33,9 @@ module "project_services" {
     "compute.googleapis.com",
     "identitytoolkit.googleapis.com",
     "apikeys.googleapis.com",
-    "modelarmor.googleapis.com"
+    "modelarmor.googleapis.com",
+    "cloudtrace.googleapis.com",
+    "telemetry.googleapis.com"
   ]
 }
 
@@ -56,6 +58,16 @@ module "agent_search" {
   search_location = var.search_location
   search_tier     = var.search_tier
   search_add_ons  = var.search_add_ons
+
+  depends_on = [module.project_services]
+}
+
+module "ge_app" {
+  source                    = "./modules/ge-app"
+  project_id                = var.project_id
+  location                  = var.search_location
+  discovery_engine_sa_email = google_project_service_identity.discovery_engine.email
+  manage_ge_search_engine   = var.manage_ge_search_engine
 
   depends_on = [module.project_services]
 }
@@ -149,6 +161,8 @@ module "agents_iam" {
   router_endpoint_id               = module.router_endpoint.endpoint_id
   dedicated_router_endpoint_id     = module.router_endpoint.dedicated_endpoint_id
   sa_queue_email                   = module.cloud_sql.sa_queue_email
+  sa_ticket_mcp_email              = module.cloud_sql.sa_ticket_mcp_email
+  sa_order_mcp_email               = module.cloud_sql.sa_order_mcp_email
   pubsub_human_queue_topic_name    = module.pubsub.topic_name
   pubsub_human_queue_sub_name      = module.pubsub.subscription_name
   corpus_bucket_name               = data.google_storage_bucket.corpus_bucket.name

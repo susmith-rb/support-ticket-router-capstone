@@ -222,6 +222,21 @@ output "model_armor_template_name" {
   value       = module.model_armor.template_name
 }
 
+output "ge_app_data_store_id" {
+  description = "Data store ID for the Gemini Enterprise default backing store"
+  value       = module.ge_app.ge_data_store_id
+}
+
+output "ge_app_engine_id" {
+  description = "Engine ID for the Gemini Enterprise Web App search engine"
+  value       = module.ge_app.ge_engine_id
+}
+
+output "ge_app_console_url" {
+  description = "GCP Console URL for the Gemini Enterprise Web App dashboard"
+  value       = "https://console.cloud.google.com/gemini-enterprise/locations/${module.ge_app.ge_location}/engines/${module.ge_app.ge_engine_id}/overview/dashboard?project=${var.project_id}"
+}
+
 
 
 

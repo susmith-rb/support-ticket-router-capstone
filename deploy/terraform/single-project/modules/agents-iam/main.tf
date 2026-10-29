@@ -135,3 +135,47 @@ resource "google_storage_bucket_iam_member" "re_staging_reader" {
   role   = "roles/storage.objectViewer"
   member = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
 }
+
+# -----------------------------------------------------------------------------
+# 8. Cloud Trace Agent Role Grants (REQ-AGENT-014)
+# -----------------------------------------------------------------------------
+
+resource "google_project_iam_member" "triage_cloudtrace_agent" {
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = "serviceAccount:${google_service_account.sa_triage.email}"
+}
+
+resource "google_project_iam_member" "faq_cloudtrace_agent" {
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = "serviceAccount:${google_service_account.sa_faq.email}"
+}
+
+resource "google_project_iam_member" "ticket_mcp_cloudtrace_agent" {
+  count   = var.sa_ticket_mcp_email != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = "serviceAccount:${var.sa_ticket_mcp_email}"
+}
+
+resource "google_project_iam_member" "order_mcp_cloudtrace_agent" {
+  count   = var.sa_order_mcp_email != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = "serviceAccount:${var.sa_order_mcp_email}"
+}
+
+resource "google_project_iam_member" "queue_cloudtrace_agent" {
+  count   = var.sa_queue_email != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = "serviceAccount:${var.sa_queue_email}"
+}
+
+resource "google_project_iam_member" "re_service_agent_cloudtrace_agent" {
+  count   = var.enable_re_service_agent_bindings ? 1 : 0
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+}

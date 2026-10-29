@@ -18,6 +18,7 @@ from requests.adapters import HTTPAdapter
 
 from ticket_router.agents.faq_resolver.protocols import OrderLookupProtocol
 from ticket_router.common.idtoken import get_id_token
+from ticket_router.common.observability import get_current_traceparent, start_span
 from ticket_router.common.resilience import (
     ORDER_LOOKUP_MCP_TIMEOUT_S,
     CircuitBreaker,
@@ -133,9 +134,13 @@ class HttpOrderLookupClient(OrderLookupProtocol):
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
-        if self.circuit_breaker is not None:
-            return self.circuit_breaker.call(self._execute_http, url, body, headers)
-        return self._execute_http(url, body, headers)
+        with start_span("mcp.order_lookup.get_order", attributes={"order_id": order_id}) as span:
+            if tp := (getattr(span, "traceparent", None) or get_current_traceparent()):
+                headers["traceparent"] = tp
+
+            if self.circuit_breaker is not None:
+                return self.circuit_breaker.call(self._execute_http, url, body, headers)
+            return self._execute_http(url, body, headers)
 
 
 class FakeOrderLookupClient(OrderLookupProtocol):

@@ -59,6 +59,10 @@ spec:
           value: "projects/susmith-fde-ticket-router/locations/us-central1/templates/support-router-lean"
         - name: MODEL_ARMOR_ENABLED
           value: "1"
+        - name: ENABLE_CLOUD_TRACE
+          value: "1"
+        - name: OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT
+          value: "NO_CONTENT"
         - name: REQUIRE_REAL_DEPS
           value: "1"
         - name: PORT

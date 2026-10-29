@@ -28,6 +28,18 @@ variable "sa_queue_email" {
   default     = ""
 }
 
+variable "sa_ticket_mcp_email" {
+  description = "Email of the sa-ticket-mcp service account"
+  type        = string
+  default     = ""
+}
+
+variable "sa_order_mcp_email" {
+  description = "Email of the sa-order-mcp service account"
+  type        = string
+  default     = ""
+}
+
 variable "pubsub_human_queue_topic_name" {
   description = "Name of the human queue Pub/Sub topic"
   type        = string

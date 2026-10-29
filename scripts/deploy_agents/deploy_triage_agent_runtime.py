@@ -67,6 +67,9 @@ PINNED_REQUIREMENTS = [
     "requests>=2.32.0",
     "google-auth>=2.27.0",
     "pyyaml>=6.0.1",
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-gcp-trace>=1.6.0",
 ]
 
 DEFAULT_EXTRA_PACKAGES = ["src/ticket_router", "prompts"]
@@ -127,6 +130,8 @@ def prepare_environment(
         "ALLOWED_CALLERS": allowed_callers,
         "MODEL_ARMOR_TEMPLATE": model_armor_template,
         "MODEL_ARMOR_ENABLED": model_armor_enabled,
+        "ENABLE_CLOUD_TRACE": "1",
+        "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT": "NO_CONTENT",
         "REQUIRE_REAL_DEPS": require_real_deps,
         "SERVICE": service,
         "PYTHONPATH": "/code/src:src:.",

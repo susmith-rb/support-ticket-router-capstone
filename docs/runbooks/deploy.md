@@ -175,3 +175,53 @@ python scripts/deploy_agents/deploy_triage_agent_runtime.py \
 - FAQ, HumanQueue, MCP, store, retrieval, docs, eval and CI-only changes do not change the fingerprint.
 - Force an update (e.g. after a manual console change): run the trigger with `_FORCE_AGENT_ENGINE=true`.
 - Check what's live: `gcloud storage cat gs://susmith-fde-ticket-router-laya/cd/agent_engine_deployed.json`.
+
+---
+
+## 6. Gemini Enterprise Web App & Distributed Tracing Operations (REQ-AGENT-023, REQ-AGENT-014)
+
+### 6.1 Gemini Enterprise Web App Provisioning & Verification (`provision_ge_app.py`)
+
+Gemini Enterprise front-door access (`support-assistant-app`) integrates the conversational front-door with `TriageRouterAgent` hosted on Vertex AI Reasoning Engine / Agent Engine:
+
+1. **Infrastructure Boundary**:
+   - The empty backing data store `support-ge-default-ds` (`NO_CONTENT`, `global`), `roles/aiplatform.user` grant to the Discovery Engine service agent, and optional engine tracking are codified in Terraform (`modules/ge-app`).
+   - The corpus search engine `support-kb-search` (`modules/agent-search`) remains strictly on `SEARCH_TIER_STANDARD` (`search_add_ons = []`) to protect cost isolation.
+   - Provider gap operations (`aclConfig`, `free_trial_gemini` `LicenseConfig` + `UserStore` auto-license allocation, `APP_TYPE_INTRANET`, and ADK agent registration) are driven via `scripts/deploy_agents/provision_ge_app.py`.
+
+2. **Dry-Run Validation** (zero credentials or network calls):
+   ```bash
+   python scripts/deploy_agents/provision_ge_app.py --dry-run --all --json
+   ```
+
+3. **Provisioning & ADK Agent Registration**:
+   ```bash
+   python scripts/deploy_agents/provision_ge_app.py \
+     --project susmith-fde-ticket-router \
+     --location global \
+     --all
+   ```
+
+4. **Web App URLs & Verification**:
+   - **GCP Console Dashboard**: `https://console.cloud.google.com/gemini-enterprise/locations/global/engines/support-assistant-app/overview/dashboard?project=susmith-fde-ticket-router`
+   - **Direct Chat Interface**: `https://vertexaisearch.cloud.google.com/home/cid/<CONFIG_ID>/r/agent/<AGENT_ID>/session/-`
+   - To query live verification status and resolved chat URLs:
+     ```bash
+     python scripts/deploy_agents/provision_ge_app.py --verify --json
+     ```
+
+### 6.2 Cloud Trace Verification (REQ-AGENT-014)
+
+1. **APIs and Least-Privilege IAM**:
+   - `cloudtrace.googleapis.com` and `telemetry.googleapis.com` enabled in Terraform (`module.project_services`).
+   - Least-privilege role `roles/cloudtrace.agent` granted to runtime identities (`sa-triage`, `sa-faq`, `sa-ticket-mcp`, `sa-order-mcp`, `sa-queue`, and Reasoning Engine service agent).
+
+2. **Environment Variables**:
+   - Cloud Run services (`ticket-db-mcp`, `order-lookup-mcp`, `human-queue`) configure `ENABLE_CLOUD_TRACE=1` and `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=NO_CONTENT` to prevent prompt/response PII exfiltration.
+
+3. **Trace Explorer Verification**:
+   - Navigate to **Trace** > **Trace explorer** in GCP Console (`susmith-fde-ticket-router`).
+   - Filter by root service `triage_router` or span name `triage_router_turn`.
+   - Verify correlated child spans across runtimes:
+     - `TriageRouterAgent` (Vertex AI Agent Engine) $\to$ `FaqResolverAgent` (GKE Autopilot) $\to$ `ticket-db-mcp` (Cloud Run)
+     - W3C `traceparent` headers propagate 128-bit trace IDs across all service hops.

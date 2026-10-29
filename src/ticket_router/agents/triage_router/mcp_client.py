@@ -15,6 +15,7 @@ import requests
 from requests.adapters import HTTPAdapter
 
 from ticket_router.common.idtoken import get_id_token
+from ticket_router.common.observability import get_current_traceparent, start_span
 from ticket_router.common.resilience import TICKET_DB_MCP_TIMEOUT_S
 
 
@@ -195,13 +196,17 @@ class HttpTicketDbMcpClient:
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
-        data_bytes = json.dumps(arguments).encode("utf-8")
-        if hasattr(self.session, "app"):
-            resp = self.session.post(url, content=data_bytes, headers=headers, timeout=self.timeout_s)
-        else:
-            resp = self.session.post(url, data=data_bytes, headers=headers, timeout=self.timeout_s)
-        resp.raise_for_status()
-        return resp.json()
+        with start_span(f"mcp.ticket_db.{tool_name}", attributes={"mcp.tool": tool_name}) as span:
+            if tp := (getattr(span, "traceparent", None) or get_current_traceparent()):
+                headers["traceparent"] = tp
+
+            data_bytes = json.dumps(arguments).encode("utf-8")
+            if hasattr(self.session, "app"):
+                resp = self.session.post(url, content=data_bytes, headers=headers, timeout=self.timeout_s)
+            else:
+                resp = self.session.post(url, data=data_bytes, headers=headers, timeout=self.timeout_s)
+            resp.raise_for_status()
+            return resp.json()
 
     def upsert_ticket(
         self,

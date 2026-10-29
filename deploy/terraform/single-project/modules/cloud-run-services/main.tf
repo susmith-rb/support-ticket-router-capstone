@@ -59,6 +59,14 @@ resource "google_cloud_run_v2_service" "ticket_db_mcp" {
         name  = "REGION"
         value = var.region
       }
+      env {
+        name  = "ENABLE_CLOUD_TRACE"
+        value = "1"
+      }
+      env {
+        name  = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
+        value = "NO_CONTENT"
+      }
 
       ports {
         container_port = 8080
@@ -145,6 +153,14 @@ resource "google_cloud_run_v2_service" "order_lookup_mcp" {
         name  = "REGION"
         value = var.region
       }
+      env {
+        name  = "ENABLE_CLOUD_TRACE"
+        value = "1"
+      }
+      env {
+        name  = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
+        value = "NO_CONTENT"
+      }
 
       ports {
         container_port = 8080
@@ -222,6 +238,14 @@ resource "google_cloud_run_v2_service" "human_queue" {
       env {
         name  = "REGION"
         value = var.region
+      }
+      env {
+        name  = "ENABLE_CLOUD_TRACE"
+        value = "1"
+      }
+      env {
+        name  = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
+        value = "NO_CONTENT"
       }
 
       ports {

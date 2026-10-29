@@ -13,6 +13,7 @@ import requests
 from requests.adapters import HTTPAdapter
 
 from ticket_router.common.idtoken import get_id_token
+from ticket_router.common.observability import get_current_traceparent, start_span
 
 
 def _create_pooled_session() -> requests.Session:
@@ -35,6 +36,7 @@ class A2AHandoffPayload:
     customer_id: Optional[str] = None
     customer_verified: bool = False
     identity_issuer: Optional[str] = None
+    traceparent: Optional[str] = None
 
 
 @runtime_checkable
@@ -102,7 +104,20 @@ class HttpA2AClient:
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
-        data_bytes = json.dumps(asdict(payload)).encode("utf-8")
-        resp = self.session.post(url, data=data_bytes, headers=headers, timeout=self.timeout_s)
-        resp.raise_for_status()
-        return resp.json()
+        with start_span(
+            "a2a.handoff.faq_resolver",
+            attributes={
+                "ticket_id": payload.ticket_id,
+                "predicted_intent": payload.predicted_intent,
+            },
+        ) as span:
+            outbound_tp = getattr(span, "traceparent", None) or payload.traceparent or get_current_traceparent()
+            payload_dict = asdict(payload)
+            if outbound_tp:
+                headers["traceparent"] = outbound_tp
+                payload_dict["traceparent"] = outbound_tp
+
+            data_bytes = json.dumps(payload_dict).encode("utf-8")
+            resp = self.session.post(url, data=data_bytes, headers=headers, timeout=self.timeout_s)
+            resp.raise_for_status()
+            return resp.json()
