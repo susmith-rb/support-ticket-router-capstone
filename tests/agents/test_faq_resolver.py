@@ -128,6 +128,31 @@ class TimingOutSearchClient(FakeSearchClient):
         return super().search(**kwargs)
 
 
+class RecordingLLMClient(FakeLLMClient):
+    """LLM client fake that records kwargs passed to generate_answer."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.recorded_order_info: List[Optional[Dict[str, Any]]] = []
+
+    def generate_answer(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
+        self.recorded_order_info.append(kwargs.get("order_info"))
+        return super().generate_answer(*args, **kwargs)
+
+
+class BrokenOrderClient:
+    """Mock order client simulating connection reset during get_order."""
+
+    def get_order(
+        self,
+        order_id: str,
+        customer_id: str,
+        session_id: str = "",
+        untrusted_customer_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        raise RuntimeError("Downstream order MCP connection reset")
+
+
 # =============================================================================
 # REQ-AGENT-007: Bounded ReAct Loop, Search & Rerank Integration
 # =============================================================================
@@ -758,23 +783,6 @@ def test_gemini_answer_client_location_and_graceful_order_error():
     assert ans_client.location == "global"
     assert ans_client.resolved_model_id == "gemini-3.8-flash"
 
-    class BrokenOrderClient:
-        def get_order(
-            self,
-            order_id: str,
-            customer_id: str,
-            session_id: str = "",
-            untrusted_customer_id: Optional[str] = None,
-        ) -> Dict[str, Any]:
-            raise RuntimeError("Downstream order MCP connection reset")
-
-    recorded_order_info = []
-
-    class RecordingLLMClient(FakeLLMClient):
-        def generate_answer(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
-            recorded_order_info.append(kwargs.get("order_info"))
-            return super().generate_answer(*args, **kwargs)
-
     fake_llm = RecordingLLMClient(
         default_answer="Returns are permitted within 30 days.",
         default_doc_id="faq-returns-window",
@@ -793,7 +801,98 @@ def test_gemini_answer_client_location_and_graceful_order_error():
     )
     assert res.status == "AUTO_RESOLVED"
     assert res.tool_calls_count >= 2
-    assert recorded_order_info[-1] == {"order_id": "ORD-10001", "status": "UNAVAILABLE"}
+    assert fake_llm.recorded_order_info[-1] == {"order_id": "ORD-10001", "status": "UNAVAILABLE"}
+
+
+# REQ-AGENT-007, REQ-AGENT-010
+def test_faq_resolver_natural_order_lookup_without_order_id():
+    """Verify natural order lookup without memorized order ID triggers list_orders and injects orders into LLM."""
+    order_client = FakeOrderLookupClient()
+    order_client.add_order(
+        order_id="ORD-555",
+        customer_id="cust_1001",
+        status="SHIPPED",
+    )
+    order_client.add_order(
+        order_id="ORD-556",
+        customer_id="cust_1001",
+        status="DELIVERED",
+    )
+    order_client.add_order(
+        order_id="ORD-999",
+        customer_id="cust_1002",
+        status="PROCESSING",
+    )
+
+    fake_llm = RecordingLLMClient(
+        default_answer="Your order ORD-555 has shipped and is on the way.",
+        default_doc_id="faq-shipping-rates",
+        default_quote="Standard shipping is free for orders over $35 and takes 3 to 5 business days.",
+    )
+    agent = FaqResolverAgent(
+        search_client=FakeSearchClient(),
+        llm_client=fake_llm,
+        order_client=order_client,
+    )
+
+    res = agent.resolve(
+        ticket_id="t-nat-001",
+        session_id="s-nat-001",
+        message="Where is my order and will it be delivered?",
+        customer_id="cust_1001",
+        predicted_intent="order_status",
+        customer_verified=True,
+    )
+
+    assert res.status == "AUTO_RESOLVED"
+    assert res.route == "resolved"
+    assert len(order_client.call_history) == 1
+    assert order_client.call_history[0]["action"] == "list_orders"
+    assert order_client.call_history[0]["customer_id"] == "cust_1001"
+    assert order_client.call_history[0]["limit"] == 5
+
+    assert len(fake_llm.recorded_order_info) >= 1
+    passed_order_info = fake_llm.recorded_order_info[-1]
+    assert passed_order_info is not None
+    assert "orders" in passed_order_info
+    assert len(passed_order_info["orders"]) == 2
+    order_ids = {o["order_id"] for o in passed_order_info["orders"]}
+    assert order_ids == {"ORD-555", "ORD-556"}
+
+
+# REQ-AGENT-007, REQ-IDENT-004, REQ-IDENT-005
+def test_faq_resolver_unverified_customer_order_inquiry_sign_in_prompt():
+    """Verify unverified customer with order-specific intent receives sign-in prompt and 0 tool calls."""
+    order_client = FakeOrderLookupClient()
+    order_client.add_order(
+        order_id="ORD-777",
+        customer_id="cust_1001",
+        status="SHIPPED",
+    )
+
+    fake_llm = RecordingLLMClient()
+    agent = FaqResolverAgent(
+        search_client=FakeSearchClient(),
+        llm_client=fake_llm,
+        order_client=order_client,
+    )
+
+    res = agent.resolve(
+        ticket_id="t-unv-001",
+        session_id="s-unv-001",
+        message="where is my package",
+        customer_id="anon:guest_999",
+        predicted_intent="shipping_policy",
+        customer_verified=False,
+    )
+
+    assert res.status == "AUTO_RESOLVED"
+    assert res.route == "resolved"
+    assert "sign in" in res.answer.lower()
+    assert res.tool_calls_count == 0
+    assert res.retrieval_passes_count == 0
+    assert len(order_client.call_history) == 0
+    assert len(fake_llm.recorded_order_info) == 0
 
 
 

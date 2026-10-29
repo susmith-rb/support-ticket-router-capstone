@@ -22,6 +22,17 @@ resource "google_project_iam_member" "discovery_engine_aiplatform_user" {
   member  = "serviceAccount:${var.discovery_engine_sa_email}"
 }
 
+resource "google_secret_manager_secret" "ge_oauth_client_credentials" {
+  secret_id = var.oauth_credentials_secret_id
+  project   = var.project_id
+
+  replication {
+    auto {}
+  }
+
+  labels = var.labels
+}
+
 resource "google_discovery_engine_search_engine" "support_assistant_app" {
   count             = var.manage_ge_search_engine ? 1 : 0
   project           = var.project_id

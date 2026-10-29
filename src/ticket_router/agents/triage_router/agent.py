@@ -295,6 +295,7 @@ class TriageRouterAgent:
         self._model_armor_client = model_armor_client
         self.logger = logger or StructuredJsonLogger(name="triage_router")
         self.lazy_init = lazy_init
+        self._expected_oauth_client_id: Optional[str] = os.environ.get("GE_OAUTH_CLIENT_ID") or None
         if not lazy_init:
             self._ensure_initialized()
 
@@ -304,6 +305,8 @@ class TriageRouterAgent:
             return
 
         settings = Settings.from_env()
+        if self._expected_oauth_client_id is None and settings.ge_oauth_client_id:
+            self._expected_oauth_client_id = settings.ge_oauth_client_id
         if self._model_armor_client is None and settings.model_armor_enabled:
             self._model_armor_client = ModelArmorClient(
                 template=settings.model_armor_template,
@@ -375,6 +378,7 @@ class TriageRouterAgent:
         channel: str = "web",
         ticket_id: Optional[str] = None,
         memory_summary: str = "",
+        oauth_access_token: Optional[str] = None,
     ) -> TriageResult:
         """Execute end-to-end triage evaluation, persistence, and dispatch."""
         self._ensure_initialized()
@@ -393,8 +397,13 @@ class TriageRouterAgent:
             attributes={"session_id": session_id, "ticket_id": t_id, "channel": channel},
             traceparent=traceparent,
         ) as turn_span:
-            # Resolve customer identity from token via ticket-db-mcp (REQ-IDENT-003, REQ-IDENT-004)
-            cust_ctx = resolve_identity(token=customer_id_token, ticket_db_client=self.mcp_client)
+            # Resolve customer identity from token via ticket-db-mcp (REQ-IDENT-003, REQ-IDENT-004, REQ-IDENT-009)
+            cust_ctx = resolve_identity(
+                token=customer_id_token,
+                ticket_db_client=self.mcp_client,
+                oauth_access_token=oauth_access_token,
+                expected_oauth_client_id=self._expected_oauth_client_id,
+            )
             ticket_customer_id = cust_ctx.customer_id if cust_ctx.verified else f"anon:{session_id}"
             customer_verified = cust_ctx.verified
             identity_issuer = cust_ctx.issuer if cust_ctx.verified else None

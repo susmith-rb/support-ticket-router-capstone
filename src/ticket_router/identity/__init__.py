@@ -10,9 +10,13 @@ from __future__ import annotations
 
 from ticket_router.identity.resolver import (
     CustomerContext,
+    ResolvedCustomerContext,
     resolve_identity,
 )
 from ticket_router.identity.verify import (
+    GOOGLE_ISSUER,
+    GOOGLE_TOKENINFO_URL,
+    TokenVerificationError,
     VerifiedIdentity,
     clear_identity_cache,
     get_cached_identity,
@@ -20,10 +24,15 @@ from ticket_router.identity.verify import (
     hash_token,
     set_cached_identity,
     verify_customer_token,
+    verify_google_oauth_token,
 )
 
 __all__ = [
+    "GOOGLE_ISSUER",
+    "GOOGLE_TOKENINFO_URL",
     "CustomerContext",
+    "ResolvedCustomerContext",
+    "TokenVerificationError",
     "VerifiedIdentity",
     "clear_identity_cache",
     "get_cached_identity",
@@ -32,4 +41,5 @@ __all__ = [
     "resolve_identity",
     "set_cached_identity",
     "verify_customer_token",
+    "verify_google_oauth_token",
 ]

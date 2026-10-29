@@ -107,6 +107,8 @@ def prepare_environment(
     model_armor_enabled: str = "1",
     require_real_deps: str = "1",
     service: str = "triage_router",
+    ge_oauth_auth_id: str | None = None,
+    ge_oauth_client_id: str | None = None,
 ) -> dict[str, str]:
     """Set environment variables in-process before importing or pickling.
 
@@ -136,6 +138,14 @@ def prepare_environment(
         "SERVICE": service,
         "PYTHONPATH": "/code/src:src:.",
     }
+
+    oauth_auth_id = ge_oauth_auth_id or os.environ.get("GE_OAUTH_AUTH_ID", "support-customer-oauth")
+    if oauth_auth_id:
+        env_vars["GE_OAUTH_AUTH_ID"] = oauth_auth_id
+
+    oauth_client_id = ge_oauth_client_id or os.environ.get("GE_OAUTH_CLIENT_ID")
+    if oauth_client_id:
+        env_vars["GE_OAUTH_CLIENT_ID"] = oauth_client_id
 
     for key, val in env_vars.items():
         os.environ[key] = val
@@ -260,6 +270,12 @@ def deploy_reasoning_engine(
         allowed_callers=contract.get("ALLOWED_CALLERS", service_account),
         require_real_deps=contract.get("REQUIRE_REAL_DEPS", "1"),
         service=contract.get("SERVICE", "triage_router"),
+        ge_oauth_auth_id=contract.get(
+            "GE_OAUTH_AUTH_ID", os.environ.get("GE_OAUTH_AUTH_ID", "support-customer-oauth")
+        ),
+        ge_oauth_client_id=contract.get(
+            "GE_OAUTH_CLIENT_ID", os.environ.get("GE_OAUTH_CLIENT_ID")
+        ),
     )
     remote_env_vars = filter_reserved_env_vars(raw_env_vars)
     agent_app = build_agent_app()
@@ -445,6 +461,16 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         help="Enable Model Armor sanitization (1/0)",
     )
     parser.add_argument(
+        "--ge-oauth-auth-id",
+        default=os.environ.get("GE_OAUTH_AUTH_ID", "support-customer-oauth"),
+        help="Gemini Enterprise OAuth Auth ID (default: support-customer-oauth)",
+    )
+    parser.add_argument(
+        "--ge-oauth-client-id",
+        default=os.environ.get("GE_OAUTH_CLIENT_ID"),
+        help="Gemini Enterprise OAuth Client ID (optional)",
+    )
+    parser.add_argument(
         "--extra-packages",
         nargs="*",
         default=DEFAULT_EXTRA_PACKAGES,
@@ -477,6 +503,10 @@ def main() -> None:
         "MODEL_ARMOR_TEMPLATE": args.model_armor_template,
         "MODEL_ARMOR_ENABLED": args.model_armor_enabled,
     }
+    if args.ge_oauth_auth_id:
+        contract_vars["GE_OAUTH_AUTH_ID"] = args.ge_oauth_auth_id
+    if args.ge_oauth_client_id:
+        contract_vars["GE_OAUTH_CLIENT_ID"] = args.ge_oauth_client_id
     try:
         resource_name = deploy_reasoning_engine(
             project=args.project,

@@ -11,7 +11,7 @@ import json
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -142,12 +142,55 @@ class HttpOrderLookupClient(OrderLookupProtocol):
                 return self.circuit_breaker.call(self._execute_http, url, body, headers)
             return self._execute_http(url, body, headers)
 
+    def list_orders(
+        self,
+        customer_id: str,
+        limit: int = 5,
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch recent orders bound strictly to the verified customer_id."""
+        if not customer_id or customer_id.startswith("anon:"):
+            raise BolaViolationError("Anonymous or unverified customer cannot access order lookup.")
+
+        url = f"{self.base_url}/tools/list_orders"
+        body = {"limit": limit}
+        headers = {
+            "Content-Type": "application/json",
+            "X-Customer-ID": customer_id,
+            "X-Customer-Verified": "true",
+        }
+
+        token = None
+        try:
+            token = self.token_provider(self.audience)
+        except Exception:
+            token = None
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        with start_span("mcp.order_lookup.list_orders", attributes={"customer_id": customer_id}) as span:
+            if tp := (getattr(span, "traceparent", None) or get_current_traceparent()):
+                headers["traceparent"] = tp
+
+            try:
+                if self.circuit_breaker is not None:
+                    return self.circuit_breaker.call(self._execute_http, url, body, headers)
+                return self._execute_http(url, body, headers)
+            except LookupError:
+                return None
+
 
 class FakeOrderLookupClient(OrderLookupProtocol):
     """Hermetic in-memory mock client for order lookup."""
 
-    def __init__(self, orders: Optional[Dict[str, Dict[str, Any]]] = None) -> None:
+    def __init__(
+        self,
+        orders: Optional[Dict[str, Dict[str, Any]]] = None,
+        customer_orders: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    ) -> None:
         self.orders: Dict[str, Dict[str, Any]] = dict(orders or {})
+        self.customer_orders: Optional[Dict[str, List[Dict[str, Any]]]] = (
+            dict(customer_orders) if customer_orders is not None else None
+        )
         self.call_history: list[Dict[str, Any]] = []
 
     def add_order(
@@ -214,3 +257,40 @@ class FakeOrderLookupClient(OrderLookupProtocol):
             "promised_delivery": order.get("promised_delivery", ""),
             "delivery_address_redacted": order.get("delivery_address_redacted", ""),
         }
+
+    def list_orders(
+        self,
+        customer_id: str,
+        limit: int = 5,
+    ) -> Optional[Dict[str, Any]]:
+        self.call_history.append({
+            "action": "list_orders",
+            "customer_id": customer_id,
+            "limit": limit,
+            "headers": {
+                "X-Customer-ID": customer_id,
+                "X-Customer-Verified": "true",
+            },
+            "timestamp": time.time(),
+        })
+
+        if not customer_id or customer_id.startswith("anon:"):
+            raise BolaViolationError("Anonymous or unverified customer cannot access order lookup.")
+
+        if self.customer_orders is not None and customer_id in self.customer_orders:
+            orders = self.customer_orders[customer_id][:limit]
+            return {"orders": orders}
+
+        matched = []
+        for o in self.orders.values():
+            if o.get("customer_id") == customer_id:
+                matched.append({
+                    "order_id": o["order_id"],
+                    "status": o["status"],
+                    "items": o.get("items", []),
+                    "tracking_number": o.get("tracking_number", ""),
+                    "promised_delivery": o.get("promised_delivery", ""),
+                    "delivery_address_redacted": o.get("delivery_address_redacted", ""),
+                })
+        return {"orders": matched[:limit]}
+

@@ -18,8 +18,10 @@ import requests
 from scripts.deploy_agents.provision_ge_app import (
     DEFAULT_AGENT_DISPLAY_NAME,
     DEFAULT_REASONING_ENGINE,
+    build_google_authorization_uri,
     ensure_acl_config,
     ensure_ge_engine,
+    ensure_oauth_authorization,
     ensure_user_license,
     register_adk_agent,
     verify_ge_app,
@@ -96,6 +98,10 @@ class FakeSession:
     def patch(self, url: str, **kwargs: Any) -> FakeResponse:
         return self.request("PATCH", url, **kwargs)
 
+    def delete(self, url: str, **kwargs: Any) -> FakeResponse:
+        return self.request("DELETE", url, **kwargs)
+
+
 
 # REQ-AGENT-023
 def test_ge_app_infra_and_registration_contract():
@@ -136,13 +142,24 @@ def test_ge_app_infra_and_registration_contract():
     assert 'search_add_ons = ["SEARCH_ADD_ON_LLM"]' in main_tf
     assert 'collection_id     = "default_collection"' in main_tf
 
+    # Secret Manager secret shell contract
+    # REQ-AGENT-023
+    # REQ-IDENT-009
+    assert 'resource "google_secret_manager_secret" "ge_oauth_client_credentials"' in main_tf
+    assert "google_secret_manager_secret_version" not in main_tf, (
+        "Secret Manager secret versions must NOT be declared in Terraform to prevent plaintext OAuth client secret leakage in TF state"
+    )
+
     # Variables & Outputs
     assert "ge_data_store_id" in vars_tf
     assert "ge_engine_id" in vars_tf
     assert "manage_ge_search_engine" in vars_tf
+    assert "oauth_credentials_secret_id" in vars_tf
+    assert "labels" in vars_tf
     assert "ge_data_store_id" in outputs_tf
     assert "ge_engine_id" in outputs_tf
     assert "ge_location" in outputs_tf
+    assert "ge_oauth_credentials_secret_id" in outputs_tf
 
     # 2. Cost isolation invariant: support-kb-search MUST remain SEARCH_TIER_STANDARD
     kb_main_tf = (MOD_DIR / "agent-search" / "main.tf").read_text(encoding="utf-8")
@@ -156,6 +173,7 @@ def test_ge_app_infra_and_registration_contract():
     root_main = (TF_DIR / "main.tf").read_text(encoding="utf-8")
     assert 'module "ge_app"' in root_main
     assert 'manage_ge_search_engine   = var.manage_ge_search_engine' in root_main
+    assert "labels                    = var.labels" in root_main
     assert "manage_ge_search_engine" in root_vars_tf
 
     root_outputs = (TF_DIR / "outputs.tf").read_text(encoding="utf-8")
@@ -179,11 +197,18 @@ def test_ge_app_infra_and_registration_contract():
     assert "acl_config" in data
     assert "user_license" in data
     assert "ge_engine" in data
+    assert "oauth_authorization" in data
+    assert data["oauth_authorization"]["status"] == "dry_run"
+    assert "support-customer-oauth" in data["oauth_authorization"]["authorization_name"]
     assert "adk_agent" in data
+    assert data["adk_agent"]["authorization_resource_name"] == (
+        "projects/620485621180/locations/global/authorizations/support-customer-oauth"
+    )
     assert "verification" in data
     assert data["verification"]["verified"] is True
     assert "support-assistant-app" in data["verification"]["console_url"]
     assert "default_search_widget_config" in data["verification"]["direct_chat_url"]
+
 
 
 # REQ-AGENT-023
@@ -492,6 +517,227 @@ def test_cloud_trace_iam_and_cloud_run_env_contract():
     assert cr_main.count('value = "1"') >= 3
     assert cr_main.count('name  = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"') == 3
     assert cr_main.count('value = "NO_CONTENT"') == 3
+
+
+# REQ-AGENT-023
+# REQ-IDENT-009
+def test_build_google_authorization_uri_params():
+    """Verify build_google_authorization_uri constructs consent URL with offline access and prompt."""
+    import urllib.parse
+
+    client_id = "test-client-id.apps.googleusercontent.com"
+    uri = build_google_authorization_uri(client_id=client_id)
+    parsed = urllib.parse.urlsplit(uri)
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "accounts.google.com"
+    assert parsed.path == "/o/oauth2/v2/auth"
+    qs = urllib.parse.parse_qs(parsed.query)
+
+    assert qs["client_id"] == [client_id]
+    assert qs["redirect_uri"] == ["https://vertexaisearch.cloud.google.com/oauth-redirect"]
+    assert qs["response_type"] == ["code"]
+    assert qs["access_type"] == ["offline"]
+    assert qs["prompt"] == ["consent"]
+    assert qs["include_granted_scopes"] == ["true"]
+    assert qs["scope"] == ["openid email profile"]
+
+
+# REQ-AGENT-023
+# REQ-IDENT-009
+def test_ensure_oauth_authorization_skipped_no_credentials():
+    """Verify ensure_oauth_authorization skips gracefully when Secret Manager secret version does not exist."""
+    fake = FakeSession()
+    # Secret Manager returns 404
+    fake.add_route(
+        "GET",
+        "/secrets/ge-oauth-client-credentials/versions/latest:access",
+        FakeResponse(404, {"error": "Secret version not found"}),
+    )
+    # Auth resource returns 404
+    fake.add_route(
+        "GET",
+        "/authorizations/support-customer-oauth",
+        FakeResponse(404, {"error": "Authorization not found"}),
+    )
+
+    res = ensure_oauth_authorization(
+        fake,
+        project_id="susmith-fde-ticket-router",
+        location="global",
+        auth_id="support-customer-oauth",
+        secret_id="ge-oauth-client-credentials",
+        project_number_override="620485621180",
+        token="fake-token",
+    )
+    assert res["status"] == "skipped_no_credentials"
+    assert res["authorization_name"] is None
+    assert res["auth_id"] == "support-customer-oauth"
+    assert res["secret_id"] == "ge-oauth-client-credentials"
+
+
+# REQ-AGENT-023
+# REQ-IDENT-009
+def test_ensure_oauth_authorization_creates_and_redacts_secret():
+    """Verify ensure_oauth_authorization POSTs payload and strictly redacts client_secret from summary."""
+    import base64
+
+    fake = FakeSession()
+
+    secret_raw = json.dumps({
+        "client_id": "cid-123.apps.googleusercontent.com",
+        "client_secret": "SUPER_SECRET_DO_NOT_LEAK",
+    }).encode("utf-8")
+    b64_data = base64.b64encode(secret_raw).decode("utf-8")
+
+    fake.add_route(
+        "GET",
+        "/secrets/ge-oauth-client-credentials/versions/latest:access",
+        FakeResponse(200, {"payload": {"data": b64_data}}),
+    )
+    posted_payload = {}
+
+    def post_auth_handler(method: str, url: str, **kwargs: Any) -> FakeResponse:
+        nonlocal posted_payload
+        posted_payload = kwargs.get("json", {})
+        return FakeResponse(
+            200,
+            {
+                "name": "projects/620485621180/locations/global/authorizations/support-customer-oauth",
+                "serverSideOauth2": {
+                    "clientId": "cid-123.apps.googleusercontent.com",
+                    "clientSecret": "SUPER_SECRET_DO_NOT_LEAK",
+                },
+            },
+        )
+
+    fake.add_route(
+        "GET",
+        "/authorizations/support-customer-oauth",
+        FakeResponse(404, {"error": "Not Found"}),
+    )
+    fake.add_route(
+        "POST",
+        "/authorizations?authorizationId=support-customer-oauth",
+        post_auth_handler,
+    )
+
+    res = ensure_oauth_authorization(
+        fake,
+        project_id="susmith-fde-ticket-router",
+        location="global",
+        auth_id="support-customer-oauth",
+        secret_id="ge-oauth-client-credentials",
+        project_number_override="620485621180",
+        token="fake-token",
+    )
+
+    assert res["status"] == "created"
+    assert res["authorization_name"] == (
+        "projects/620485621180/locations/global/authorizations/support-customer-oauth"
+    )
+    assert res["client_id"] == "cid-123.apps.googleusercontent.com"
+
+    # CRITICAL: Verify secret redaction
+    summary_json = json.dumps(res)
+    assert "SUPER_SECRET_DO_NOT_LEAK" not in summary_json, (
+        "client_secret leaked in ensure_oauth_authorization summary!"
+    )
+    assert "client_secret" not in res
+    assert "clientSecret" not in res
+
+    # Verify posted payload structure
+    assert posted_payload["name"] == (
+        "projects/620485621180/locations/global/authorizations/support-customer-oauth"
+    )
+    assert posted_payload["serverSideOauth2"]["clientId"] == "cid-123.apps.googleusercontent.com"
+    assert posted_payload["serverSideOauth2"]["clientSecret"] == "SUPER_SECRET_DO_NOT_LEAK"
+    assert "access_type=offline" in posted_payload["serverSideOauth2"]["authorizationUri"]
+
+
+# REQ-AGENT-023
+# REQ-IDENT-009
+def test_register_adk_agent_with_authorization_and_patch_fallback():
+    """Verify register_adk_agent attaches authorizationConfig and falls back to DELETE+POST on PATCH 400."""
+    auth_name = "projects/620485621180/locations/global/authorizations/support-customer-oauth"
+    existing_agent_name = (
+        "projects/proj/locations/global/collections/default_collection/engines/"
+        "support-assistant-app/assistants/default_assistant/agents/agent-oauth-101"
+    )
+
+    fake = FakeSession()
+    fake.add_route(
+        "GET",
+        "/assistants/default_assistant/agents",
+        FakeResponse(
+            200,
+            {
+                "agents": [
+                    {
+                        "name": existing_agent_name,
+                        "displayName": DEFAULT_AGENT_DISPLAY_NAME,
+                        "adkAgentDefinition": {
+                            "provisionedReasoningEngine": {"reasoningEngine": DEFAULT_REASONING_ENGINE}
+                        },
+                        "authorizationConfig": {},
+                    }
+                ]
+            },
+        ),
+    )
+
+    deleted_urls = []
+
+    def delete_handler(method: str, url: str, **kwargs: Any) -> FakeResponse:
+        deleted_urls.append(url)
+        return FakeResponse(200, {"done": True})
+
+    def patch_agent_handler(method: str, url: str, **kwargs: Any) -> FakeResponse:
+        body = kwargs.get("json", {})
+        if "authorizationConfig" in body:
+            return FakeResponse(
+                400,
+                {"error": "authorizationConfig mutation not supported in PATCH"},
+                text="authorizationConfig cannot be modified in place",
+            )
+        return FakeResponse(200, {"name": existing_agent_name, "state": "ACTIVE"})
+
+    recreated_payload = {}
+
+    def post_recreate_handler(method: str, url: str, **kwargs: Any) -> FakeResponse:
+        nonlocal recreated_payload
+        recreated_payload = kwargs.get("json", {})
+        return FakeResponse(
+            200,
+            {
+                "name": (
+                    "projects/proj/locations/global/collections/default_collection/engines/"
+                    "support-assistant-app/assistants/default_assistant/agents/agent-oauth-202"
+                ),
+                "state": "ACTIVE",
+                "authorizationConfig": recreated_payload.get("authorizationConfig"),
+            },
+        )
+
+    fake.add_route("PATCH", "agents/agent-oauth-101", patch_agent_handler)
+    fake.add_route("DELETE", "agents/agent-oauth-101", delete_handler)
+    fake.add_route("POST", "/assistants/default_assistant/agents", post_recreate_handler)
+
+    res = register_adk_agent(
+        "proj",
+        "global",
+        reasoning_engine=DEFAULT_REASONING_ENGINE,
+        authorization_resource_name=auth_name,
+        session=fake,
+        token="fake-token",
+    )
+
+    assert res["status"] == "registered"
+    assert res["agent_id"] == "agent-oauth-202"
+    assert any("agent-oauth-101" in u for u in deleted_urls), "DELETE was not called on existing agent!"
+    assert recreated_payload.get("authorizationConfig") == {
+        "toolAuthorizations": [auth_name]
+    }
+
 
 
 def sys_python() -> str:

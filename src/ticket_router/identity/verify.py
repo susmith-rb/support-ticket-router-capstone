@@ -3,6 +3,7 @@
 # REQ-IDENT-001: Cloud Identity Platform IdP Configuration & Token Format
 # REQ-IDENT-003: Server-Side JWT Verification & Identity Resolution
 # REQ-IDENT-007: Identity Threat Mitigations (Anti-Spoofing, Replay, IDOR, Suspension)
+# REQ-IDENT-009: Gemini Enterprise OAuth Token Verification & Multi-Issuer Account Linking
 """
 
 from __future__ import annotations
@@ -17,6 +18,33 @@ from typing import Any, Callable, Dict, Optional, Tuple
 from ticket_router.common.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+GOOGLE_ISSUER = "https://accounts.google.com"
+GOOGLE_TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo"
+
+
+class TokenVerificationError(ValueError):
+    """Raised when customer token verification fails."""
+
+
+_OAUTH_SESSION: Optional[Any] = None
+_OAUTH_SESSION_LOCK = threading.Lock()
+
+
+def _get_oauth_session() -> Any:
+    global _OAUTH_SESSION
+    if _OAUTH_SESSION is None:
+        with _OAUTH_SESSION_LOCK:
+            if _OAUTH_SESSION is None:
+                import requests
+                from requests.adapters import HTTPAdapter
+
+                sess = requests.Session()
+                adapter = HTTPAdapter(pool_connections=10, pool_maxsize=20, max_retries=0)
+                sess.mount("https://", adapter)
+                _OAUTH_SESSION = sess
+    return _OAUTH_SESSION
+
 
 # Server-side identity cache: sha256(token) -> (VerifiedIdentity, Any (CustomerContext), expires_at: float)
 _IDENTITY_CACHE: Dict[str, Tuple[VerifiedIdentity, Any, float]] = {}
@@ -174,3 +202,82 @@ def verify_customer_token(
         email_verified=email_verified,
         exp=exp,
     )
+
+
+def verify_google_oauth_token(
+    access_token: str,
+    expected_client_id: Optional[str] = None,
+    session: Optional[Any] = None,
+    clock: Optional[Callable[[], float]] = None,
+    timeout_s: float = 3.0,
+) -> VerifiedIdentity:
+    """Verify Google OAuth 2.0 access token via tokeninfo endpoint (REQ-IDENT-009).
+
+    Validates signature and active status server-side via tokeninfo POST form body.
+    Raw tokens NEVER appear in URL query strings.
+    Validates non-empty sub, positive expires_in, and optional client_id binding.
+    """
+    if not access_token or not isinstance(access_token, str):
+        raise TokenVerificationError("Empty Google OAuth access token")
+
+    raw_token = access_token.strip()
+    if raw_token.lower().startswith("bearer "):
+        raw_token = raw_token[7:].strip()
+    if not raw_token:
+        raise TokenVerificationError("Empty Google OAuth access token")
+
+    http_session = session or _get_oauth_session()
+    try:
+        resp = http_session.post(
+            GOOGLE_TOKENINFO_URL,
+            data={"access_token": raw_token},
+            timeout=timeout_s,
+        )
+    except Exception as exc:
+        raise TokenVerificationError(f"Google tokeninfo request failed: {exc}") from exc
+
+    if resp.status_code != 200:
+        raise TokenVerificationError(
+            f"Google tokeninfo rejected token (status={resp.status_code})"
+        )
+
+    try:
+        payload = resp.json()
+    except Exception as exc:
+        raise TokenVerificationError("Invalid JSON from Google tokeninfo") from exc
+
+    if not isinstance(payload, dict):
+        raise TokenVerificationError("Invalid JSON payload from Google tokeninfo")
+
+    sub = str(payload.get("sub") or "").strip()
+    if not sub:
+        raise TokenVerificationError("Token missing non-empty subject (sub)")
+
+    try:
+        expires_in = int(payload.get("expires_in", 0))
+    except (ValueError, TypeError):
+        expires_in = 0
+
+    if expires_in <= 0:
+        raise TokenVerificationError("Google OAuth token expired or missing expires_in")
+
+    if expected_client_id and str(expected_client_id).strip():
+        target_client = str(expected_client_id).strip()
+        aud = str(payload.get("aud") or "").strip()
+        azp = str(payload.get("azp") or "").strip()
+        issued_to = str(payload.get("issued_to") or "").strip()
+        if target_client not in (aud, azp, issued_to):
+            raise TokenVerificationError("Google OAuth token client_id mismatch")
+
+    now_ts = clock() if clock is not None else time.time()
+    exp_int = int(now_ts) + expires_in
+    email_ver_raw = payload.get("email_verified", False)
+    email_verified = email_ver_raw is True or str(email_ver_raw).lower() in ("true", "1")
+
+    return VerifiedIdentity(
+        issuer=GOOGLE_ISSUER,
+        subject=sub,
+        email_verified=email_verified,
+        exp=float(exp_int),
+    )
+

@@ -64,6 +64,22 @@ class OrderLookupProtocol(Protocol):
         """
         ...
 
+    def list_orders(
+        self,
+        customer_id: str,
+        limit: int = 5,
+    ) -> Optional[Dict[str, Any]]:
+        """List recent orders for the verified session customer (REQ-AGENT-007, REQ-AGENT-010).
+
+        Args:
+            customer_id: Verified customer ID from authenticated session context.
+            limit: Maximum number of orders to return.
+
+        Returns:
+            Dict containing 'orders' list or None if not found.
+        """
+        ...
+
 
 @runtime_checkable
 class SearchClientProtocol(Protocol):

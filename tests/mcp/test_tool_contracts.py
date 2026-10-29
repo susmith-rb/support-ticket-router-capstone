@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 import ticket_router.mcp.order_lookup.schemas as order_schemas
 import ticket_router.mcp.ticket_db.schemas as ticket_schemas
 from ticket_router.agents.faq_resolver.mcp_client import (
+    BolaViolationError,
     HttpOrderLookupClient,
 )
 from ticket_router.agents.triage_router.mcp_client import (
@@ -109,6 +110,14 @@ def test_schemas_and_roles():
     assert "tracking_number" in get_order_returns
     assert "promised_delivery" in get_order_returns
     assert "delivery_address_redacted" in get_order_returns
+
+    assert "list_orders" in order_tool_schemas
+    list_orders_params = order_tool_schemas["list_orders"]["parameters"]["properties"]
+    assert "limit" in list_orders_params
+    assert "customer_id" not in list_orders_params
+
+    list_orders_returns = order_tool_schemas["list_orders"]["returns"]["properties"]
+    assert "orders" in list_orders_returns
 
     # 3. Assert least-privilege IAM Database Role Separation per REQ-AGENT-010 and TDD §5.1
     # Agents hold NO Cloud SQL client or Postgres roles directly
@@ -276,6 +285,104 @@ def test_order_lookup_mcp_contract_with_real_client(monkeypatch):
     # 3. Lookup with other customer's ID raises LookupError (tenant isolation / RLS)
     with pytest.raises(LookupError):
         client.get_order(order_id="ORD-999", customer_id="cust-other")
+
+
+# REQ-AGENT-010
+def test_order_lookup_list_orders_contract(monkeypatch):
+    """Drive order-lookup-mcp FastAPI server using HttpOrderLookupClient.list_orders with BOLA and tenant isolation."""
+    fake_order_repo = FakeOrderRepo()
+    fake_order_repo.add_order(
+        Order(
+            order_id="ORD-101",
+            customer_id="cust_1001",
+            order_status="SHIPPED",
+            items=[{"sku": "KEYBOARD", "name": "Mechanical Keyboard", "quantity": 1}],
+            total_cents=12000,
+        )
+    )
+    fake_order_repo.add_order(
+        Order(
+            order_id="ORD-102",
+            customer_id="cust_1001",
+            order_status="DELIVERED",
+            items=[{"sku": "MOUSE", "name": "Wireless Mouse", "quantity": 1}],
+            total_cents=4500,
+        )
+    )
+    fake_order_repo.add_order(
+        Order(
+            order_id="ORD-201",
+            customer_id="cust_1002",
+            order_status="PROCESSING",
+            items=[{"sku": "MONITOR", "name": "4K Monitor", "quantity": 1}],
+            total_cents=35000,
+        )
+    )
+
+    app = create_order_app(order_repo=fake_order_repo)
+    test_client = TestClient(app)
+
+    monkeypatch.setattr(
+        urllib.request,
+        "urlopen",
+        lambda req, timeout=None: _testclient_urlopen_adapter(test_client, req, timeout),
+    )
+
+    client = HttpOrderLookupClient(base_url="http://testserver")
+
+    # 1. Fetch orders for cust_1001 via real client class
+    cust_orders = client.list_orders(customer_id="cust_1001", limit=5)
+    assert cust_orders is not None
+    assert "orders" in cust_orders
+    assert len(cust_orders["orders"]) == 2
+    order_ids = {o["order_id"] for o in cust_orders["orders"]}
+    assert order_ids == {"ORD-101", "ORD-102"}
+
+    # 2. Fetch orders for cust_1002 (tenant isolation)
+    cust2_orders = client.list_orders(customer_id="cust_1002", limit=5)
+    assert cust2_orders is not None
+    assert len(cust2_orders["orders"]) == 1
+    assert cust2_orders["orders"][0]["order_id"] == "ORD-201"
+
+    # 3. Direct MCP endpoint /tools/list_orders with verified customer header returns 200
+    tool_resp = test_client.post(
+        "/tools/list_orders",
+        json={"limit": 5},
+        headers={"X-Customer-ID": "cust_1001", "X-Customer-Verified": "true"},
+    )
+    assert tool_resp.status_code == 200
+    assert len(tool_resp.json()["orders"]) == 2
+
+    # 4. BOLA guard: customer_id in JSON body rejected with 400
+    bola_resp = test_client.post(
+        "/tools/list_orders",
+        json={"limit": 5, "customer_id": "cust_1001"},
+        headers={"X-Customer-ID": "cust_1001", "X-Customer-Verified": "true"},
+    )
+    assert bola_resp.status_code == 400
+    assert "BOLA/IDOR violation" in bola_resp.json()["detail"]
+
+    # 5. Unverified anonymous customer rejected with 403
+    anon_resp = test_client.post(
+        "/tools/list_orders",
+        json={"limit": 5},
+        headers={"X-Customer-ID": "anon:session-xyz", "X-Customer-Verified": "true"},
+    )
+    assert anon_resp.status_code == 403
+    assert "unverified_customer" in anon_resp.json()["detail"]
+
+    # 6. Unverified customer header X-Customer-Verified: false rejected with 403
+    unverified_resp = test_client.post(
+        "/tools/list_orders",
+        json={"limit": 5},
+        headers={"X-Customer-ID": "cust_1001", "X-Customer-Verified": "false"},
+    )
+    assert unverified_resp.status_code == 403
+    assert "unverified_customer" in unverified_resp.json()["detail"]
+
+    # 7. Unverified client call raises BolaViolationError
+    with pytest.raises(BolaViolationError):
+        client.list_orders(customer_id="anon:session-xyz", limit=5)
 
 
 # =============================================================================

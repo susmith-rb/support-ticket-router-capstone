@@ -14,13 +14,15 @@ Zero gcloud subprocess calls; uses google.auth ADC or GOOGLE_OAUTH_ACCESS_TOKEN.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import logging
 import os
 import sys
 import time
+import urllib.parse
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Sequence
 
 import requests
 
@@ -40,6 +42,10 @@ DEFAULT_COMPANY_NAME = "Global Retail Hub"
 DEFAULT_AGENT_DISPLAY_NAME = "Support Ticket Router & Assistant"
 DEFAULT_LICENSE_CONFIG_ID = "free_trial_gemini"
 DEFAULT_USER_PRINCIPAL = os.environ.get("GE_USER_PRINCIPAL", "susmith@gcp.altostrat.com")
+DEFAULT_AUTH_ID = "support-customer-oauth"
+DEFAULT_OAUTH_SECRET_ID = "ge-oauth-client-credentials"
+DEFAULT_OAUTH_REDIRECT_URI = "https://vertexaisearch.cloud.google.com/oauth-redirect"
+DEFAULT_OAUTH_SCOPES = ["openid", "email", "profile"]
 
 
 def resolve_token(
@@ -384,12 +390,214 @@ def ensure_ge_engine(
     return {"status": "created", "engine": created_resp.json()}
 
 
+def resolve_project_number(
+    session: requests.Session,
+    project_id: str,
+    location: str = DEFAULT_LOCATION,
+    token: Optional[str] = None,
+    token_provider: Optional[Callable[[], str]] = None,
+    fallback_project_number: str = DEFAULT_PROJECT_NUMBER,
+) -> str:
+    """Resolve canonical GCP project number from Discovery Engine user store or fallback."""
+    base = get_base_url(location)
+    user_store_url = f"{base}/projects/{project_id}/locations/{location}/userStores/default_user_store"
+    token_val = resolve_token(token, token_provider)
+    headers = get_headers(project_id, token_val)
+    try:
+        resp = session.get(user_store_url, headers=headers)
+        if resp.ok:
+            name = resp.json().get("name", "")
+            parts = name.split("/")
+            if len(parts) >= 2 and parts[0] == "projects" and parts[1].isdigit():
+                return parts[1]
+    except Exception as exc:
+        logger.debug("Failed to resolve project number from UserStore: %s", exc)
+    return os.environ.get("GOOGLE_CLOUD_PROJECT_NUMBER", fallback_project_number)
+
+
+def load_oauth_client_credentials(
+    session: requests.Session,
+    project_id: str,
+    secret_id: str = DEFAULT_OAUTH_SECRET_ID,
+    client_id_override: Optional[str] = None,
+    client_secret_override: Optional[str] = None,
+    token: Optional[str] = None,
+    token_provider: Optional[Callable[[], str]] = None,
+) -> Optional[Dict[str, str]]:
+    """Load OAuth client credentials with priority: overrides/env vars -> Secret Manager."""
+    cid = (client_id_override or os.environ.get("GE_OAUTH_CLIENT_ID") or "").strip()
+    csec = (client_secret_override or os.environ.get("GE_OAUTH_CLIENT_SECRET") or "").strip()
+    if cid and csec:
+        return {"client_id": cid, "client_secret": csec}
+
+    secret_url = (
+        f"https://secretmanager.googleapis.com/v1/projects/{project_id}/secrets/{secret_id}/versions/latest:access"
+    )
+    token_val = resolve_token(token, token_provider)
+    headers = {
+        "Authorization": f"Bearer {token_val}",
+        "X-Goog-User-Project": project_id,
+    }
+    try:
+        resp = session.get(secret_url, headers=headers)
+        if resp.status_code in (400, 404):
+            return None
+        resp.raise_for_status()
+        payload_data = resp.json().get("payload", {}).get("data", "")
+        if not payload_data:
+            return None
+        decoded = base64.b64decode(payload_data).decode("utf-8")
+        parsed = json.loads(decoded)
+        if isinstance(parsed, dict):
+            p_cid = str(parsed.get("client_id", "")).strip()
+            p_csec = str(parsed.get("client_secret", "")).strip()
+            if p_cid and p_csec:
+                return {"client_id": p_cid, "client_secret": p_csec}
+    except Exception as exc:
+        logger.debug("Failed to read Secret Manager credentials: %s", exc)
+        return None
+    return None
+
+
+def build_google_authorization_uri(
+    client_id: str,
+    redirect_uri: str = DEFAULT_OAUTH_REDIRECT_URI,
+    scopes: Sequence[str] = DEFAULT_OAUTH_SCOPES,
+) -> str:
+    """Build the Google OAuth 2.0 authorization consent URI."""
+    scope_str = " ".join(scopes) if isinstance(scopes, (list, tuple)) else str(scopes)
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "scope": scope_str,
+        "include_granted_scopes": "true",
+        "response_type": "code",
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+    return f"https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(params)}"
+
+
+def ensure_oauth_authorization(
+    session: Optional[requests.Session] = None,
+    project_id: str = DEFAULT_PROJECT,
+    location: str = DEFAULT_LOCATION,
+    auth_id: str = DEFAULT_AUTH_ID,
+    secret_id: str = DEFAULT_OAUTH_SECRET_ID,
+    redirect_uri: str = DEFAULT_OAUTH_REDIRECT_URI,
+    project_number_override: Optional[str] = None,
+    client_id_override: Optional[str] = None,
+    client_secret_override: Optional[str] = None,
+    token: Optional[str] = None,
+    token_provider: Optional[Callable[[], str]] = None,
+    dry_run: bool = False,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """Ensure Discovery Engine OAuth Authorization resource exists.
+
+    # REQ-AGENT-023 / REQ-IDENT-009: End-user OAuth consent resource.
+    CRITICAL SECRET SAFETY RULE: Never print or include clientSecret in summaries or logs.
+    """
+    http = session or requests.Session()
+    project_number = project_number_override or resolve_project_number(
+        http, project_id, location=location, token=token, token_provider=token_provider
+    )
+    canonical_name = f"projects/{project_number}/locations/{location}/authorizations/{auth_id}"
+
+    if dry_run:
+        return {
+            "status": "dry_run",
+            "action": "ensure_oauth_authorization",
+            "project": project_id,
+            "project_number": project_number,
+            "location": location,
+            "auth_id": auth_id,
+            "authorization_name": canonical_name,
+            "secret_id": secret_id,
+            "redirect_uri": redirect_uri,
+        }
+
+    creds = load_oauth_client_credentials(
+        session=http,
+        project_id=project_id,
+        secret_id=secret_id,
+        client_id_override=client_id_override,
+        client_secret_override=client_secret_override,
+        token=token,
+        token_provider=token_provider,
+    )
+
+    base = get_base_url(location)
+    token_val = resolve_token(token, token_provider)
+    headers = get_headers(project_id, token_val)
+    auth_url = f"{base}/projects/{project_number}/locations/{location}/authorizations/{auth_id}"
+
+    if creds is None:
+        resp = http.get(auth_url, headers=headers)
+        if resp.status_code == 200:
+            data = resp.json()
+            return {
+                "status": "exists",
+                "authorization_name": data.get("name", canonical_name),
+                "auth_id": auth_id,
+            }
+        return {
+            "status": "skipped_no_credentials",
+            "authorization_name": None,
+            "auth_id": auth_id,
+            "secret_id": secret_id,
+        }
+
+    payload = {
+        "name": canonical_name,
+        "serverSideOauth2": {
+            "clientId": creds["client_id"],
+            "clientSecret": creds["client_secret"],
+            "authorizationUri": build_google_authorization_uri(
+                creds["client_id"], redirect_uri=redirect_uri
+            ),
+            "tokenUri": "https://oauth2.googleapis.com/token",
+            "scopes": list(DEFAULT_OAUTH_SCOPES),
+        },
+    }
+
+    get_resp = http.get(auth_url, headers=headers)
+    if get_resp.status_code == 404:
+        post_url = f"{base}/projects/{project_number}/locations/{location}/authorizations?authorizationId={auth_id}"
+        post_resp = http.post(post_url, headers=headers, json=payload)
+        post_resp.raise_for_status()
+        status = "created"
+    elif get_resp.status_code == 200:
+        patch_url = f"{auth_url}?updateMask=serverSideOauth2"
+        patch_resp = http.patch(patch_url, headers=headers, json=payload)
+        if patch_resp.status_code == 400 and (
+            "bound" in patch_resp.text.lower()
+            or "used" in patch_resp.text.lower()
+            or "conflict" in patch_resp.text.lower()
+        ):
+            status = "exists_bound"
+        else:
+            patch_resp.raise_for_status()
+            status = "updated"
+    else:
+        get_resp.raise_for_status()
+        status = "exists"
+
+    return {
+        "status": status,
+        "authorization_name": canonical_name,
+        "auth_id": auth_id,
+        "client_id": creds["client_id"],
+    }
+
+
 def register_adk_agent(
     project: str,
     location: str,
     engine_id: str = DEFAULT_ENGINE_ID,
     reasoning_engine: str = DEFAULT_REASONING_ENGINE,
     display_name: str = DEFAULT_AGENT_DISPLAY_NAME,
+    authorization_resource_name: Optional[str] = None,
     session: Optional[requests.Session] = None,
     token: Optional[str] = None,
     token_provider: Optional[Callable[[], str]] = None,
@@ -397,7 +605,7 @@ def register_adk_agent(
 ) -> Dict[str, Any]:
     """Register or update TriageRouter ADK reasoning engine in Gemini Enterprise.
 
-    # REQ-AGENT-023: ADK agent registration with starter prompts and org sharing.
+    # REQ-AGENT-023: ADK agent registration with starter prompts, org sharing, and toolAuthorizations.
     """
     base = get_base_url(location)
     agents_url = (
@@ -406,7 +614,7 @@ def register_adk_agent(
     )
 
     if dry_run:
-        return {
+        res = {
             "status": "dry_run",
             "action": "register_adk_agent",
             "engine_id": engine_id,
@@ -415,6 +623,9 @@ def register_adk_agent(
             "agent_id": "dry-run-agent-id",
             "planned_request": f"GET {agents_url} and POST/PATCH",
         }
+        if authorization_resource_name:
+            res["authorization_resource_name"] = authorization_resource_name
+        return res
 
     token_val = resolve_token(token, token_provider)
     headers = get_headers(project, token_val)
@@ -424,7 +635,7 @@ def register_adk_agent(
     resp.raise_for_status()
     agents_list = resp.json().get("agents", [])
 
-    desired_payload = {
+    desired_payload: Dict[str, Any] = {
         "displayName": display_name,
         "description": (
             "Tiered AI customer support router and grounded FAQ assistant for Global Retail Hub "
@@ -449,6 +660,11 @@ def register_adk_agent(
         ],
         "sharingConfig": {"scope": "ALL_USERS"},
     }
+
+    if authorization_resource_name:
+        desired_payload["authorizationConfig"] = {
+            "toolAuthorizations": [authorization_resource_name]
+        }
 
     matched_agent = None
     for agent in agents_list:
@@ -503,9 +719,63 @@ def register_adk_agent(
         .get("provisionedReasoningEngine", {})
         .get("reasoningEngine")
     )
-    if current_re != reasoning_engine:
-        patch_url = f"{base}/{agent_name}?updateMask=displayName,description,adkAgentDefinition,starterPrompts"
+    current_auth = (
+        matched_agent.get("authorizationConfig", {}).get("toolAuthorizations")
+    )
+    desired_auth = (
+        [authorization_resource_name] if authorization_resource_name else None
+    )
+
+    re_matches = (current_re == reasoning_engine)
+    auth_matches = True if authorization_resource_name is None else (current_auth == desired_auth)
+
+    if not re_matches or not auth_matches:
+        mask_fields = ["displayName", "description", "adkAgentDefinition", "starterPrompts"]
+        if authorization_resource_name and not auth_matches:
+            mask_fields.append("authorizationConfig")
+        patch_url = f"{base}/{agent_name}?updateMask={','.join(mask_fields)}"
         patch_resp = http.patch(patch_url, headers=headers, json=desired_payload)
+
+        if patch_resp.status_code == 400 and "authorizationConfig" in mask_fields:
+            logger.warning(
+                "Agent PATCH with authorizationConfig returned 400 (%s); recreating agent cleanly...",
+                patch_resp.text,
+            )
+            del_resp = http.delete(f"{base}/{agent_name}", headers=headers)
+            if del_resp.status_code not in (200, 204):
+                logger.warning("Agent DELETE returned %s: %s", del_resp.status_code, del_resp.text)
+            post_resp = http.post(agents_url, headers=headers, json=desired_payload)
+            if post_resp.status_code == 400 and "sharingConfig" in post_resp.text:
+                payload_no_sharing = dict(desired_payload)
+                payload_no_sharing.pop("sharingConfig", None)
+                post_resp = http.post(agents_url, headers=headers, json=payload_no_sharing)
+                post_resp.raise_for_status()
+                created_agent = post_resp.json()
+                agent_name = created_agent.get("name", "")
+                patch_url = f"{base}/{agent_name}?updateMask=sharingConfig"
+                patch_resp = http.patch(
+                    patch_url, headers=headers, json={"sharingConfig": {"scope": "ALL_USERS"}}
+                )
+                if patch_resp.ok:
+                    patch_data = patch_resp.json()
+                    if "name" not in patch_data and agent_name:
+                        patch_data["name"] = agent_name
+                    created_agent = patch_data
+            else:
+                post_resp.raise_for_status()
+                created_agent = post_resp.json()
+
+            agent_name = created_agent.get("name", "")
+            new_agent_id = agent_name.rsplit("/", 1)[-1]
+            if created_agent.get("state") == "CONFIGURED":
+                deploy_url = f"{base}/{agent_name}:deploy"
+                d_resp = http.post(deploy_url, headers=headers, json={})
+                if d_resp.ok:
+                    get_resp = http.get(f"{base}/{agent_name}", headers=headers)
+                    if get_resp.ok:
+                        created_agent = get_resp.json()
+            return {"status": "registered", "agent": created_agent, "agent_id": new_agent_id}
+
         patch_resp.raise_for_status()
         updated_agent = patch_resp.json()
         if updated_agent.get("state") == "CONFIGURED":
@@ -518,6 +788,7 @@ def register_adk_agent(
         return {"status": "updated", "agent": updated_agent, "agent_id": agent_id}
 
     return {"status": "already_registered", "agent": matched_agent, "agent_id": agent_id}
+
 
 
 def verify_ge_app(
@@ -554,6 +825,7 @@ def verify_ge_app(
             "app_type": "APP_TYPE_INTRANET",
             "agent_id": agent_id,
             "reasoning_engine": reasoning_engine,
+            "agent_authorizations": [],
             "widget_config_id": config_id,
             "console_url": console_url,
             "direct_chat_url": direct_chat_url,
@@ -643,6 +915,9 @@ def verify_ge_app(
         "app_type": engine_data.get("appType"),
         "agent_id": agent_id,
         "reasoning_engine": reasoning_engine,
+        "agent_authorizations": matched_agent.get("authorizationConfig", {}).get(
+            "toolAuthorizations", []
+        ),
         "widget_config_id": config_id,
         "console_url": console_url,
         "direct_chat_url": direct_chat_url,
@@ -672,12 +947,37 @@ def main() -> int:
     parser.add_argument("--ensure-acl", action="store_true", help="Ensure location aclConfig is configured")
     parser.add_argument("--ensure-license", action="store_true", help="Ensure active GE LicenseConfig and user license")
     parser.add_argument("--ensure-engine", action="store_true", help="Ensure GE APP_TYPE_INTRANET engine exists")
+    parser.add_argument(
+        "--ensure-oauth",
+        action="store_true",
+        help="Ensure Discovery Engine OAuth Authorization resource exists",
+    )
+    parser.add_argument(
+        "--auth-id",
+        default=DEFAULT_AUTH_ID,
+        help=f"OAuth Authorization ID (default: {DEFAULT_AUTH_ID})",
+    )
+    parser.add_argument(
+        "--oauth-secret-id",
+        default=DEFAULT_OAUTH_SECRET_ID,
+        help=f"Secret Manager secret ID for OAuth credentials (default: {DEFAULT_OAUTH_SECRET_ID})",
+    )
+    parser.add_argument(
+        "--oauth-redirect-uri",
+        default=DEFAULT_OAUTH_REDIRECT_URI,
+        help=f"OAuth authorized redirect URI (default: {DEFAULT_OAUTH_REDIRECT_URI})",
+    )
+    parser.add_argument(
+        "--project-number",
+        default=None,
+        help="GCP project number override for authorization resource name",
+    )
     parser.add_argument("--register-agent", action="store_true", help="Register or update ADK agent")
     parser.add_argument("--verify", action="store_true", help="Verify GE app setup and output chat URLs")
     parser.add_argument(
         "--all",
         action="store_true",
-        help="Run ensure-acl, ensure-license, ensure-engine, register-agent, and verify",
+        help="Run ensure-acl, ensure-license, ensure-engine, ensure-oauth, register-agent, and verify",
     )
     parser.add_argument("--dry-run", action="store_true", help="Dry run without making network calls")
     parser.add_argument("--json", action="store_true", dest="json_output", help="Output results as JSON")
@@ -686,7 +986,12 @@ def main() -> int:
 
     # Default to --all if no specific action was requested
     run_all = args.all or not (
-        args.ensure_acl or args.ensure_license or args.ensure_engine or args.register_agent or args.verify
+        args.ensure_acl
+        or args.ensure_license
+        or args.ensure_engine
+        or args.ensure_oauth
+        or args.register_agent
+        or args.verify
     )
 
     results: Dict[str, Any] = {}
@@ -718,6 +1023,21 @@ def main() -> int:
                 dry_run=args.dry_run,
             )
 
+        oauth_res: Optional[Dict[str, Any]] = None
+        if run_all or args.ensure_oauth:
+            oauth_res = ensure_oauth_authorization(
+                project_id=args.project,
+                location=args.location,
+                auth_id=args.auth_id,
+                secret_id=args.oauth_secret_id,
+                redirect_uri=args.oauth_redirect_uri,
+                project_number_override=args.project_number,
+                dry_run=args.dry_run,
+            )
+            results["oauth_authorization"] = oauth_res
+
+        auth_resource_name = oauth_res.get("authorization_name") if oauth_res else None
+
         if run_all or args.register_agent:
             results["adk_agent"] = register_adk_agent(
                 project=args.project,
@@ -725,6 +1045,7 @@ def main() -> int:
                 engine_id=args.engine_id,
                 reasoning_engine=args.reasoning_engine,
                 display_name=args.agent_display_name,
+                authorization_resource_name=auth_resource_name,
                 dry_run=args.dry_run,
             )
 

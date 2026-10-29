@@ -68,6 +68,7 @@ module "ge_app" {
   location                  = var.search_location
   discovery_engine_sa_email = google_project_service_identity.discovery_engine.email
   manage_ge_search_engine   = var.manage_ge_search_engine
+  labels                    = var.labels
 
   depends_on = [module.project_services]
 }

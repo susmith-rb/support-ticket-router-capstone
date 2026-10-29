@@ -176,6 +176,23 @@ def model_location(
     return str(loc) if loc is not None else default
 
 
+def model_thinking_level(
+    role: str,
+    default: Optional[str] = None,
+    env: Optional[str] = None,
+    config_path: Optional[pathlib.Path] = None,
+) -> Optional[str]:
+    """Retrieve thinking level string (e.g. 'LOW') for a logical model role if present else default."""
+    try:
+        cfg = get(role, env=env, config_path=config_path)
+    except KeyError:
+        return default
+    lvl = cfg.get("thinking_level")
+    if lvl is None:
+        lvl = cfg.get("thinking")
+    return str(lvl) if lvl is not None else default
+
+
 def list_roles(config_path: Optional[pathlib.Path] = None) -> Dict[str, str]:
     """Return dictionary of role -> resolved model ID."""
     data = load_registry(config_path=config_path)

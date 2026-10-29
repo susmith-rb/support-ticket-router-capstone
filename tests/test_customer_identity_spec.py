@@ -82,9 +82,9 @@ def test_customer_identity_indexed_in_readme():
 
 
 def test_all_ident_requirements_defined_and_open():
-  """Asserts that REQ-IDENT-001 through REQ-IDENT-008 are defined with status 'open'."""
+  """Asserts that REQ-IDENT-001 through REQ-IDENT-009 are defined with valid status."""
   reqs = _parse_ident_requirements()
-  expected_ids = [f"REQ-IDENT-{i:03d}" for i in range(1, 9)]
+  expected_ids = [f"REQ-IDENT-{i:03d}" for i in range(1, 10)]
   assert sorted(reqs.keys()) == expected_ids, f"Expected {expected_ids}, got {sorted(reqs.keys())}"
 
   for req_id, req in reqs.items():

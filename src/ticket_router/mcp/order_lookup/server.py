@@ -24,6 +24,10 @@ from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from ticket_router.mcp.order_lookup.schemas import (
     GetOrderHttpRequest,
     GetOrderResponse,
+    GetOrderToolRequest,
+    ListOrdersHttpRequest,
+    ListOrdersResponse,
+    ListOrdersToolRequest,
     get_tool_schemas,
 )
 from ticket_router.store.interfaces import OrderRepository
@@ -85,19 +89,7 @@ def list_tools() -> Dict[str, Any]:
     return {"tools": get_tool_schemas()}
 
 
-def _lookup_order_for_customer(
-    repo: OrderRepository, order_id: str, customer_id: str
-) -> GetOrderResponse:
-    # Query repository with customer_id simulating Postgres RLS tenant isolation
-    order: Optional[Order] = repo.get_order(order_id=order_id, customer_id=customer_id)
-    if order is None:
-        # Uniform 404 for non-existent order or order belonging to another customer
-        raise HTTPException(
-            status_code=404,
-            detail=f"Order '{order_id}' not found for customer.",
-        )
-
-    # Format address redacted
+def _order_to_response(order: Order) -> GetOrderResponse:
     if order.shipping_address_city:
         addr_redacted = f"[{order.shipping_address_city}, {order.shipping_address_state}]"
     else:
@@ -115,6 +107,84 @@ def _lookup_order_for_customer(
         promised_delivery=promised_delivery,
         delivery_address_redacted=addr_redacted,
     )
+
+
+class OrderLookupMcpServer:
+    """Core domain logic for order-lookup-mcp tools (REQ-AGENT-010)."""
+
+    def __init__(self, repo: OrderRepository) -> None:
+        self.repo = repo
+
+    def get_order_tool(self, customer_id: str, req: GetOrderToolRequest) -> GetOrderResponse:
+        if not customer_id or customer_id.startswith("anon:"):
+            raise PermissionError("Anonymous or unverified customer cannot access order lookup.")
+        order = self.repo.get_order(order_id=req.order_id, customer_id=customer_id)
+        if order is None:
+            raise LookupError(f"Order '{req.order_id}' not found for customer.")
+        return _order_to_response(order)
+
+    def list_orders_tool(self, customer_id: str, req: ListOrdersToolRequest) -> ListOrdersResponse:
+        if not customer_id or customer_id.startswith("anon:"):
+            raise PermissionError("Anonymous or unverified customer cannot access order lookup.")
+        orders = self.repo.list_customer_orders(customer_id=customer_id, limit=req.limit)
+        return ListOrdersResponse(orders=[_order_to_response(o) for o in orders])
+
+
+def _validate_verified_customer_headers(
+    request: Request,
+    x_customer_id: Optional[str],
+    x_verified_customer_id: Optional[str],
+    x_customer_verified: Optional[str],
+    caller: str,
+) -> str:
+    verified_customer = x_customer_id or x_verified_customer_id
+    if not verified_customer:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing verified customer context header (X-Customer-ID / X-Verified-Customer-Id).",
+        )
+    if verified_customer.startswith("anon:"):
+        logger.warning(
+            "Rejected unverified anonymous customer lookup: customer_id=%s caller=%s",
+            verified_customer,
+            caller,
+        )
+        raise HTTPException(status_code=403, detail="unverified_customer")
+
+    is_verified = (x_customer_verified or "").strip().lower() == "true"
+    if x_customer_verified is not None and not is_verified:
+        logger.warning(
+            "Rejected unverified customer (X-Customer-Verified=%s) customer_id=%s caller=%s",
+            x_customer_verified,
+            verified_customer,
+            caller,
+        )
+        raise HTTPException(status_code=403, detail="unverified_customer")
+
+    require_verified_header = bool(getattr(request.app.state, "require_verified_header", False))
+    if require_verified_header and not is_verified:
+        logger.warning(
+            "Rejected customer lookup without required X-Customer-Verified: true header customer_id=%s caller=%s",
+            verified_customer,
+            caller,
+        )
+        raise HTTPException(status_code=403, detail="unverified_customer")
+
+    return verified_customer
+
+
+def _lookup_order_for_customer(
+    repo: OrderRepository, order_id: str, customer_id: str
+) -> GetOrderResponse:
+    # Query repository with customer_id simulating Postgres RLS tenant isolation
+    order: Optional[Order] = repo.get_order(order_id=order_id, customer_id=customer_id)
+    if order is None:
+        # Uniform 404 for non-existent order or order belonging to another customer
+        raise HTTPException(
+            status_code=404,
+            detail=f"Order '{order_id}' not found for customer.",
+        )
+    return _order_to_response(order)
 
 
 @router.post("/tools/get_order", response_model=GetOrderResponse)
@@ -243,6 +313,72 @@ async def get_order_http(
         )
 
     return _lookup_order_for_customer(repo, req.order_id, effective_customer)
+
+
+@router.post("/tools/list_orders", response_model=ListOrdersResponse)
+async def list_orders_tool(
+    request: Request,
+    x_customer_id: Optional[str] = Header(None, alias="X-Customer-ID"),
+    x_verified_customer_id: Optional[str] = Header(None, alias="X-Verified-Customer-Id"),
+    x_customer_verified: Optional[str] = Header(None, alias="X-Customer-Verified"),
+    authorization: Optional[str] = Header(None),
+    x_serverless_authorization: Optional[str] = Header(None),
+    repo: OrderRepository = Depends(get_order_repo),
+) -> ListOrdersResponse:
+    caller = _extract_caller_identity(authorization, x_serverless_authorization)
+    verified_customer = _validate_verified_customer_headers(
+        request, x_customer_id, x_verified_customer_id, x_customer_verified, caller
+    )
+
+    body_bytes = await request.body()
+    try:
+        body_dict = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+
+    if "customer_id" in body_dict:
+        logger.warning(
+            "BOLA guard: rejected untrusted customer_id in tool arguments from caller=%s",
+            caller,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="BOLA/IDOR violation: customer_id is strictly derived from verified session claims and must not be passed as a tool parameter (REQ-AGENT-010, AGENTS.md rule 7).",
+        )
+
+    try:
+        tool_req = ListOrdersToolRequest.model_validate(body_dict)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Validation error: {exc}") from exc
+
+    server = OrderLookupMcpServer(repo)
+    try:
+        return server.list_orders_tool(verified_customer, tool_req)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.post("/list_orders", response_model=ListOrdersResponse)
+async def list_orders_http(
+    req: ListOrdersHttpRequest,
+    request: Request,
+    x_customer_id: Optional[str] = Header(None, alias="X-Customer-ID"),
+    x_verified_customer_id: Optional[str] = Header(None, alias="X-Verified-Customer-Id"),
+    x_customer_verified: Optional[str] = Header(None, alias="X-Customer-Verified"),
+    authorization: Optional[str] = Header(None),
+    x_serverless_authorization: Optional[str] = Header(None),
+    repo: OrderRepository = Depends(get_order_repo),
+) -> ListOrdersResponse:
+    caller = _extract_caller_identity(authorization, x_serverless_authorization)
+    verified_customer = _validate_verified_customer_headers(
+        request, x_customer_id, x_verified_customer_id, x_customer_verified, caller
+    )
+    server = OrderLookupMcpServer(repo)
+    tool_req = ListOrdersToolRequest(limit=req.limit)
+    try:
+        return server.list_orders_tool(verified_customer, tool_req)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 def create_app(

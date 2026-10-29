@@ -44,3 +44,16 @@ variable "manage_ge_search_engine" {
   type        = bool
   default     = false
 }
+
+variable "oauth_credentials_secret_id" {
+  description = "Secret Manager secret ID for storing out-of-state Web OAuth 2.0 client credentials JSON (client_id, client_secret) consumed by provision_ge_app.py --ensure-oauth"
+  type        = string
+  default     = "ge-oauth-client-credentials"
+}
+
+variable "labels" {
+  description = "Resource labels"
+  type        = map(string)
+  default     = {}
+}
+

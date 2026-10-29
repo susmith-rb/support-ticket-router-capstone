@@ -41,13 +41,43 @@ class GetOrderResponse(BaseModel):
     delivery_address_redacted: str = Field(default="[ADDRESS_REDACTED]", description="Redacted delivery address")
 
 
+class ListOrdersToolRequest(BaseModel):
+    """MCP tool input payload for list_orders.
+
+    Customer ID is NEVER accepted as a tool parameter (BOLA guard, REQ-AGENT-010).
+    It is derived strictly from verified session claims.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(default=5, ge=1, le=10, description="Maximum number of orders to return (1-10)")
+
+
+class ListOrdersHttpRequest(BaseModel):
+    """HTTP client payload for /list_orders supporting HttpOrderLookupClient wire format."""
+
+    limit: int = Field(default=5, ge=1, le=10, description="Maximum number of orders to return (1-10)")
+
+
+class ListOrdersResponse(BaseModel):
+    """Output payload for list_orders tool."""
+
+    orders: List[GetOrderResponse] = Field(default_factory=list, description="List of orders belonging to customer")
+
+
 def get_tool_schemas() -> Dict[str, Any]:
-    """Return JSON schema for order-lookup-mcp get_order tool per REQ-AGENT-010."""
+    """Return JSON schemas for order-lookup-mcp tools per REQ-AGENT-010."""
     return {
         "get_order": {
             "name": "get_order",
             "description": "Fetch order details for the authenticated customer. Customer ID is derived strictly from verified session claims.",
             "parameters": GetOrderToolRequest.model_json_schema(),
             "returns": GetOrderResponse.model_json_schema(),
-        }
+        },
+        "list_orders": {
+            "name": "list_orders",
+            "description": "List recent orders for the authenticated customer. Customer ID is derived strictly from verified session claims.",
+            "parameters": ListOrdersToolRequest.model_json_schema(),
+            "returns": ListOrdersResponse.model_json_schema(),
+        },
     }

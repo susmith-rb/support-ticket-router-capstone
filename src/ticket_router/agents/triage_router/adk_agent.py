@@ -176,6 +176,46 @@ def extract_customer_id_token(ctx: Any) -> Optional[str]:
     return None
 
 
+DEFAULT_GE_OAUTH_AUTH_ID = "support-customer-oauth"
+
+
+def extract_oauth_access_token(ctx: Any, auth_id: Optional[str] = None) -> Optional[str]:
+    """Extract Google OAuth access token from ADK session state (REQ-IDENT-009).
+
+    Inspects session state under temp:<target_id> or <target_id>.
+    Never inspects non-authoritative session caller identifiers.
+    """
+    if ctx is None:
+        return None
+    target_id = (auth_id or os.environ.get("GE_OAUTH_AUTH_ID") or DEFAULT_GE_OAUTH_AUTH_ID).strip()
+    session = getattr(ctx, "session", None)
+    if session is None:
+        return None
+    state = getattr(session, "state", None)
+    if state is None:
+        return None
+
+    val = None
+    if isinstance(state, dict):
+        val = state.get(f"temp:{target_id}")
+        if val is None:
+            val = state.get(target_id)
+    elif hasattr(state, "get"):
+        val = state.get(f"temp:{target_id}")
+        if val is None:
+            val = state.get(target_id)
+
+    if val is None:
+        return None
+    if isinstance(val, str) and val.strip():
+        return val.strip()
+    if isinstance(val, dict):
+        token_candidate = val.get("access_token")
+        if isinstance(token_candidate, str) and token_candidate.strip():
+            return token_candidate.strip()
+    return None
+
+
 def extract_answer_from_result(result: TriageResult) -> str:
     """Extract final user-facing text from TriageResult for response event."""
     if result.decision.decision == "escalate":
@@ -272,12 +312,14 @@ class TriageRouterAdkAgent(BaseAgent):
         message = extract_text_from_context(ctx)
         session_id = extract_session_id(ctx)
         customer_id_token = extract_customer_id_token(ctx)
+        oauth_access_token = extract_oauth_access_token(ctx)
 
         router = self._get_router()
         result = router.triage(
             session_id=session_id,
             message_text=message,
             customer_id_token=customer_id_token,
+            oauth_access_token=oauth_access_token,
         )
         flush_traces(timeout_millis=1500)
         final_text = extract_answer_from_result(result)
@@ -309,6 +351,7 @@ class TriageRouterAdkAgent(BaseAgent):
         session_id: str = "default_session",
         customer_id_token: Optional[str] = None,
         customer_id: Optional[str] = None,
+        oauth_access_token: Optional[str] = None,
     ) -> dict[str, Any]:
         """Direct synchronous query entrypoint for local execution and smoke tests."""
         if customer_id is not None:
@@ -320,6 +363,7 @@ class TriageRouterAdkAgent(BaseAgent):
             session_id=session_id,
             message_text=message,
             customer_id_token=customer_id_token,
+            oauth_access_token=oauth_access_token,
         )
         flush_traces(timeout_millis=1500)
         answer = extract_answer_from_result(result)
@@ -340,6 +384,7 @@ class TriageRouterAdkAgent(BaseAgent):
         session_id: str = "default_session",
         customer_id_token: Optional[str] = None,
         customer_id: Optional[str] = None,
+        oauth_access_token: Optional[str] = None,
     ) -> Iterator[dict[str, Any]]:
         """Streaming query generator for compatibility with ReasoningEngine interfaces."""
         yield self.query(
@@ -347,6 +392,7 @@ class TriageRouterAdkAgent(BaseAgent):
             session_id=session_id,
             customer_id_token=customer_id_token,
             customer_id=customer_id,
+            oauth_access_token=oauth_access_token,
         )
 
     def triage(self, *args: Any, **kwargs: Any) -> TriageResult:

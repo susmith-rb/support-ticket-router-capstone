@@ -112,6 +112,16 @@ Migration `db/migrations/0003_customer_identity.sql` establishes relational mapp
 - **Status**: done
 - **Owner**: identity
 
+### REQ-IDENT-009: Gemini Enterprise OAuth Token Verification & Multi-Issuer Account Linking
+- **Statement**: In addition to Firebase/Identity Platform ID tokens (`REQ-IDENT-003`), `TriageRouter` MUST support end-user Google OAuth 2.0 access tokens injected by Gemini Enterprise `authorizationConfig` into ADK session state under `temp:<GE_OAUTH_AUTH_ID>` or `<GE_OAUTH_AUTH_ID>` (default `support-customer-oauth`). Specifically:
+  1. `verify_google_oauth_token` MUST validate the raw access token server-side over HTTPS (`POST https://oauth2.googleapis.com/tokeninfo` with form body so raw tokens never appear in URL query strings), requiring HTTP 200 JSON, non-empty `sub`, positive `expires_in > 0`, and optional `expected_client_id` (`GE_OAUTH_CLIENT_ID`) matching `aud`, `azp`, or `issued_to` to prevent cross-client token replay, emitting `VerifiedIdentity(issuer="https://accounts.google.com", subject=sub, email_verified=..., exp=now + expires_in)`.
+  2. `resolve_identity` MUST prefer `customer_id_token` when present (preserving `REQ-IDENT-003` / `e2e_identity_check.py` parity) and otherwise verify `oauth_access_token`, caching verified mappings in server-side memory keyed by `SHA-256("oauth:" + token)` with TTL $\le \min(\text{exp}, \text{now} + 300\text{ s})$, and resolving `("https://accounts.google.com", sub)` to `customer_id` via `ticket-db-mcp` `resolve_customer(issuer, subject)` against the composite primary key `(issuer, subject)` in `customer_identities`.
+  3. Any unlinked, expired, malformed, or cross-client Google OAuth token MUST fail closed (`REQ-IDENT-004`: `customer_id=None, customer_verified=False`).
+- **Rationale**: Enables seamless browser OAuth 2.0 authorization in the Gemini Enterprise Web App UI (`Pattern C` multi-issuer account linking via `customer_identities`) without storing email PII in Postgres or breaking existing Identity Platform JWT flows.
+- **Acceptance**: `tests/identity/test_google_oauth_verification.py::test_google_oauth_verify_and_resolve`
+- **Status**: done
+- **Owner**: identity
+
 ---
 
 ## 4. Open Questions / Deltas

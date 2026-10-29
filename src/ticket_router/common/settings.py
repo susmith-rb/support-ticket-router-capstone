@@ -32,6 +32,8 @@ class Settings:
     require_real_deps: bool
     model_armor_template: str
     model_armor_enabled: bool
+    ge_oauth_auth_id: str = "support-customer-oauth"
+    ge_oauth_client_id: Optional[str] = None
 
     @classmethod
     def from_env(cls, env: Optional[Dict[str, str]] = None) -> Settings:
@@ -107,6 +109,14 @@ class Settings:
         else:
             model_armor_enabled = True
 
+        ge_oauth_auth_id = (
+            environ.get("GE_OAUTH_AUTH_ID", "support-customer-oauth").strip()
+            or "support-customer-oauth"
+        )
+        ge_oauth_client_id = (
+            environ.get("GE_OAUTH_CLIENT_ID", "").strip() or None
+        )
+
         return cls(
             project=project,
             location=location,
@@ -123,6 +133,8 @@ class Settings:
             require_real_deps=require_real_deps,
             model_armor_template=model_armor_template,
             model_armor_enabled=model_armor_enabled,
+            ge_oauth_auth_id=ge_oauth_auth_id,
+            ge_oauth_client_id=ge_oauth_client_id,
         )
 
     def validate_for_faq(self) -> None:

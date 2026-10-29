@@ -49,7 +49,7 @@ from ticket_router.common.resilience import (
     CircuitBreaker,
 )
 from ticket_router.common.settings import Settings
-from ticket_router.config.models import get, model_id
+from ticket_router.config.models import get, model_id, model_thinking_level
 from ticket_router.models.router_s1_client import RouterS1Client
 from ticket_router.security.model_armor import (
     ModelArmorClient,
@@ -208,10 +208,26 @@ class GeminiAnswerClient(LLMClientProtocol):
         )
 
         target_model = model_id or self.resolved_model_id
-        resp = client.models.generate_content(
-            model=target_model,
-            contents=prompt,
-        )
+        thinking_lvl = model_thinking_level(self.model_role)
+        call_kwargs: Dict[str, Any] = {
+            "model": target_model,
+            "contents": prompt,
+        }
+        if thinking_lvl:
+            try:
+                from google.genai import types as genai_types
+                if hasattr(genai_types, "GenerateContentConfig") and hasattr(genai_types, "ThinkingConfig"):
+                    call_kwargs["config"] = genai_types.GenerateContentConfig(
+                        thinking_config=genai_types.ThinkingConfig(thinking_level=thinking_lvl)
+                    )
+            except Exception:
+                pass
+
+        try:
+            resp = client.models.generate_content(**call_kwargs)
+        except TypeError:
+            call_kwargs.pop("config", None)
+            resp = client.models.generate_content(**call_kwargs)
         raw_text = ""
         try:
             raw_text = str(resp.text)
@@ -434,7 +450,13 @@ class FaqResolverAgent:
         order_id = self._extract_order_id(message)
         is_order_specific = bool(order_id) or (
             predicted_intent is not None
-            and predicted_intent in ("shipping", "refund", "order_status")
+            and predicted_intent in (
+                "shipping",
+                "refund",
+                "order_status",
+                "shipping_policy",
+                "returns_refunds",
+            )
             and any(
                 kw in message.lower()
                 for kw in ("order", "package", "tracking", "status", "delivery", "item", "where is", "track")
@@ -494,6 +516,37 @@ class FaqResolverAgent:
                 except Exception as exc:
                     logger.warning("Order lookup failed gracefully: %s", exc)
                     order_info = {"order_id": order_id, "status": "UNAVAILABLE"}
+            elif (
+                is_order_specific
+                and self.order_client is not None
+                and hasattr(self.order_client, "list_orders")
+                and tool_calls_count < self.max_tool_calls
+                and not self._is_budget_exhausted(t_start)
+            ):
+                tool_calls_count += 1
+                try:
+                    with start_span("faq_resolver.list_orders", {"ticket_id": ticket_id}):
+                        listed = self.order_client.list_orders(
+                            customer_id=customer_id or "",
+                            limit=5,
+                        )
+                    if listed and listed.get("orders"):
+                        order_info = listed
+                except BolaViolationError:
+                    return ResolutionResult(
+                        status="ESCALATED",
+                        route="human",
+                        queue="human-standard",
+                        reason="bola_violation",
+                        degraded=False,
+                        message="Inquiry routed to human specialist for account verification.",
+                        tool_calls_count=tool_calls_count,
+                        retrieval_passes_count=0,
+                        regeneration_count=0,
+                        latency_ms=self._elapsed_ms(t_start),
+                    )
+                except Exception as exc:
+                    logger.warning("Natural order lookup (list_orders) failed gracefully: %s", exc)
 
         # -----------------------------------------------------------------
         # Step 2: Agent Search Retrieval Pass

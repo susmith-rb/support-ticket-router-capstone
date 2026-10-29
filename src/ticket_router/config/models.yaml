@@ -7,6 +7,7 @@ models:
   answer:
     id: "gemini-3.8-flash"
     location: "global"
+    thinking_level: "LOW"
     notes: "FaqResolverAgent live answer synthesis and rag evaluation"
 
   judge:
