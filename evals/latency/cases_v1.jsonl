@@ -1,0 +1,32 @@
+{"case_id": "greeting_001", "path": "greeting", "message": "hey", "oauth": false, "expected_decision": "auto_rag"}
+{"case_id": "greeting_002", "path": "greeting", "message": "hello there", "oauth": false, "expected_decision": "auto_rag"}
+{"case_id": "greeting_003", "path": "greeting", "message": "good morning", "oauth": false, "expected_decision": "auto_rag"}
+{"case_id": "greeting_004", "path": "greeting", "message": "hi, how are you today?", "oauth": false, "expected_decision": "auto_rag"}
+{"case_id": "pleasantry_001", "path": "pleasantry", "message": "thanks!", "oauth": false, "expected_decision": "auto_rag"}
+{"case_id": "pleasantry_002", "path": "pleasantry", "message": "thank you so much", "oauth": false, "expected_decision": "auto_rag"}
+{"case_id": "pleasantry_003", "path": "pleasantry", "message": "have a wonderful day!", "oauth": false, "expected_decision": "auto_rag"}
+{"case_id": "pleasantry_004", "path": "pleasantry", "message": "appreciate your help", "oauth": false, "expected_decision": "auto_rag"}
+{"case_id": "policy_faq_001", "path": "policy_faq", "message": "What is your return policy?", "oauth": false, "expected_decision": "auto_rag"}
+{"case_id": "policy_faq_002", "path": "policy_faq", "message": "How long does standard shipping take?", "oauth": false, "expected_decision": "auto_rag"}
+{"case_id": "policy_faq_003", "path": "policy_faq", "message": "How do I reset my password?", "oauth": false, "expected_decision": "auto_rag"}
+{"case_id": "policy_faq_004", "path": "policy_faq", "message": "Do you ship to APO addresses?", "oauth": false, "expected_decision": "auto_rag"}
+{"case_id": "order_list_auth_001", "path": "order_list_auth", "message": "what are my orders recently ?", "oauth": true, "expected_decision": "auto_rag"}
+{"case_id": "order_list_auth_002", "path": "order_list_auth", "message": "what did I buy recently?", "oauth": true, "expected_decision": "auto_rag"}
+{"case_id": "order_list_auth_003", "path": "order_list_auth", "message": "show my recent purchases", "oauth": true, "expected_decision": "auto_rag"}
+{"case_id": "order_list_auth_004", "path": "order_list_auth", "message": "can you list my orders from the last month?", "oauth": true, "expected_decision": "auto_rag"}
+{"case_id": "order_id_auth_001", "path": "order_id_auth", "message": "Where is my order ORD-10001?", "oauth": true, "expected_decision": "auto_rag"}
+{"case_id": "order_id_auth_002", "path": "order_id_auth", "message": "What's the status of ORD-10101?", "oauth": true, "expected_decision": "auto_rag"}
+{"case_id": "order_id_auth_003", "path": "order_id_auth", "message": "track ORD-10151", "oauth": true, "expected_decision": "auto_rag"}
+{"case_id": "order_id_auth_004", "path": "order_id_auth", "message": "where is ORD-10042?", "oauth": true, "expected_decision": "auto_rag"}
+{"case_id": "order_anon_001", "path": "order_anon", "message": "what are my orders recently ?", "oauth": false, "expected_decision": "auto_rag"}
+{"case_id": "order_anon_002", "path": "order_anon", "message": "where is my package?", "oauth": false, "expected_decision": "auto_rag"}
+{"case_id": "order_anon_003", "path": "order_anon", "message": "status of ORD-10001", "oauth": false, "expected_decision": "auto_rag"}
+{"case_id": "order_anon_004", "path": "order_anon", "message": "track my shipment", "oauth": false, "expected_decision": "auto_rag"}
+{"case_id": "out_of_scope_001", "path": "out_of_scope", "message": "give me a stock price of google", "oauth": false, "expected_decision": "reject_oos"}
+{"case_id": "out_of_scope_002", "path": "out_of_scope", "message": "what's the weather in Paris?", "oauth": false, "expected_decision": "reject_oos"}
+{"case_id": "out_of_scope_003", "path": "out_of_scope", "message": "write me a poem about cats", "oauth": false, "expected_decision": "reject_oos"}
+{"case_id": "out_of_scope_004", "path": "out_of_scope", "message": "how many calories in a banana?", "oauth": false, "expected_decision": "reject_oos"}
+{"case_id": "escalation_001", "path": "escalation", "message": "not working ?", "oauth": false, "expected_decision": "escalate"}
+{"case_id": "escalation_002", "path": "escalation", "message": "I want to speak to a human agent", "oauth": false, "expected_decision": "escalate"}
+{"case_id": "escalation_003", "path": "escalation", "message": "this is the third time my refund failed and I'm furious", "oauth": false, "expected_decision": "escalate"}
+{"case_id": "escalation_004", "path": "escalation", "message": "let me talk to a real person right now", "oauth": false, "expected_decision": "escalate"}

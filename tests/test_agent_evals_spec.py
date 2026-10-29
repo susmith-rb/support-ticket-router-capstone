@@ -26,7 +26,8 @@ SPEC_FILE = REPO_ROOT / "specs" / "agent-evals.md"
 INDEX_FILE = REPO_ROOT / "specs" / "README.md"
 
 REQ_HEADER_PATTERN = re.compile(r"^###\s+(REQ-EVAL-\d{3})(?::\s*(.*))?$")
-EXPECTED_REQS = [f"REQ-EVAL-{i:03d}" for i in range(1, 11)]
+EXPECTED_REQS = [f"REQ-EVAL-{i:03d}" for i in range(1, 12)]
+DONE_REQS = {"REQ-EVAL-011"}  # live latency benchmark (implemented)
 
 
 def _read_spec_text() -> str:
@@ -102,6 +103,7 @@ def test_all_eval_requirements_defined_and_open():
     # REQ-EVAL-008
     # REQ-EVAL-009
     # REQ-EVAL-010
+    # REQ-EVAL-011
     reqs = _parse_eval_requirements()
     assert sorted(reqs.keys()) == EXPECTED_REQS, f"Expected {EXPECTED_REQS}, got {sorted(reqs.keys())}"
 
@@ -110,7 +112,8 @@ def test_all_eval_requirements_defined_and_open():
         assert req["statement"], f"Missing statement in {req_id}"
         assert req["rationale"], f"Missing rationale in {req_id}"
         assert req["acceptance"], f"Missing acceptance in {req_id}"
-        assert req["status"] == "open", f"Expected status 'open' in {req_id}, got '{req['status']}'"
+        expected_status = "done" if req_id in DONE_REQS else "open"
+        assert req["status"] == expected_status, f"Expected status '{expected_status}' in {req_id}, got '{req['status']}'"
         assert req["owner"] == "agent-evals", f"Expected owner 'agent-evals' in {req_id}, got '{req['owner']}'"
 
 

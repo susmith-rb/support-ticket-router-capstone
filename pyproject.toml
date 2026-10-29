@@ -82,6 +82,7 @@ packages = [
     "ticket_router.agents.faq_resolver",
     "ticket_router.agents.human_queue",
     "evals",
+    "evals.latency",
     "corpus",
     "experiments",
     "training",
@@ -91,4 +92,5 @@ packages = [
 
 [tool.setuptools.package-data]
 "ticket_router.config" = ["models.yaml", "taxonomy.yaml", "agent_tuning.yaml"]
+"evals.latency" = ["cases_v1.jsonl"]
 

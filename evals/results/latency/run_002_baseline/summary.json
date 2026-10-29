@@ -1,0 +1,1076 @@
+{
+  "total_requests": 160,
+  "total_errors": 0,
+  "overall_error_rate": 0.0,
+  "overall_decision_match_rate": 0.9125,
+  "paths": {
+    "greeting": {
+      "n": 20,
+      "error_count": 0,
+      "error_rate": 0.0,
+      "error_codes": {},
+      "decision_match_rate": 1.0,
+      "tier_distribution": {
+        "tier0_rules": 20
+      },
+      "decision_distribution": {
+        "auto_rag": 20
+      },
+      "dominant_tier": "tier0_rules",
+      "metrics": {
+        "client_total_ms": {
+          "count": 20,
+          "p50": 1223.14,
+          "p95": 1496.01,
+          "max": 1638.75
+        },
+        "ttfb_ms": {
+          "count": 20,
+          "p50": 1036.07,
+          "p95": 1316.82,
+          "max": 1469.28
+        },
+        "turn_ms": {
+          "count": 20,
+          "p50": 350.24,
+          "p95": 400.04,
+          "max": 441.55
+        },
+        "agent_engine_overhead_ms": {
+          "count": 20,
+          "p50": 884.38,
+          "p95": 1095.62,
+          "max": 1240.9
+        },
+        "routing_ms": {
+          "count": 20,
+          "p50": 0.22,
+          "p95": 0.51,
+          "max": 0.56
+        },
+        "resolve_customer_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "upsert_ticket_ms": {
+          "count": 20,
+          "p50": 349.71,
+          "p95": 399.44,
+          "max": 440.87
+        },
+        "a2a_handoff_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "faq_resolve_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "a2a_overhead_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "list_orders_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "get_order_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "search_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "rerank_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "generate_answer_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "model_armor_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        }
+      },
+      "cold_vs_warm": {
+        "cold_count": 1,
+        "cold_p50": 1488.5,
+        "cold_p95": 1488.5,
+        "warm_count": 19,
+        "warm_p50": 1220.92,
+        "warm_p95": 1468.69
+      }
+    },
+    "pleasantry": {
+      "n": 20,
+      "error_count": 0,
+      "error_rate": 0.0,
+      "error_codes": {},
+      "decision_match_rate": 0.95,
+      "tier_distribution": {
+        "tier0_rules": 10,
+        "tier2_flash": 10
+      },
+      "decision_distribution": {
+        "auto_rag": 19,
+        "escalate": 1
+      },
+      "dominant_tier": "tier0_rules",
+      "metrics": {
+        "client_total_ms": {
+          "count": 20,
+          "p50": 4174.23,
+          "p95": 25312.78,
+          "max": 36006.13
+        },
+        "ttfb_ms": {
+          "count": 20,
+          "p50": 3999.7,
+          "p95": 25137.61,
+          "max": 35844.37
+        },
+        "turn_ms": {
+          "count": 20,
+          "p50": 3026.68,
+          "p95": 24323.98,
+          "max": 35179.75
+        },
+        "agent_engine_overhead_ms": {
+          "count": 20,
+          "p50": 861.94,
+          "p95": 1329.79,
+          "max": 1558.4
+        },
+        "routing_ms": {
+          "count": 20,
+          "p50": 1034.32,
+          "p95": 9707.19,
+          "max": 30526.64
+        },
+        "resolve_customer_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "upsert_ticket_ms": {
+          "count": 20,
+          "p50": 315.24,
+          "p95": 374.45,
+          "max": 403.0
+        },
+        "a2a_handoff_ms": {
+          "count": 10,
+          "p50": 2935.53,
+          "p95": 14471.96,
+          "max": 20025.53
+        },
+        "faq_resolve_ms": {
+          "count": 10,
+          "p50": 2752.28,
+          "p95": 27445.82,
+          "max": 43767.96
+        },
+        "a2a_overhead_ms": {
+          "count": 10,
+          "p50": 166.33,
+          "p95": 321.68,
+          "max": 361.67
+        },
+        "list_orders_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "get_order_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "search_ms": {
+          "count": 10,
+          "p50": 308.81,
+          "p95": 386.2,
+          "max": 424.89
+        },
+        "rerank_ms": {
+          "count": 10,
+          "p50": 123.41,
+          "p95": 309.22,
+          "max": 451.62
+        },
+        "generate_answer_ms": {
+          "count": 10,
+          "p50": 2128.59,
+          "p95": 26691.68,
+          "max": 42838.48
+        },
+        "model_armor_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        }
+      },
+      "cold_vs_warm": {
+        "cold_count": 1,
+        "cold_p50": 1415.38,
+        "cold_p95": 1415.38,
+        "warm_count": 19,
+        "warm_p50": 6416.56,
+        "warm_p95": 25875.59
+      }
+    },
+    "policy_faq": {
+      "n": 20,
+      "error_count": 0,
+      "error_rate": 0.0,
+      "error_codes": {},
+      "decision_match_rate": 0.8,
+      "tier_distribution": {
+        "tier1_router_s1": 20
+      },
+      "decision_distribution": {
+        "escalate": 4,
+        "auto_rag": 16
+      },
+      "dominant_tier": "tier1_router_s1",
+      "metrics": {
+        "client_total_ms": {
+          "count": 20,
+          "p50": 4658.4,
+          "p95": 21693.63,
+          "max": 21969.83
+        },
+        "ttfb_ms": {
+          "count": 20,
+          "p50": 4470.81,
+          "p95": 21442.62,
+          "max": 21706.38
+        },
+        "turn_ms": {
+          "count": 20,
+          "p50": 3765.0,
+          "p95": 20789.28,
+          "max": 20843.1
+        },
+        "agent_engine_overhead_ms": {
+          "count": 20,
+          "p50": 873.61,
+          "p95": 1147.63,
+          "max": 1544.66
+        },
+        "routing_ms": {
+          "count": 20,
+          "p50": 151.38,
+          "p95": 401.63,
+          "max": 519.0
+        },
+        "resolve_customer_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "upsert_ticket_ms": {
+          "count": 20,
+          "p50": 244.06,
+          "p95": 292.36,
+          "max": 303.57
+        },
+        "a2a_handoff_ms": {
+          "count": 20,
+          "p50": 3334.8,
+          "p95": 20044.32,
+          "max": 20181.62
+        },
+        "faq_resolve_ms": {
+          "count": 20,
+          "p50": 3162.85,
+          "p95": 34467.54,
+          "max": 42619.44
+        },
+        "a2a_overhead_ms": {
+          "count": 20,
+          "p50": 164.42,
+          "p95": 229.98,
+          "max": 274.3
+        },
+        "list_orders_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "get_order_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "search_ms": {
+          "count": 20,
+          "p50": 275.88,
+          "p95": 365.44,
+          "max": 445.9
+        },
+        "rerank_ms": {
+          "count": 20,
+          "p50": 123.06,
+          "p95": 138.27,
+          "max": 144.06
+        },
+        "generate_answer_ms": {
+          "count": 20,
+          "p50": 2572.55,
+          "p95": 33979.3,
+          "max": 41997.78
+        },
+        "model_armor_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        }
+      },
+      "cold_vs_warm": {
+        "cold_count": 1,
+        "cold_p50": 21640.33,
+        "cold_p95": 21640.33,
+        "warm_count": 19,
+        "warm_p50": 4648.53,
+        "warm_p95": 21708.16
+      }
+    },
+    "order_list_auth": {
+      "n": 20,
+      "error_count": 0,
+      "error_rate": 0.0,
+      "error_codes": {},
+      "decision_match_rate": 0.8,
+      "tier_distribution": {
+        "tier2_flash": 18,
+        "model_armor": 2
+      },
+      "decision_distribution": {
+        "auto_rag": 16,
+        "escalate": 4
+      },
+      "dominant_tier": "tier2_flash",
+      "metrics": {
+        "client_total_ms": {
+          "count": 20,
+          "p50": 12508.48,
+          "p95": 42320.31,
+          "max": 49129.09
+        },
+        "ttfb_ms": {
+          "count": 20,
+          "p50": 12242.95,
+          "p95": 42061.86,
+          "max": 47631.94
+        },
+        "turn_ms": {
+          "count": 20,
+          "p50": 11564.81,
+          "p95": 41455.12,
+          "max": 46668.48
+        },
+        "agent_engine_overhead_ms": {
+          "count": 20,
+          "p50": 875.54,
+          "p95": 1368.68,
+          "max": 2460.61
+        },
+        "routing_ms": {
+          "count": 20,
+          "p50": 4018.52,
+          "p95": 26358.05,
+          "max": 35254.6
+        },
+        "resolve_customer_ms": {
+          "count": 7,
+          "p50": 225.72,
+          "p95": 233.88,
+          "max": 234.3
+        },
+        "upsert_ticket_ms": {
+          "count": 20,
+          "p50": 260.37,
+          "p95": 301.77,
+          "max": 306.82
+        },
+        "a2a_handoff_ms": {
+          "count": 18,
+          "p50": 6052.66,
+          "p95": 20026.13,
+          "max": 20026.44
+        },
+        "faq_resolve_ms": {
+          "count": 18,
+          "p50": 5804.14,
+          "p95": 30824.27,
+          "max": 31896.83
+        },
+        "a2a_overhead_ms": {
+          "count": 18,
+          "p50": 158.03,
+          "p95": 317.05,
+          "max": 375.79
+        },
+        "list_orders_ms": {
+          "count": 18,
+          "p50": 136.97,
+          "p95": 237.98,
+          "max": 314.56
+        },
+        "get_order_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "search_ms": {
+          "count": 18,
+          "p50": 300.01,
+          "p95": 476.64,
+          "max": 763.31
+        },
+        "rerank_ms": {
+          "count": 18,
+          "p50": 118.73,
+          "p95": 179.96,
+          "max": 296.85
+        },
+        "generate_answer_ms": {
+          "count": 18,
+          "p50": 4906.22,
+          "p95": 29948.79,
+          "max": 31195.94
+        },
+        "model_armor_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        }
+      },
+      "cold_vs_warm": {
+        "cold_count": 1,
+        "cold_p50": 14038.0,
+        "cold_p95": 14038.0,
+        "warm_count": 19,
+        "warm_p50": 11704.93,
+        "warm_p95": 42678.66
+      }
+    },
+    "order_id_auth": {
+      "n": 20,
+      "error_count": 0,
+      "error_rate": 0.0,
+      "error_codes": {},
+      "decision_match_rate": 0.75,
+      "tier_distribution": {
+        "tier1_router_s1": 15,
+        "tier2_flash": 5
+      },
+      "decision_distribution": {
+        "auto_rag": 15,
+        "escalate": 5
+      },
+      "dominant_tier": "tier1_router_s1",
+      "metrics": {
+        "client_total_ms": {
+          "count": 20,
+          "p50": 7356.93,
+          "p95": 23367.43,
+          "max": 45699.75
+        },
+        "ttfb_ms": {
+          "count": 20,
+          "p50": 7131.02,
+          "p95": 23137.32,
+          "max": 45433.88
+        },
+        "turn_ms": {
+          "count": 20,
+          "p50": 6382.49,
+          "p95": 22422.02,
+          "max": 44700.67
+        },
+        "agent_engine_overhead_ms": {
+          "count": 20,
+          "p50": 956.43,
+          "p95": 1080.28,
+          "max": 1137.15
+        },
+        "routing_ms": {
+          "count": 20,
+          "p50": 196.86,
+          "p95": 11892.07,
+          "max": 24128.8
+        },
+        "resolve_customer_ms": {
+          "count": 6,
+          "p50": 228.34,
+          "p95": 249.31,
+          "max": 250.12
+        },
+        "upsert_ticket_ms": {
+          "count": 20,
+          "p50": 252.9,
+          "p95": 299.83,
+          "max": 328.23
+        },
+        "a2a_handoff_ms": {
+          "count": 20,
+          "p50": 4201.01,
+          "p95": 20028.66,
+          "max": 20028.77
+        },
+        "faq_resolve_ms": {
+          "count": 20,
+          "p50": 4029.61,
+          "p95": 28822.93,
+          "max": 29665.21
+        },
+        "a2a_overhead_ms": {
+          "count": 20,
+          "p50": 147.56,
+          "p95": 246.21,
+          "max": 247.32
+        },
+        "list_orders_ms": {
+          "count": 15,
+          "p50": 147.53,
+          "p95": 191.5,
+          "max": 204.85
+        },
+        "get_order_ms": {
+          "count": 5,
+          "p50": 127.28,
+          "p95": 144.44,
+          "max": 146.01
+        },
+        "search_ms": {
+          "count": 20,
+          "p50": 289.62,
+          "p95": 383.51,
+          "max": 435.02
+        },
+        "rerank_ms": {
+          "count": 20,
+          "p50": 118.84,
+          "p95": 131.66,
+          "max": 142.17
+        },
+        "generate_answer_ms": {
+          "count": 20,
+          "p50": 3369.68,
+          "p95": 28152.24,
+          "max": 28956.92
+        },
+        "model_armor_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        }
+      },
+      "cold_vs_warm": {
+        "cold_count": 1,
+        "cold_p50": 18550.26,
+        "cold_p95": 18550.26,
+        "warm_count": 19,
+        "warm_p50": 6496.25,
+        "warm_p95": 24542.81
+      }
+    },
+    "order_anon": {
+      "n": 20,
+      "error_count": 0,
+      "error_rate": 0.0,
+      "error_codes": {},
+      "decision_match_rate": 1.0,
+      "tier_distribution": {
+        "tier2_flash": 5,
+        "tier1_router_s1": 15
+      },
+      "decision_distribution": {
+        "auto_rag": 20
+      },
+      "dominant_tier": "tier1_router_s1",
+      "metrics": {
+        "client_total_ms": {
+          "count": 20,
+          "p50": 1587.13,
+          "p95": 18187.32,
+          "max": 30588.79
+        },
+        "ttfb_ms": {
+          "count": 20,
+          "p50": 1330.03,
+          "p95": 18024.09,
+          "max": 30412.55
+        },
+        "turn_ms": {
+          "count": 20,
+          "p50": 623.0,
+          "p95": 17199.9,
+          "max": 29725.56
+        },
+        "agent_engine_overhead_ms": {
+          "count": 20,
+          "p50": 930.76,
+          "p95": 1412.7,
+          "max": 1761.6
+        },
+        "routing_ms": {
+          "count": 20,
+          "p50": 188.85,
+          "p95": 16773.08,
+          "max": 29239.54
+        },
+        "resolve_customer_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "upsert_ticket_ms": {
+          "count": 20,
+          "p50": 246.21,
+          "p95": 289.52,
+          "max": 297.83
+        },
+        "a2a_handoff_ms": {
+          "count": 20,
+          "p50": 122.27,
+          "p95": 284.13,
+          "max": 311.39
+        },
+        "faq_resolve_ms": {
+          "count": 20,
+          "p50": 0.09,
+          "p95": 0.13,
+          "max": 0.13
+        },
+        "a2a_overhead_ms": {
+          "count": 20,
+          "p50": 122.2,
+          "p95": 284.01,
+          "max": 311.26
+        },
+        "list_orders_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "get_order_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "search_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "rerank_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "generate_answer_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "model_armor_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        }
+      },
+      "cold_vs_warm": {
+        "cold_count": 1,
+        "cold_p50": 4305.76,
+        "cold_p95": 4305.76,
+        "warm_count": 19,
+        "warm_p50": 1574.42,
+        "warm_p95": 18840.03
+      }
+    },
+    "out_of_scope": {
+      "n": 20,
+      "error_count": 0,
+      "error_rate": 0.0,
+      "error_codes": {},
+      "decision_match_rate": 1.0,
+      "tier_distribution": {
+        "tier2_flash": 20
+      },
+      "decision_distribution": {
+        "reject_oos": 20
+      },
+      "dominant_tier": "tier2_flash",
+      "metrics": {
+        "client_total_ms": {
+          "count": 20,
+          "p50": 4729.33,
+          "p95": 29657.75,
+          "max": 31451.0
+        },
+        "ttfb_ms": {
+          "count": 20,
+          "p50": 4516.29,
+          "p95": 29411.27,
+          "max": 31297.55
+        },
+        "turn_ms": {
+          "count": 20,
+          "p50": 3749.77,
+          "p95": 28709.02,
+          "max": 30517.05
+        },
+        "agent_engine_overhead_ms": {
+          "count": 20,
+          "p50": 937.37,
+          "p95": 1492.0,
+          "max": 1650.65
+        },
+        "routing_ms": {
+          "count": 20,
+          "p50": 3379.49,
+          "p95": 28280.84,
+          "max": 30125.65
+        },
+        "resolve_customer_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "upsert_ticket_ms": {
+          "count": 20,
+          "p50": 374.5,
+          "p95": 431.24,
+          "max": 459.64
+        },
+        "a2a_handoff_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "faq_resolve_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "a2a_overhead_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "list_orders_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "get_order_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "search_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "rerank_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "generate_answer_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "model_armor_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        }
+      },
+      "cold_vs_warm": {
+        "cold_count": 1,
+        "cold_p50": 5052.39,
+        "cold_p95": 5052.39,
+        "warm_count": 19,
+        "warm_p50": 4725.34,
+        "warm_p95": 29752.13
+      }
+    },
+    "escalation": {
+      "n": 20,
+      "error_count": 0,
+      "error_rate": 0.0,
+      "error_codes": {},
+      "decision_match_rate": 1.0,
+      "tier_distribution": {
+        "tier2_flash": 5,
+        "tier0_rules": 10,
+        "tier1_router_s1": 5
+      },
+      "decision_distribution": {
+        "escalate": 20
+      },
+      "dominant_tier": "tier0_rules",
+      "metrics": {
+        "client_total_ms": {
+          "count": 20,
+          "p50": 1243.91,
+          "p95": 6866.39,
+          "max": 7684.78
+        },
+        "ttfb_ms": {
+          "count": 20,
+          "p50": 1045.44,
+          "p95": 6650.99,
+          "max": 7560.78
+        },
+        "turn_ms": {
+          "count": 20,
+          "p50": 312.18,
+          "p95": 5988.09,
+          "max": 6835.61
+        },
+        "agent_engine_overhead_ms": {
+          "count": 20,
+          "p50": 897.24,
+          "p95": 2613.41,
+          "max": 2732.02
+        },
+        "routing_ms": {
+          "count": 20,
+          "p50": 54.15,
+          "p95": 5729.59,
+          "max": 6584.08
+        },
+        "resolve_customer_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "upsert_ticket_ms": {
+          "count": 20,
+          "p50": 245.74,
+          "p95": 260.87,
+          "max": 289.25
+        },
+        "a2a_handoff_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "faq_resolve_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "a2a_overhead_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "list_orders_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "get_order_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "search_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "rerank_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "generate_answer_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "model_armor_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        }
+      },
+      "cold_vs_warm": {
+        "cold_count": 1,
+        "cold_p50": 7684.78,
+        "cold_p95": 7684.78,
+        "warm_count": 19,
+        "warm_p50": 1196.18,
+        "warm_p95": 6718.66
+      }
+    }
+  },
+  "overall_metrics": {
+    "client_total_ms": {
+      "count": 160,
+      "p50": 4438.83,
+      "p95": 26374.03,
+      "max": 49129.09
+    },
+    "ttfb_ms": {
+      "count": 160,
+      "p50": 4215.48,
+      "p95": 26122.08,
+      "max": 47631.94
+    },
+    "turn_ms": {
+      "count": 160,
+      "p50": 3426.58,
+      "p95": 25401.09,
+      "max": 46668.48
+    },
+    "agent_engine_overhead_ms": {
+      "count": 160,
+      "p50": 913.01,
+      "p95": 1398.81,
+      "max": 2732.02
+    },
+    "routing_ms": {
+      "count": 160,
+      "p50": 196.86,
+      "p95": 23207.07,
+      "max": 35254.6
+    },
+    "resolve_customer_ms": {
+      "count": 13,
+      "p50": 225.72,
+      "p95": 248.18,
+      "max": 250.12
+    },
+    "upsert_ticket_ms": {
+      "count": 160,
+      "p50": 262.66,
+      "p95": 391.69,
+      "max": 459.64
+    },
+    "a2a_handoff_ms": {
+      "count": 88,
+      "p50": 3365.68,
+      "p95": 20026.75,
+      "max": 20181.62
+    },
+    "faq_resolve_ms": {
+      "count": 88,
+      "p50": 3198.19,
+      "p95": 30295.57,
+      "max": 43767.96
+    },
+    "a2a_overhead_ms": {
+      "count": 88,
+      "p50": 153.55,
+      "p95": 279.68,
+      "max": 375.79
+    },
+    "list_orders_ms": {
+      "count": 33,
+      "p50": 139.21,
+      "p95": 212.7,
+      "max": 314.56
+    },
+    "get_order_ms": {
+      "count": 5,
+      "p50": 127.28,
+      "p95": 144.44,
+      "max": 146.01
+    },
+    "search_ms": {
+      "count": 68,
+      "p50": 284.83,
+      "p95": 425.64,
+      "max": 763.31
+    },
+    "rerank_ms": {
+      "count": 68,
+      "p50": 120.28,
+      "p95": 143.4,
+      "max": 451.62
+    },
+    "generate_answer_ms": {
+      "count": 68,
+      "p50": 3777.64,
+      "p95": 30682.41,
+      "max": 42838.48
+    },
+    "model_armor_ms": {
+      "count": 0,
+      "p50": null,
+      "p95": null,
+      "max": null
+    }
+  }
+}
