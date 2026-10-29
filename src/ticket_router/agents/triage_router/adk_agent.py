@@ -229,6 +229,9 @@ def extract_answer_from_result(result: TriageResult) -> str:
         calming = result.handoff_response.get("calming_ack")
         if calming:
             return str(calming)
+        msg = result.handoff_response.get("message")
+        if msg:
+            return str(msg)
         status = result.handoff_response.get("status")
         if status:
             return f"Your request has been routed for automated resolution (status: {status})."

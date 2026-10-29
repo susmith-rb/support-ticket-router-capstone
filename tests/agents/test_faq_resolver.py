@@ -43,6 +43,7 @@ from ticket_router.agents.faq_resolver.mcp_client import (
 from ticket_router.agents.faq_resolver.reranker import FakeReranker
 from ticket_router.agents.faq_resolver.search import (
     build_production_search_kwargs,
+    execute_faq_search,
 )
 from ticket_router.agents.faq_resolver.validator import (
     CitationValidator,
@@ -893,6 +894,103 @@ def test_faq_resolver_unverified_customer_order_inquiry_sign_in_prompt():
     assert res.retrieval_passes_count == 0
     assert len(order_client.call_history) == 0
     assert len(fake_llm.recorded_order_info) == 0
+
+
+class SnippetSearchFake:
+    """Fake search client returning HTML-highlighted snippet and title."""
+
+    def search(self, **kwargs: Any) -> Any:
+        return {
+            "document_ids": ["faq-orders-dispatch"],
+            "raw_results": [
+                {
+                    "document": {
+                        "id": "faq-orders-dispatch",
+                        "derivedStructData": {
+                            "title": "<b>Order Status</b> &amp; Tracking",
+                            "snippets": [
+                                {
+                                    "snippet": (
+                                        "- <b>order status</b> says preparing for dispatch ... "
+                                        "<b>Your Orders</b> section of <b>your</b> Global Retail Hub account.&nbsp;..."
+                                    )
+                                }
+                            ],
+                        },
+                        "structData": {},
+                    }
+                }
+            ],
+        }
+
+
+# REQ-AGENT-008
+def test_citation_validator_and_search_strip_discovery_engine_html_highlights():
+    """Verify CitationValidator and execute_faq_search strip Discovery Engine HTML highlight tags and entities."""
+    # 1. Direct is_verbatim_citation check
+    quote = "Your Orders section of your Global Retail Hub account."
+    html_doc = (
+        "- <b>order status</b> says preparing for dispatch ... "
+        "<b>Your Orders</b> section of <b>your</b> Global Retail Hub account.&nbsp;..."
+    )
+    assert is_verbatim_citation(quote, html_doc) is True
+
+    # 2. CitationValidator().validate() accepts verbatim quote against HTML snippet with entities
+    validator = CitationValidator()
+    snippet_content = (
+        "- <b>order status</b> says preparing for dispatch ... "
+        "<b>Your Orders</b> section of <b>your</b> Global Retail Hub account.&nbsp;"
+        "Visit &amp; track items you&#39;ve purchased."
+    )
+    retrieved_docs = {
+        "faq-orders-dispatch": {
+            "title": "Order Dispatch &amp; Tracking",
+            "content": snippet_content,
+        }
+    }
+
+    valid_answer = {
+        "citations": [
+            {
+                "doc_id": "faq-orders-dispatch",
+                "quote": "Your Orders section of your Global Retail Hub account.",
+            }
+        ]
+    }
+    result_valid = validator.validate(valid_answer, retrieved_docs)
+    assert result_valid.is_valid is True
+    assert len(result_valid.citations) == 1
+    assert result_valid.citations[0].doc_id == "faq-orders-dispatch"
+
+    # Still rejects a paraphrased quote against the same HTML snippet
+    paraphrased_answer = {
+        "citations": [
+            {
+                "doc_id": "faq-orders-dispatch",
+                "quote": "Check the orders page on your retail account.",
+            }
+        ]
+    }
+    result_invalid = validator.validate(paraphrased_answer, retrieved_docs)
+    assert result_invalid.is_valid is False
+    assert result_invalid.reason == "paraphrased_quote"
+
+    # 3. execute_faq_search cleans <b>...</b> and &nbsp; out of derivedStructData.snippets
+    search_exec_res = execute_faq_search(
+        client=SnippetSearchFake(),
+        query="order status",
+    )
+    assert search_exec_res.success is True
+    assert "faq-orders-dispatch" in search_exec_res.documents
+    doc = search_exec_res.documents["faq-orders-dispatch"]
+    assert "<b>" not in doc.content
+    assert "</b>" not in doc.content
+    assert "&nbsp;" not in doc.content
+    assert "\xa0" not in doc.content
+    assert "Your Orders section of your Global Retail Hub account." in doc.content
+    assert doc.title == "Order Status & Tracking"
+
+
 
 
 

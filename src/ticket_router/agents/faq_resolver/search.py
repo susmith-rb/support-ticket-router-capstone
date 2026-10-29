@@ -8,6 +8,8 @@ page_size=10, fallback_min_results=2).
 
 from __future__ import annotations
 
+import html
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -20,6 +22,15 @@ from ticket_router.common.resilience import (
 )
 
 PRODUCTION_CONFIG_NAME: str = "intent_soft_noisy_0.2"
+
+
+def clean_snippet_html(text: str) -> str:
+    """Strip inline HTML highlight tags, unescape entities, and normalize whitespace."""
+    if not text:
+        return ""
+    no_tags = re.sub(r"</?(?:b|strong|em|i|mark|span)\b[^>]*>", "", text, flags=re.IGNORECASE)
+    unescaped = html.unescape(no_tags)
+    return re.sub(r"\s+", " ", unescaped).strip()
 
 
 def build_production_search_kwargs(
@@ -139,9 +150,15 @@ def execute_faq_search(
 
             derived = doc.get("derivedStructData", {}) if isinstance(doc, dict) else {}
             struct = doc.get("structData", {}) if isinstance(doc, dict) else {}
-            title = derived.get("title") or struct.get("title") or d_id
+            raw_title = derived.get("title") or struct.get("title") or d_id
+            title = clean_snippet_html(str(raw_title)) or d_id
             snippets = derived.get("snippets", [])
-            snippet_text = snippets[0].get("snippet", "") if snippets else ""
+            snippet_text = " ".join(
+                cleaned
+                for s in snippets
+                if isinstance(s, dict)
+                and (cleaned := clean_snippet_html(str(s.get("snippet", ""))))
+            )
             content = struct.get("content") or snippet_text or title
 
             documents[d_id] = RetrievedDocument(

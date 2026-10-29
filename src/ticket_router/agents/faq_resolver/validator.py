@@ -7,6 +7,7 @@ quote is verbatim present in the retrieved FAQ article text.
 
 from __future__ import annotations
 
+import html
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Union
@@ -15,13 +16,18 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 def norm(s: str) -> str:
     """Normalize text for verbatim citation comparison.
 
-    Strips markdown formatting (*, _, `, #, >), collapses consecutive whitespace,
+    Strips inline HTML highlight/formatting tags, unescapes HTML entities,
+    strips markdown formatting (*, _, `, #, >), collapses consecutive whitespace,
     and converts to lowercase. Preserves exact alphanumeric substring ordering.
     """
     if not s:
         return ""
+    # Strip inline HTML highlight tags from Discovery Engine snippets
+    no_html_tags = re.sub(r"</?(?:b|strong|em|i|mark|span)\b[^>]*>", "", s, flags=re.IGNORECASE)
+    # Unescape HTML entities (e.g. &nbsp;, &amp;, &#39;)
+    unescaped = html.unescape(no_html_tags)
     # Strip markdown syntax characters and collapse whitespace
-    no_md = re.sub(r"[*_`#>]", "", s)
+    no_md = re.sub(r"[*_`#>]", "", unescaped)
     return re.sub(r"\s+", " ", no_md).strip().lower()
 
 

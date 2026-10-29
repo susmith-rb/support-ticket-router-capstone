@@ -161,8 +161,8 @@ src/ticket_router/
 - **Owner**: agent-service
 
 ### REQ-AGENT-008: Mandatory Grounded Citations with Non-Hallucination Fallback
-- **Statement**: Every answer synthesized by `FaqResolverAgent` MUST include $\ge 1$ verbatim citation quotation matching text in the retrieved `faq-articles` documents. If citation validation fails, the agent MUST attempt exactly one answer regeneration with explicit grounding constraints. If validation fails a second time, the agent MUST NOT return an ungrounded or speculative response to the customer; it MUST update ticket status to `ESCALATED`, assign queue `human-standard` with reason `uncited_answer`, and return a calming handoff message.
-- **Rationale**: Prevents hallucinated retail policies and enforces the zero-unverified-answer invariant (TDD §3.3, §6.4).
+- **Statement**: Every answer synthesized by `FaqResolverAgent` MUST include $\ge 1$ verbatim citation quotation matching text in the retrieved `faq-articles` documents. Citation validation and search snippet ingestion MUST normalize inline HTML highlight tags (e.g. `<b>`, `<strong>`, `<em>`, `<i>`, `<mark>`, `<span>`) and HTML entities (e.g. `&nbsp;`, `&amp;`, `&#39;`) from Agent Search snippets while preserving strict alphanumeric substring matching. If citation validation fails, the agent MUST attempt exactly one answer regeneration with explicit grounding constraints. If validation fails a second time, the agent MUST NOT return an ungrounded or speculative response to the customer; it MUST update ticket status to `ESCALATED`, assign queue `human-standard` with reason `uncited_answer`, and return a calming handoff message.
+- **Rationale**: Prevents hallucinated retail policies, tolerates Discovery Engine snippet highlight markup, and enforces the zero-unverified-answer invariant (TDD §3.3, §6.4).
 - **Acceptance**: `tests/agents/test_faq_resolver.py::test_mandatory_citations_or_escalate`
 - **Status**: done
 - **Owner**: agent-service

@@ -14,14 +14,16 @@ from typing import Any
 from ticket_router.agents.triage_router.a2a_client import InMemoryA2AClient
 from ticket_router.agents.triage_router.adk_agent import (
     TriageRouterAdkAgent,
+    extract_answer_from_result,
     extract_caller_user_id_for_audit,
     extract_session_id,
     extract_text_from_context,
     root_agent,
 )
-from ticket_router.agents.triage_router.agent import TriageRouterAgent
+from ticket_router.agents.triage_router.agent import TriageResult, TriageRouterAgent
 from ticket_router.agents.triage_router.mcp_client import InMemoryTicketDbMcpClient
 from ticket_router.agents.triage_router.policy import (
+    RouterDecision,
     RouterThresholds,
     TriagePolicy,
 )
@@ -228,4 +230,35 @@ def test_adk_agent_cloudpickle_private_attr_recovery():
     resolved_router = agent._get_router()
     assert isinstance(resolved_router, TriageRouterAgent)
     assert agent._router is resolved_router
+
+
+def test_extract_answer_from_result_uses_handoff_message():
+    """Verify extract_answer_from_result returns handoff_response['message'] when answer and calming_ack are None."""
+    decision = RouterDecision(
+        ticket_id="t-esc-msg",
+        session_id="s-esc-msg",
+        decision="auto_rag",
+        tier="tier1_router_s1",
+        queue="none",
+        predicted_intent="faq",
+        escalate=False,
+        sentiment="neutral",
+        urgency="normal",
+        reason="faq_route",
+    )
+    result = TriageResult(
+        ticket_id="t-esc-msg",
+        session_id="s-esc-msg",
+        decision=decision,
+        calming_ack=None,
+        handoff_response={
+            "status": "ESCALATED",
+            "answer": None,
+            "calming_ack": None,
+            "message": "To ensure complete accuracy, I've escalated your ticket to our support specialists.",
+        },
+    )
+    extracted = extract_answer_from_result(result)
+    assert extracted == "To ensure complete accuracy, I've escalated your ticket to our support specialists."
+
 
