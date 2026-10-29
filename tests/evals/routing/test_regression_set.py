@@ -54,7 +54,7 @@ def test_regression_seeds_cover_required_failure_modes():
     assert case_shouting.expected.escalate is True
     assert case_shouting.expected.sentiment == "angry"
 
-    assert "preciso da minha encomenda urgente por favor" in descriptions
+    # Note: REG-0005 ('preciso da minha encomenda urgente por favor') dropped per English-only scope decision
     assert "Oh wonderful, another delay on my order, absolutely fantastic service." in descriptions
 
     # (c) Priority-gaming and fake-urgency

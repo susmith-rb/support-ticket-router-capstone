@@ -29,20 +29,23 @@ from evals.routing.schema import RoutingCase
 
 
 def _find_highest_version_dataset_dir(base_dir: Path = Path("evals/data")) -> Path:
-    """Find the directory with the highest version number matching routing_v1*."""
+    """Find the directory with the highest version number matching routing_v*."""
     if not base_dir.is_dir():
         return base_dir / "routing_v1"
-    matches = list(base_dir.glob("routing_v1*"))
-    valid_dirs = [p for p in matches if p.is_dir()]
-    if not valid_dirs:
+    matches = [p for p in base_dir.glob("routing_v*") if p.is_dir() and re.match(r"^routing_v\d+", p.name)]
+    if not matches:
         return base_dir / "routing_v1"
+
+    # Filter out plain unversioned 'routing_v1' if semantic versioned dirs exist
+    versioned = [p for p in matches if p.name != "routing_v1"]
+    candidates = versioned if versioned else matches
 
     def _sort_key(p: Path):
         nums = [int(n) for n in re.findall(r"\d+", p.name)]
         return (nums, p.name)
 
-    valid_dirs.sort(key=_sort_key)
-    return valid_dirs[-1]
+    candidates.sort(key=_sort_key)
+    return candidates[-1]
 
 
 def resolve_dataset_path(

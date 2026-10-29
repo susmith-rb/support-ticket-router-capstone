@@ -15,6 +15,7 @@ import dataclasses
 import hashlib
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
+from evals.routing.lang import detect_language
 from evals.routing.schema import RoutingCase, compute_content_hash
 
 DEFAULT_QUOTAS: Dict[str, int] = {
@@ -30,6 +31,7 @@ def assign(
     quotas: Optional[Dict[str, int]] = None,
     split_mix: Optional[Dict[str, Dict[str, int]]] = None,
     train_hashes: Optional[Set[str]] = None,
+    allowed_languages: Optional[Set[str]] = None,
 ) -> List[RoutingCase]:
     """Assign cases to splits (dev, regression, heldout, pool) deterministically.
 
@@ -37,6 +39,8 @@ def assign(
     - Guaranteed byte-identical output across identical inputs and seed.
     - Preserves groups (near-duplicates and paraphrases travel together).
     - Preserves regression set without resampling.
+    - Scored splits (dev, regression, heldout) are strictly English ('en').
+    - Non-English cases remain in 'pool' tagged with notes 'out_of_scope_language:<code>'.
     - When split_mix is provided: enforces per-source quotas, zero Laya collisions in heldout,
       and up to 120 contaminated C2 reference cases in dev.
     - Otherwise: balances strata across dev and heldout.
@@ -48,6 +52,7 @@ def assign(
 
     target_dev = effective_quotas.get("dev", 400)
     target_heldout = effective_quotas.get("heldout", 400)
+    allowed_langs = set(allowed_languages) if allowed_languages is not None else {"en"}
 
     # 1. Group cases by group_id
     groups: Dict[str, List[RoutingCase]] = {}
@@ -56,10 +61,32 @@ def assign(
         groups.setdefault(grp_id, []).append(c)
 
     group_assignments: Dict[str, str] = {}
+    group_languages: Dict[str, str] = {}
 
-    # 2. Extract curated regression groups
+    # Identify language per group (children inherit parent's language decision)
+    for grp_id, grp_cases in groups.items():
+        parent = next((c for c in grp_cases if c.parent_ticket_id is None), None) or min(
+            grp_cases, key=lambda c: c.ticket_id
+        )
+        det_lang = detect_language(parent.description)
+        if parent.language != "en":
+            grp_lang = parent.language
+        elif det_lang != "en" and det_lang != "und":
+            grp_lang = det_lang
+        else:
+            grp_lang = "en"
+        group_languages[grp_id] = grp_lang
+
+    # Non-allowed languages are forced to pool with label_status unchanged
+    for grp_id, grp_lang in group_languages.items():
+        if grp_lang not in allowed_langs:
+            group_assignments[grp_id] = "pool"
+
+    # 2. Extract curated regression groups (English only)
     non_regression_groups: Dict[str, List[RoutingCase]] = {}
     for grp_id, grp_cases in groups.items():
+        if group_languages[grp_id] not in allowed_langs:
+            continue
         is_regression = any(
             c.split == "regression"
             or c.failure_ref is not None
@@ -238,10 +265,46 @@ def assign(
     for c in cases:
         grp_id = c.group_id or f"grp-{c.ticket_id}"
         assigned_split = group_assignments.get(grp_id, "pool")
-        if c.split != assigned_split or c.group_id != grp_id:
-            updated_cases.append(dataclasses.replace(c, split=assigned_split, group_id=grp_id))
+        grp_lang = group_languages.get(grp_id, c.language)
+
+        new_notes = c.notes or ""
+        new_lang = c.language
+
+        if grp_lang not in allowed_langs:
+            new_lang = grp_lang
+            tag = f"out_of_scope_language:{grp_lang}"
+            if tag not in new_notes:
+                new_notes = f"{new_notes}; {tag}" if new_notes else tag
+
+        if (
+            c.split != assigned_split
+            or c.group_id != grp_id
+            or c.language != new_lang
+            or c.notes != new_notes
+        ):
+            updated_cases.append(
+                dataclasses.replace(
+                    c,
+                    split=assigned_split,
+                    group_id=grp_id,
+                    language=new_lang,
+                    notes=new_notes,
+                )
+            )
         else:
             updated_cases.append(c)
+
+    # Scored splits contain strictly allowed languages ('en')
+    for c in updated_cases:
+        if c.split in ("dev", "heldout", "regression"):
+            assert (
+                c.language in allowed_langs
+            ), f"Case '{c.ticket_id}' in scored split '{c.split}' has non-allowed language '{c.language}'"
+        else:
+            if c.language not in allowed_langs:
+                assert "out_of_scope_language" in (
+                    c.notes or ""
+                ), f"Non-English case '{c.ticket_id}' in pool missing out_of_scope_language tag"
 
     if split_mix is not None:
         train_h = set(train_hashes or ())

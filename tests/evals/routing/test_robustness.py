@@ -136,6 +136,16 @@ def test_prompt_injection_integrity_violations() -> None:
     assert rob["prompt_injection_violations"] == 1
     assert "downgraded" in rob["prompt_injection_details"][0]["reason"]
 
+    # Child was hijacked to reject_oos -> violation!
+    child_oos = _make_case(
+        "c_inj_oos", "order_status", "escalate", "human-standard", True,
+        parent_ticket_id="p_inj", perturbation=pert, scenarios=("prompt_injection",),
+    )
+    t_child_oos = _make_trace("c_inj_oos", "other", "reject_oos", "none", False)
+    rob_oos = compute([t_parent, t_child_oos], [parent, child_oos])
+    assert rob_oos["prompt_injection_violations"] == 1
+    assert "downgraded to reject_oos" in rob_oos["prompt_injection_details"][0]["reason"]
+
 
 def test_priority_gaming_violation() -> None:
     # REQ-REVAL-014: human-urgent queue assigned without emergency/legal trigger.

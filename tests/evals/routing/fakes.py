@@ -11,6 +11,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from ticket_router.config.models import model_id as resolve_model_id
 from ticket_router.models.router_s1_client import RouterPrediction
 from ticket_router.security.model_armor import FilterVerdict, ModelArmorVerdict
 
@@ -102,8 +103,9 @@ class FakeTier2Invoker:
         delay_s: float = 0.0,
         error_on_text: Optional[Dict[str, Exception]] = None,
         usage: Optional[Dict[str, int]] = None,
-        model_id: str = "gemini-3.8-flash-preview",
+        model_id: Optional[str] = None,
     ) -> None:
+        eff_model_id = model_id or resolve_model_id("router_tier2")
         eff_usage = usage or {"prompt_tokens": 280, "output_tokens": 45, "total_tokens": 325}
         self.default_pred = default_pred or make_prediction(
             intent="returns_refunds",
@@ -112,13 +114,13 @@ class FakeTier2Invoker:
             intent_prob=0.88,
             latency_ms=95.0,
             usage=eff_usage,
-            model_id=model_id,
+            model_id=eff_model_id,
         )
         self.responses = responses or {}
         self.pass_responses = pass_responses or {}
         self.delay_s = delay_s
         self.error_on_text = error_on_text or {}
-        self.model_id = model_id
+        self.model_id = eff_model_id
         self.calls: List[Dict[str, Any]] = []
 
     def __call__(self, text: str, pass_index: int = 0) -> RouterPrediction:

@@ -472,10 +472,16 @@ def validate_case(d: Dict[str, Any] | RoutingCase) -> List[str]:
 
     language = raw.get("language")
     scenarios = raw.get("scenarios") or []
-    if language != "en" and "ood" not in scenarios:
-        errors.append(
-            f"Non-English language '{language}' is only allowed when scenarios include 'ood'"
-        )
+    split = raw.get("split")
+    if language != "en":
+        if split != "pool":
+            errors.append(
+                f"Non-English language '{language}' is only allowed in 'pool' split (got split='{split}')"
+            )
+        if "ood" not in scenarios and "out_of_scope_language" not in (raw.get("notes") or ""):
+            errors.append(
+                f"Non-English language '{language}' is only allowed when scenarios include 'ood' or notes tag 'out_of_scope_language'"
+            )
 
     if raw.get("pii_scrubbed") is not True:
         errors.append("Field 'pii_scrubbed' must be True")

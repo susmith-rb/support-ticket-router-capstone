@@ -49,7 +49,7 @@ def test_taxonomy_loading_and_structure():
         2: "within hours",
         3: "immediate",
     }
-    assert set(tax1.decisions) == {"auto_rag", "escalate"}
+    assert set(tax1.decisions) == {"auto_rag", "escalate", "reject_oos"}
     assert set(tax1.queues) == {"none", "human-urgent", "human-standard", "human-low"}
     assert set(tax1.tiers) == {
         "tier0_rules",
@@ -122,6 +122,17 @@ def test_validate_expected_success():
     }
     assert validate_expected(valid_urgent) == []
 
+    valid_reject_oos = {
+        "intent": "other",
+        "acceptable_intents": ["other"],
+        "escalate": False,
+        "decision": "reject_oos",
+        "queue": "none",
+        "sentiment": "neutral",
+        "urgency": 0,
+    }
+    assert validate_expected(valid_reject_oos) == []
+
 
 def test_validate_expected_failures():
     """# REQ-REVAL-001: validate_expected detects invalid intents, inconsistent decisions, and invalid queues."""
@@ -167,6 +178,33 @@ def test_validate_expected_failures():
         "acceptable_intents": ["order_status"],
         "escalate": True,
         "decision": "auto_rag",
+        "queue": "none",
+    }))
+
+    # reject_oos invalid queue
+    assert any("requires queue 'none'" in e for e in validate_expected({
+        "intent": "other",
+        "acceptable_intents": ["other"],
+        "escalate": False,
+        "decision": "reject_oos",
+        "queue": "human-standard",
+    }))
+
+    # reject_oos invalid intent
+    assert any("requires intent 'other'" in e for e in validate_expected({
+        "intent": "order_status",
+        "acceptable_intents": ["order_status"],
+        "escalate": False,
+        "decision": "reject_oos",
+        "queue": "none",
+    }))
+
+    # reject_oos invalid escalate=True
+    assert any("requires decision='escalate'" in e for e in validate_expected({
+        "intent": "other",
+        "acceptable_intents": ["other"],
+        "escalate": True,
+        "decision": "reject_oos",
         "queue": "none",
     }))
 

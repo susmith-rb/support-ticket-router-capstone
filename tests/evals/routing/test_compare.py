@@ -116,8 +116,9 @@ def test_compare_accept_neutral_verdict(tmp_path: Path) -> None:
     assert res["verdict"] == "ACCEPT_NEUTRAL"
 
 
-def test_compare_newly_failing_regression() -> None:
+def test_compare_newly_failing_regression(tmp_path: Path, monkeypatch) -> None:
     # REQ-REVAL-016: Regression case failing in candidate forces REJECT.
+    monkeypatch.chdir(tmp_path)
     case = _make_case("reg_01", "order_status", "auto_rag", "none", split="regression")
     b_trace = _make_trace("reg_01", "order_status", "auto_rag", "none")
     c_trace = _make_trace("reg_01", "order_status", "escalate", "human-standard")  # regression regression!
@@ -132,8 +133,9 @@ def test_compare_newly_failing_regression() -> None:
     assert not Path("evals/results/routing/hillclimb_log.jsonl").exists()
 
 
-def test_compare_no_log_path_does_not_write() -> None:
+def test_compare_no_log_path_does_not_write(tmp_path: Path, monkeypatch) -> None:
     # REQ-REVAL-016: compare() writes only when log_path is explicitly provided.
+    monkeypatch.chdir(tmp_path)
     case = _make_case("t1", "order_status", "auto_rag", "none")
     trace = _make_trace("t1", "order_status", "auto_rag", "none")
     b_sc = {"objective": {"all": 1.0}}
@@ -151,3 +153,30 @@ def test_verdict_blocked_preexisting_label():
 
     src = open(cmp.__file__).read()
     assert "REJECT_BLOCKED_PREEXISTING" in src and "PRE_EXISTING" in src and "gate_classes" in src
+
+
+def test_reject_oos_comparison(tmp_path: Path) -> None:
+    # REQ-REVAL-016: compare() accurately scores reject_oos cases.
+    cases = [
+        _make_case("t1", "other", "reject_oos", "none"),
+        _make_case("t2", "other", "reject_oos", "none"),
+    ]
+    b_traces = [
+        _make_trace("t1", "other", "reject_oos", "human-standard"),  # wrong queue -> incorrect
+        _make_trace("t2", "other", "auto_rag", "none"),              # wrong decision -> incorrect
+    ]
+    c_traces = [
+        _make_trace("t1", "other", "reject_oos", "none"),            # correct
+        _make_trace("t2", "other", "reject_oos", "none"),            # correct
+    ]
+
+    b_sc = {"objective": {"all": 0.0}, "cost_latency": {"total_cost_usd": 0.01}}
+    c_sc = {"objective": {"all": 1.0}, "cost_latency": {"total_cost_usd": 0.01}}
+
+    log_file = tmp_path / "test_oos_log.jsonl"
+    res = compare(b_sc, b_traces, c_sc, c_traces, cases, cfg={"bootstrap_resamples": 50}, log_path=log_file)
+
+    assert res["wins_count"] == 2
+    assert res["losses_count"] == 0
+    assert res["mcnemar"]["routing_correctness_discordant"]["candidate_wins"] == 2
+    assert res["mcnemar"]["routing_correctness_discordant"]["baseline_wins"] == 0

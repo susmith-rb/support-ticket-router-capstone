@@ -344,7 +344,7 @@ def test_resolve_dataset_path(tmp_path: Path) -> None:
     # Non-existent split falls back to dir
     assert resolve_dataset_path(d, split="heldout") == d
 
-    # 3. Default search finding highest routing_v1.*
+    # 3. Default search finding highest routing_v*
     base = tmp_path / "data"
     base.mkdir()
     (base / "routing_v1.0.0").mkdir()
@@ -357,6 +357,18 @@ def test_resolve_dataset_path(tmp_path: Path) -> None:
 
     highest = _find_highest_version_dataset_dir(base)
     assert highest.name == "routing_v1.2.0"
+
+    # Bump to routing_v2.0.0
+    (base / "routing_v2.0.0").mkdir()
+    (base / "routing_v2.0.0" / "dev.jsonl").write_text("{}\n")
+    highest_v2 = _find_highest_version_dataset_dir(base)
+    assert highest_v2.name == "routing_v2.0.0"
+
+    # Bump to routing_v2.1.0
+    (base / "routing_v2.1.0").mkdir()
+    (base / "routing_v2.1.0" / "dev.jsonl").write_text("{}\n")
+    highest_v21 = _find_highest_version_dataset_dir(base)
+    assert highest_v21.name == "routing_v2.1.0"
 
 
 def test_created_at_from_config_snapshot(tmp_path: Path) -> None:

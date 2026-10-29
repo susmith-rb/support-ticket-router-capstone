@@ -36,6 +36,8 @@ def _is_routing_correct(c: RoutingCase, t: Dict[str, Any]) -> bool:
         return pred.get("intent") in c.expected.acceptable_intents
     if c.expected.decision == "escalate":
         return pred.get("queue") == c.expected.queue
+    if c.expected.decision == "reject_oos":
+        return pred.get("queue") == "none"
     return False
 
 
@@ -201,7 +203,12 @@ def compare(
         b_gates, b_passed = stored_b["gates"], bool(stored_b.get("overall_passed"))
     else:
         b_gates, b_passed = evaluate_gates(baseline_scorecard, cfg) if "gate_thresholds" in cfg else ({}, True)
-    c_gates, c_passed = evaluate_gates(candidate_scorecard, cfg) if "gate_thresholds" in cfg else ({}, True)
+
+    stored_c = candidate_scorecard.get("gates") if isinstance(candidate_scorecard, dict) else None
+    if isinstance(stored_c, dict) and isinstance(stored_c.get("gates"), dict):
+        c_gates, c_passed = stored_c["gates"], bool(stored_c.get("overall_passed"))
+    else:
+        c_gates, c_passed = evaluate_gates(candidate_scorecard, cfg) if "gate_thresholds" in cfg else ({}, True)
 
     # 5. Cost and Latency deltas
     b_cost = float(baseline_scorecard.get("cost_latency", {}).get("total_cost_usd", 0.0))

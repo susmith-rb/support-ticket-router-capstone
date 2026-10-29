@@ -64,6 +64,7 @@ def prediction_to_dict(pred: RouterPrediction) -> Dict[str, Any]:
         "probabilities": dict(pred.probabilities) if pred.probabilities else {},
         "latency_ms": float(pred.latency_ms),
         "raw": dict(pred.raw) if pred.raw else {},
+        "out_of_scope": bool(pred.out_of_scope),
     }
 
 
@@ -81,6 +82,7 @@ def prediction_from_dict(d: Dict[str, Any]) -> RouterPrediction:
         probabilities=dict(d.get("probabilities") or {}),
         latency_ms=float(d.get("latency_ms", 0.0)),
         raw=dict(d.get("raw") or {}),
+        out_of_scope=bool(d.get("out_of_scope", False)),
     )
 
 

@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import argparse
 import collections
+import csv
 import dataclasses
+import hashlib
 import json
 import pathlib
 import random
@@ -39,6 +41,7 @@ from evals.routing import (
 from evals.routing import (
     build as build_module,
 )
+from evals.routing.lang import is_english
 from evals.routing.recipes import load_recipe
 from evals.routing.schema import (
     Annotation,
@@ -176,13 +179,33 @@ def validate_pool_cases(cases: Sequence[RoutingCase | Dict[str, Any]], stage_nam
 
 
 def _ensure_case_schema_compliance(c: RoutingCase) -> RoutingCase:
-    """Ensure case adheres to schema rules (e.g. non-English requires ood scenario)."""
+    """Ensure case adheres to schema rules (e.g. non-English requires ood scenario and pool split)."""
     scens = list(c.scenarios or ())
-    # Rule: Non-English language must include 'ood' in scenarios
-    if c.language != "en" and "ood" not in scens:
-        scens.append("ood")
+    notes = c.notes or ""
+    split = c.split
+    lang = c.language
+
+    # Rule: Non-English language is only allowed in 'pool' split
+    if lang != "en":
+        if split != "pool":
+            split = "pool"
+        if "ood" not in scens and "out_of_scope_language" not in notes:
+            scens.append("ood")
+            if not notes:
+                notes = f"out_of_scope_language:{lang}"
+            elif "out_of_scope_language" not in notes:
+                notes = f"{notes}; out_of_scope_language:{lang}"
+
+    updates = {}
     if tuple(scens) != c.scenarios:
-        return dataclasses.replace(c, scenarios=tuple(scens))
+        updates["scenarios"] = tuple(scens)
+    if split != c.split:
+        updates["split"] = split
+    if notes != (c.notes or ""):
+        updates["notes"] = notes
+
+    if updates:
+        return dataclasses.replace(c, **updates)
     return c
 
 
@@ -366,8 +389,7 @@ def stage1(
     # Deduplicate existing regression seeds to obtain clean unique count
     existing_reg_hashes = {c.content_hash for c in reg_cases}
     target_reg_count = int(recipe.get("quotas", {}).get("regression", 150))
-    # Regression seeds have 1 overlap with C2; using 90 effective seeds to reach exactly 150
-    needed_reg = max(0, target_reg_count - min(len(existing_reg_hashes), 90))
+    needed_reg = max(0, target_reg_count - len(existing_reg_hashes))
 
     if needed_reg > 0 and verified_c2:
         # Determine next available REG-NNNN ID
@@ -378,8 +400,9 @@ def stage1(
                 if m:
                     max_reg_num = max(max_reg_num, int(m.group(1)))
 
+        english_verified_c2 = [c for c in verified_c2 if c.language == "en" and is_english(c.description)]
         rng_reg = random.Random(effective_seed + 9999)
-        reg_bases = rng_reg.sample(verified_c2, min(needed_reg, len(verified_c2)))
+        reg_bases = rng_reg.sample(english_verified_c2, min(needed_reg, len(english_verified_c2)))
         reg_bases.sort(key=lambda c: c.ticket_id)
 
         prompt_inj_reg_cases: List[RoutingCase] = []
@@ -1321,6 +1344,214 @@ def stage2b(
 
 
 # ---------------------------------------------------------------------------
+# STAGE 2c: Sample additional fresh English tickets & export fresh2 packets
+# ---------------------------------------------------------------------------
+
+
+def stage2c(
+    work_dir: pathlib.Path | str,
+    recipe_path: Optional[pathlib.Path | str] = None,
+    seed: Optional[int] = None,
+    n_sample: int = 40,
+) -> Dict[str, Any]:
+    """Sample additional fresh English real customer tickets and export fresh2 annotation packets.
+
+    # REQ-REVAL-004 / REQ-REVAL-006: English-only fresh ticket sampling & annotation packets.
+    """
+    work = pathlib.Path(work_dir)
+    recipe = load_recipe(recipe_path=recipe_path)
+    effective_seed = seed if seed is not None else int(recipe.get("seed", 20261028)) + 1
+    version = recipe.get("dataset_version", "routing_v2.0.0")
+
+    # Load latest stage2 pool (not pool_stage3) to deduplicate
+    pool_candidates = [
+        work / "pool_stage2b.jsonl",
+        work / "pool_stage2.jsonl",
+        work / "pool_stage1.jsonl",
+    ]
+    existing_pools = [p for p in pool_candidates if p.exists()]
+    if not existing_pools:
+        raise FileNotFoundError(f"No pool stage files found in {work}")
+    latest_pool_path = max(existing_pools, key=lambda p: p.stat().st_mtime)
+    current_pool = read_jsonl(latest_pool_path)
+    existing_hashes = {c.content_hash for c in current_pool}
+
+    # Load Laya hashes
+    contamination_cfg = recipe.get("contamination", {})
+    laya_hashes_path = pathlib.Path(contamination_cfg.get("laya_hashes_path", ".cache/routing_eval/laya_hashes.json"))
+    laya_hashes: Set[str] = set()
+    if laya_hashes_path.exists():
+        with laya_hashes_path.open("r", encoding="utf-8") as f:
+            h_data = json.load(f)
+        laya_hashes.update(h_data.get("train_val", []))
+        laya_hashes.update(h_data.get("test", []))
+
+    all_exclude = existing_hashes | laya_hashes
+
+    # Source config
+    fresh_cfg = recipe.get("sources", {}).get("real_fresh", {})
+    threads_path = pathlib.Path(fresh_cfg.get("threads_path", ".cache/routing_eval/raw/threads.jsonl"))
+
+    new_fresh_cases = real_twcs.sample_fresh_threads(
+        threads_jsonl=threads_path,
+        n=n_sample,
+        seed=effective_seed,
+        exclude_hashes=all_exclude,
+        dataset_version=version,
+        english_only=True,
+    )
+
+    # Export annotation packets fresh2 (pass 0..2, 20 cases per packet)
+    k_passes = 3
+    packet_size = 20
+    guidelines_text = _GUIDELINES_PATH.read_text(encoding="utf-8") if _GUIDELINES_PATH.exists() else ""
+    tax = load_taxonomy()
+    taxonomy_defs = {
+        "intents": tax.intents,
+        "decisions": ["auto_rag", "escalate"],
+        "queues": ["none", "human-standard", "human-urgent"],
+        "sentiments": ["neutral", "frustrated", "angry", "positive"],
+        "urgencies": [0, 1, 2, 3],
+    }
+
+    packets_per_pass: Dict[int, List[Dict[str, Any]]] = {}
+    for p_idx in range(k_passes):
+        pass_packets = []
+        num_batches = (len(new_fresh_cases) + packet_size - 1) // packet_size
+        for b_idx in range(num_batches):
+            batch = new_fresh_cases[b_idx * packet_size : (b_idx + 1) * packet_size]
+            pkt_id = f"ann_fresh2_p{p_idx}_b{b_idx:02d}"
+
+            seed_hash = int(hashlib.md5(f"{effective_seed}:{pkt_id}:{p_idx}".encode()).hexdigest()[:8], 16)
+            rng_p = random.Random(seed_hash)
+
+            shuffled_intents = list(tax.intents)
+            rng_p.shuffle(shuffled_intents)
+            shuffled_decisions = ["auto_rag", "escalate"]
+            rng_p.shuffle(shuffled_decisions)
+            shuffled_queues = ["none", "human-standard", "human-urgent"]
+            rng_p.shuffle(shuffled_queues)
+
+            tickets_payload = [
+                {
+                    "ticket_id": c.ticket_id,
+                    "subject": c.subject,
+                    "description": c.description,
+                    "channel": c.channel,
+                    "verified_fields": list(c.verified_fields),
+                    "instruction": "Annotate intent, acceptable_intents, decision, queue, escalate, sentiment, urgency.",
+                }
+                for c in batch
+            ]
+
+            packet_obj = {
+                "packet_id": pkt_id,
+                "pass_index": p_idx,
+                "ticket_count": len(tickets_payload),
+                "shuffled_intent_options": shuffled_intents,
+                "shuffled_decision_options": shuffled_decisions,
+                "shuffled_queue_options": shuffled_queues,
+                "taxonomy_definitions": taxonomy_defs,
+                "guidelines_excerpt": guidelines_text,
+                "tickets": tickets_payload,
+                "output_schema": {
+                    "type": "object",
+                    "properties": {
+                        "packet_id": {"type": "string"},
+                        "pass_index": {"type": "integer"},
+                        "annotator_id": {"type": "string"},
+                        "labels": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "ticket_id": {"type": "string"},
+                                    "expected": {
+                                        "type": "object",
+                                        "properties": {
+                                            "intent": {"type": "string"},
+                                            "acceptable_intents": {"type": "array", "items": {"type": "string"}},
+                                            "escalate": {"type": "boolean"},
+                                            "decision": {"type": "string"},
+                                            "queue": {"type": "string"},
+                                            "sentiment": {"type": "string"},
+                                            "urgency": {"type": "integer"},
+                                        },
+                                        "required": ["intent", "escalate", "decision", "queue"],
+                                    },
+                                    "confidence": {"type": "number"},
+                                    "rationale": {"type": "string"},
+                                },
+                                "required": ["ticket_id", "expected", "confidence", "rationale"],
+                            },
+                        },
+                    },
+                    "required": ["packet_id", "pass_index", "annotator_id", "labels"],
+                },
+                "example": {
+                    "packet_id": pkt_id,
+                    "pass_index": p_idx,
+                    "annotator_id": f"jetski_annotator_p{p_idx}",
+                    "labels": [
+                        {
+                            "ticket_id": tickets_payload[0]["ticket_id"] if tickets_payload else "rt-example",
+                            "expected": {
+                                "intent": "order_status",
+                                "acceptable_intents": ["order_status"],
+                                "escalate": False,
+                                "decision": "auto_rag",
+                                "queue": "none",
+                                "sentiment": "neutral",
+                                "urgency": 1,
+                            },
+                            "confidence": 0.95,
+                            "rationale": "Tracking request answerable by order status FAQ.",
+                        }
+                    ],
+                },
+            }
+            pass_packets.append(packet_obj)
+
+        packets_per_pass[p_idx] = pass_packets
+        pass_file = work / f"annotation_packets_fresh2_pass{p_idx}.jsonl"
+        with pass_file.open("w", encoding="utf-8", newline="\n") as f:
+            for pkt in pass_packets:
+                f.write(json.dumps(pkt, ensure_ascii=False) + "\n")
+
+    # Combine into updated pool
+    updated_pool = list(current_pool) + list(new_fresh_cases)
+    seen_ids = set()
+    deduped_pool = []
+    for c in updated_pool:
+        if c.ticket_id not in seen_ids:
+            seen_ids.add(c.ticket_id)
+            deduped_pool.append(c)
+
+    deduped_pool = [_ensure_case_schema_compliance(c) for c in deduped_pool]
+    validate_pool_cases(deduped_pool, stage_name="stage2c")
+
+    pool_stage2c_path = work / "pool_stage2b.jsonl"
+    write_jsonl(pool_stage2c_path, deduped_pool)
+
+    print("=" * 70)
+    print("STAGE 2c COMPLETED: Fresh2 Real Tweets Ingested & Fresh2 Packets Created")
+    print("=" * 70)
+    print(f"Sampled Fresh Real English Cases: {len(new_fresh_cases)}")
+    print(f"Total Cases in Pool Stage 2b: {len(deduped_pool)} (Written to {pool_stage2c_path})")
+    for p_idx in range(k_passes):
+        p_path = work / f"annotation_packets_fresh2_pass{p_idx}.jsonl"
+        print(f"  - Pass {p_idx}: {len(packets_per_pass[p_idx])} fresh2 packets (Written to {p_path})")
+    print("=" * 70)
+
+    return {
+        "new_fresh_count": len(new_fresh_cases),
+        "total_pool_count": len(deduped_pool),
+        "pool_stage2b_path": str(pool_stage2c_path),
+        "packets_per_pass": {p: len(pkts) for p, pkts in packets_per_pass.items()},
+    }
+
+
+# ---------------------------------------------------------------------------
 # STAGE 3: Ingest k-pass annotations, compute reliability, write adjudication queue
 # ---------------------------------------------------------------------------
 
@@ -1346,6 +1577,7 @@ def stage3(
 
     # Resolve all annotation JSONL files across paths, comma-separated lists, and globs
     ann_files: List[pathlib.Path] = []
+    seen_files: Set[pathlib.Path] = set()
     if isinstance(annotations_dir, (list, tuple)):
         raw_dirs = list(annotations_dir)
     else:
@@ -1353,20 +1585,25 @@ def stage3(
 
     for d_str in raw_dirs:
         p = pathlib.Path(d_str)
+        matched_in_d: List[pathlib.Path] = []
         if p.is_file() and p.suffix == ".jsonl":
-            ann_files.append(p)
+            matched_in_d.append(p)
         elif p.is_dir():
-            ann_files.extend(sorted(p.glob("*.jsonl")))
+            matched_in_d.extend(sorted(p.glob("*.jsonl")))
         else:
             # Handle globs
             parent = p.parent if str(p.parent) != "" else pathlib.Path(".")
-            ann_files.extend(sorted(parent.glob(p.name)))
+            matched_in_d.extend(sorted(parent.glob(p.name)))
 
-    ann_files = sorted(set(ann_files))
+        for f in matched_in_d:
+            if f not in seen_files:
+                seen_files.add(f)
+                ann_files.append(f)
+
     if not ann_files:
         raise FileNotFoundError(f"No annotation JSONL files found matching: {annotations_dir}")
 
-    passes_by_ticket: Dict[str, List[Dict[str, Any]]] = collections.defaultdict(list)
+    passes_by_ticket: Dict[str, Dict[int, Dict[str, Any]]] = collections.defaultdict(dict)
     malformed_count = 0
 
     # Read all annotation response files
@@ -1401,24 +1638,31 @@ def stage3(
                     malformed_count += 1
                     continue
 
-                passes_by_ticket[t_id].append({
+                passes_by_ticket[t_id][p_idx] = {
                     "pass_index": p_idx,
                     "annotator_id": annotator_id,
                     "labels": exp_dict,
                     "confidence": float(lbl.get("confidence", 0.9)),
                     "rationale": str(lbl.get("rationale", "")),
-                })
+                }
 
     # Update cases with annotation passes and compute consensus
     updated_cases: List[RoutingCase] = []
     for t_id, case in cases_by_id.items():
-        case_passes = passes_by_ticket.get(t_id, [])
-        if not case_passes:
+        case_passes_dict = passes_by_ticket.get(t_id)
+        if not case_passes_dict:
             updated_cases.append(case)
             continue
 
+        case_passes = list(case_passes_dict.values())
         case_passes.sort(key=lambda x: x["pass_index"])
-        new_annotations = list(case.annotations)
+
+        overridden_passes = {p["pass_index"] for p in case_passes}
+        retained_annotations = [
+            a for a in case.annotations
+            if not (a.annotator_type == "llm" and a.pass_index in overridden_passes)
+        ]
+        new_annotations = list(retained_annotations)
         for p in case_passes:
             new_annotations.append(
                 Annotation(
@@ -1505,6 +1749,74 @@ def stage3(
             )
         )
 
+    # Fix 1b: Inherit parent decisions for meaning-preserving children
+    updated_by_id = {c.ticket_id: c for c in updated_cases}
+    final_cases: List[RoutingCase] = []
+    for c in updated_cases:
+        if (
+            c.parent_ticket_id
+            and c.parent_ticket_id in updated_by_id
+        ):
+            is_meaning_preserving = (
+                "paraphrase" in (c.scenarios or ())
+                or (c.perturbation and c.perturbation.type not in ("truncate", "conflicting_info"))
+            )
+            if is_meaning_preserving:
+                parent = updated_by_id[c.parent_ticket_id]
+                new_intent = parent.expected.intent if "intent" not in c.verified_fields else c.expected.intent
+                new_acceptable = (
+                    parent.expected.acceptable_intents
+                    if "intent" not in c.verified_fields
+                    else c.expected.acceptable_intents
+                )
+                inherited_expected = Expected(
+                    intent=new_intent,
+                    acceptable_intents=new_acceptable,
+                    escalate=parent.expected.escalate,
+                    decision=parent.expected.decision,
+                    queue=parent.expected.queue,
+                    sentiment=parent.expected.sentiment,
+                    urgency=parent.expected.urgency,
+                )
+                inherited_notes = c.notes or ""
+                if "inherited_from_parent" not in inherited_notes:
+                    inherited_notes = (
+                        f"{inherited_notes}; inherited_from_parent={parent.ticket_id}"
+                        if inherited_notes
+                        else f"inherited_from_parent={parent.ticket_id}"
+                    )
+                c = RoutingCase(
+                    ticket_id=c.ticket_id,
+                    content_hash=c.content_hash,
+                    dataset_version=c.dataset_version,
+                    split=c.split,
+                    created_at=c.created_at,
+                    subject=c.subject,
+                    description=c.description,
+                    channel=c.channel,
+                    language=c.language,
+                    pii_scrubbed=c.pii_scrubbed,
+                    expected=inherited_expected,
+                    difficulty=c.difficulty,
+                    scenarios=c.scenarios,
+                    style=c.style,
+                    source=c.source,
+                    source_dataset=c.source_dataset,
+                    source_ref=c.source_ref,
+                    ground_truth_source=parent.ground_truth_source,
+                    label_status=parent.label_status if "intent" not in c.verified_fields else c.label_status,
+                    verified_fields=c.verified_fields,
+                    annotations=c.annotations,
+                    adjudication=c.adjudication,
+                    group_id=c.group_id,
+                    parent_ticket_id=c.parent_ticket_id,
+                    perturbation=c.perturbation,
+                    failure_ref=c.failure_ref,
+                    notes=inherited_notes,
+                )
+        final_cases.append(c)
+    updated_cases = final_cases
+
     updated_cases = [_ensure_case_schema_compliance(c) for c in updated_cases]
     updated_cases.sort(key=lambda c: c.ticket_id)
     validate_pool_cases(updated_cases, stage_name="stage3")
@@ -1559,7 +1871,7 @@ def stage3(
 
 def build(
     work_dir: pathlib.Path | str,
-    version: str = "routing_v1.0.0",
+    version: Optional[str] = None,
     adjudication_tsv: Optional[pathlib.Path | str] = None,
     out_root: pathlib.Path | str = "evals/data",
     recipe_path: Optional[pathlib.Path | str] = None,
@@ -1573,6 +1885,7 @@ def build(
     work = pathlib.Path(work_dir)
     recipe = load_recipe(recipe_path=recipe_path)
     effective_seed = seed if seed is not None else int(recipe.get("seed", 20261028))
+    effective_version = version or recipe.get("dataset_version", "routing_v2.0.0")
     quotas = recipe.get("quotas", {"dev": 400, "regression": 150, "heldout": 400})
     split_mix = recipe.get("split_mix")
 
@@ -1601,6 +1914,17 @@ def build(
 
     # Hard-fail gate: ensure all cases strictly pass schema validation
     validate_pool_cases(cases, stage_name="build")
+
+    # Hard-fail gate: no English fresh case may remain 'fresh_unlabeled' at build time
+    unlabeled_en_fresh = [
+        c.ticket_id for c in cases
+        if c.language == "en" and "fresh_unlabeled" in (c.notes or "")
+    ]
+    if unlabeled_en_fresh:
+        raise ValueError(
+            f"Build aborted: {len(unlabeled_en_fresh)} English fresh cases still have 'fresh_unlabeled' notes "
+            f"(e.g. {unlabeled_en_fresh[:5]}). Run stage3 with all annotation directories before build."
+        )
 
     # Load contamination hashes (train_val + test)
     contamination_cfg = recipe.get("contamination", {})
@@ -1675,7 +1999,7 @@ def build(
 
     # Build version directory using core build orchestrator
     out_dir = build_module.build_version(
-        version=version,
+        version=effective_version,
         inputs_cfg={
             "cases": cases,
             "synthetic_templates": False,
@@ -1690,7 +2014,7 @@ def build(
     )
 
     print("=" * 70)
-    print(f"BUILD COMPLETED: Dataset Version '{version}' Created Successfully")
+    print(f"BUILD COMPLETED: Dataset Version '{effective_version}' Created Successfully")
     print("=" * 70)
     print(f"Destination: {out_dir}")
     manifest_file = out_dir / "manifest.json"
@@ -1703,6 +2027,96 @@ def build(
     print("=" * 70)
 
     return out_dir
+
+
+# ---------------------------------------------------------------------------
+# ADJUDICATION V2 QUEUES EXPORT
+# ---------------------------------------------------------------------------
+
+
+def export_adjudication_v2(
+    dataset_dir: pathlib.Path | str,
+    work_dir: pathlib.Path | str,
+    out_dir: Optional[pathlib.Path | str] = None,
+) -> Dict[str, int]:
+    """Export prioritized adjudication TSVs and CSVs for routing_v2.0.0 excluding non-English.
+
+    Produces:
+    - 1_regression.{tsv,csv} (150 rows)
+    - 2_heldout.{tsv,csv}
+    - 3_dev.{tsv,csv}
+    in .cache/routing_eval/work/v1/adjudication_v2/ with the 18 TSV_COLUMNS.
+    """
+    ds_path = pathlib.Path(dataset_dir)
+    work = pathlib.Path(work_dir)
+    dest = pathlib.Path(out_dir) if out_dir is not None else work / "adjudication_v2"
+    dest.mkdir(parents=True, exist_ok=True)
+
+    # Load adjudication queue reasons
+    queue_tsv = work / "adjudication_queue.tsv"
+    queued: Dict[str, str] = {}
+    if queue_tsv.exists():
+        with queue_tsv.open("r", encoding="utf-8", newline="") as f:
+            for row in csv.DictReader(f, delimiter="\t"):
+                t_id = row.get("ticket_id", "")
+                if t_id:
+                    queued[t_id] = row.get("reason_queued", "manual_adjudication_request")
+
+    def load_cases(split_name: str) -> List[RoutingCase]:
+        p = ds_path / f"{split_name}.jsonl"
+        if not p.exists():
+            return []
+        cases = read_jsonl(p)
+        return [c for c in cases if c.language == "en" and is_english(c.description)]
+
+    counts = {}
+
+    # 1. regression (all 150 rows)
+    reg_cases = load_cases("regression")
+    reg_items = [
+        (c, (c.failure_ref.symptom if c.failure_ref and c.failure_ref.symptom else "regression"))
+        for c in reg_cases
+    ]
+    counts["regression"] = adjudicate.export_queue(reg_items, dest / "1_regression.tsv")
+
+    # 2. heldout (cases in queued)
+    held_cases = load_cases("heldout")
+    held_items = [
+        (c, queued.get(c.ticket_id, "heldout_provisional_review"))
+        for c in held_cases
+        if c.ticket_id in queued
+    ]
+    counts["heldout"] = adjudicate.export_queue(held_items, dest / "2_heldout.tsv")
+
+    # 3. dev (cases in queued)
+    dev_cases = load_cases("dev")
+    dev_items = [
+        (c, queued.get(c.ticket_id, "dev_provisional_review"))
+        for c in dev_cases
+        if c.ticket_id in queued
+    ]
+    counts["dev"] = adjudicate.export_queue(dev_items, dest / "3_dev.tsv")
+
+    # Generate matching CSV files
+    for tsv_file in dest.glob("*.tsv"):
+        with tsv_file.open("r", encoding="utf-8", newline="") as f_in:
+            reader = csv.reader(f_in, delimiter="\t")
+            rows = list(reader)
+        csv_file = tsv_file.with_suffix(".csv")
+        with csv_file.open("w", encoding="utf-8", newline="") as f_out:
+            writer = csv.writer(f_out)
+            writer.writerows(rows)
+
+    print("=" * 70)
+    print("ADJUDICATION V2 QUEUES EXPORTED")
+    print("=" * 70)
+    print(f"Destination: {dest}")
+    print(f"  - 1_regression: {counts['regression']} rows")
+    print(f"  - 2_heldout:    {counts['heldout']} rows")
+    print(f"  - 3_dev:        {counts['dev']} rows")
+    print("=" * 70)
+
+    return counts
 
 
 # ---------------------------------------------------------------------------
@@ -1739,6 +2153,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p_s2b.add_argument("--recipe", type=str, help="Path to recipe YAML.")
     p_s2b.add_argument("--seed", type=int, help="Optional random seed override.")
 
+    # 2c. stage2c
+    p_s2c = subparsers.add_parser("stage2c", help="Sample additional fresh English tickets and export fresh2 annotation packets.")
+    p_s2c.add_argument("--work", type=str, required=True, help="Working directory path.")
+    p_s2c.add_argument("--recipe", type=str, help="Path to recipe YAML.")
+    p_s2c.add_argument("--seed", type=int, help="Optional random seed override.")
+    p_s2c.add_argument("--n", type=int, default=40, help="Number of fresh English tickets to sample.")
+
     # 3. stage3
     p_s3 = subparsers.add_parser("stage3", help="Ingest k-pass annotations, compute reliability and queue adjudication.")
     p_s3.add_argument("--work", type=str, required=True, help="Working directory path.")
@@ -1748,12 +2169,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # 4. build
     p_bld = subparsers.add_parser("build", help="Build final immutable dataset version directory.")
     p_bld.add_argument("--work", type=str, required=True, help="Working directory path.")
-    p_bld.add_argument("--version", type=str, default="routing_v1.0.0", help="Dataset semver string.")
+    p_bld.add_argument("--version", type=str, default=None, help="Dataset semver string (defaults to recipe dataset_version).")
     p_bld.add_argument("--adjudication", type=str, help="Optional path to human adjudication TSV.")
     p_bld.add_argument("--out-root", type=str, default="evals/data", help="Output directory root.")
     p_bld.add_argument("--recipe", type=str, help="Path to recipe YAML.")
     p_bld.add_argument("--seed", type=int, help="Optional random seed override.")
     p_bld.add_argument("--dry-run", action="store_true", help="Preview split composition without writing files.")
+
+    # 5. adjudication_v2
+    p_adj = subparsers.add_parser("adjudication_v2", help="Export adjudication v2 TSVs/CSVs.")
+    p_adj.add_argument("--work", type=str, required=True, help="Working directory path.")
+    p_adj.add_argument("--dataset-dir", type=str, default="evals/data/routing_v2.0.0", help="Path to routing_v2.0.0 dataset dir.")
+    p_adj.add_argument("--out-dir", type=str, help="Optional output directory.")
 
     args = parser.parse_args(argv)
 
@@ -1767,6 +2194,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if args.subcommand == "stage2b":
         stage2b(work_dir=args.work, recipe_path=args.recipe, seed=args.seed)
+        return 0
+
+    if args.subcommand == "stage2c":
+        stage2c(work_dir=args.work, recipe_path=args.recipe, seed=args.seed, n_sample=args.n)
         return 0
 
     if args.subcommand == "stage3":
@@ -1783,6 +2214,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             seed=args.seed,
             dry_run=args.dry_run,
         )
+        return 0
+
+    if args.subcommand == "adjudication_v2":
+        export_adjudication_v2(dataset_dir=args.dataset_dir, work_dir=args.work, out_dir=args.out_dir)
         return 0
 
     return 1

@@ -44,6 +44,7 @@ from ticket_router.config.agent_tuning import (
     PROMPTS_DIR,
     AgentTuningConfig,
     get_tier2_prompt,
+    get_tier2_system_instruction,
     get_tuning_config,
 )
 from ticket_router.config.models import model_id
@@ -305,15 +306,20 @@ def run(
             input_sha = compute_input_sha256(text)
 
             p_text = get_tier2_prompt(text, version=prompt_version)
-            p_sha = compute_input_sha256(p_text)
+            sys_inst = get_tier2_system_instruction(version=prompt_version)
+            combined_prompt = f"{sys_inst}\n\n{p_text}" if sys_inst else p_text
+            p_sha = compute_input_sha256(combined_prompt)
             all_prompt_hashes.append(p_sha)
 
             if len(sample_prompts) < 5:
-                sample_prompts.append({
+                sample_item: Dict[str, Any] = {
                     "ticket_id": t_id,
                     "prompt": p_text,
                     "sha256": p_sha,
-                })
+                }
+                if sys_inst:
+                    sample_item["system_instruction"] = sys_inst
+                sample_prompts.append(sample_item)
 
             if cache.has(
                 tier="tier1_router_s1",

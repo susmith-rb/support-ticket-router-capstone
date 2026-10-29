@@ -376,11 +376,8 @@ def test_sample_fresh_threads_hermetic(tmp_path: Path):
         assert c.notes == "fresh_unlabeled"
         assert c.channel == "twitter"
         assert c.content_hash != ex_hash
-        if c.language != "en":
-            assert "ood" in c.scenarios
-            assert c.language == "other"
-        else:
-            assert "normal" in c.scenarios
+        assert c.language == "en"
+        assert "normal" in c.scenarios
 
     # Determinism
     cases_2 = sample_fresh_threads(threads_file, n=5, seed=20261028, exclude_hashes={ex_hash})

@@ -115,12 +115,22 @@ def test_validate_case_success_and_failures(sample_routing_cases):
     errs = validate_case(bad_dict)
     assert any("Invalid channel 'fax'" in e for e in errs)
 
-    # Non-English without OOD
+    # Non-English in scored split dev fails
     bad_dict = sample_routing_cases[0].to_dict()
     bad_dict["language"] = "es"
+    bad_dict["split"] = "dev"
     bad_dict["scenarios"] = ["normal"]
     errs = validate_case(bad_dict)
-    assert any("Non-English language" in e for e in errs)
+    assert any("only allowed in 'pool' split" in e for e in errs)
+
+    # Non-English in pool with out_of_scope_language note passes
+    bad_dict = sample_routing_cases[0].to_dict()
+    bad_dict["language"] = "es"
+    bad_dict["split"] = "pool"
+    bad_dict["notes"] = "out_of_scope_language:es"
+    bad_dict["scenarios"] = ["normal"]
+    errs = validate_case(bad_dict)
+    assert errs == []
 
     # pii_scrubbed is False
     bad_dict = sample_routing_cases[0].to_dict()

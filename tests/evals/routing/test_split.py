@@ -200,3 +200,109 @@ def test_assign_source_aware_split_mix():
     dev_c2 = [c for c in dev_cases if c.source_ref.startswith("retrieval_c2")]
     assert len(dev_c2) == 2
 
+
+def test_assign_english_only_scope():
+    """# REQ-REVAL-002: assign isolates non-English cases into pool with out_of_scope_language tags."""
+    from evals.routing.schema import Expected, FailureRef, RoutingCase, Style, compute_content_hash
+
+    cases: list[RoutingCase] = []
+
+    def _make(tid, desc, lang="en", split="pool", is_reg=False, grp=None, parent=None):
+        chash = compute_content_hash(None, desc)
+        fref = (
+            FailureRef("REG-9999", "2026-10-28T00:00:00Z", "symptom", "root_cause")
+            if is_reg
+            else None
+        )
+        return RoutingCase(
+            ticket_id=tid,
+            content_hash=chash,
+            dataset_version="v1",
+            split="regression" if is_reg else split,
+            created_at="2026-10-28T00:00:00Z",
+            subject=None,
+            description=desc,
+            channel="chat",
+            language=lang,
+            pii_scrubbed=True,
+            expected=Expected("order_status", ("order_status",), False, "auto_rag", "none", "neutral", 1),
+            difficulty="medium",
+            scenarios=("observed_failure",) if is_reg else ("normal",),
+            style=Style("casual", "short (<20 words)"),
+            source="synthetic",
+            source_dataset="observed_failure" if is_reg else "synthetic_jetski",
+            source_ref=f"ref_{tid}",
+            ground_truth_source="rule_derived",
+            label_status="provisional",
+            verified_fields=(),
+            annotations=(),
+            adjudication=None,
+            group_id=grp or f"grp-{tid}",
+            parent_ticket_id=parent,
+            perturbation=None,
+            failure_ref=fref,
+            notes="",
+        )
+
+    # 1. English regression case
+    cases.append(_make("reg_en", "WHERE IS IT", lang="en", is_reg=True))
+    # 2. Non-English regression case (must be dropped from regression to pool)
+    cases.append(_make("reg_pt", "preciso da minha encomenda urgente por favor", lang="pt", is_reg=True))
+    # 3. English normal cases
+    for i in range(10):
+        cases.append(_make(f"en_{i}", f"Where is my order parcel number {i}? Please assist."))
+    # 4. Spanish case (tagged en but detected as es)
+    cases.append(
+        _make(
+            "es_1",
+            "@user ya me ha enviado #SuperMarioOdyssey para #NintendoSwitch!!! Qué ganas de subirlo al canal :)",
+            lang="en",
+            grp="grp-es-family",
+        )
+    )
+    # 5. Paraphrase of Spanish case (should inherit non-English decision)
+    cases.append(
+        _make(
+            "es_para",
+            "Super Mario para Nintendo Switch fue enviado por user!",
+            lang="en",
+            grp="grp-es-family",
+            parent="es_1",
+        )
+    )
+
+    assigned = assign(
+        cases,
+        seed=20261028,
+        quotas={"dev": 4, "heldout": 4, "regression": 1},
+    )
+
+    reg_cases = [c for c in assigned if c.split == "regression"]
+    dev_cases = [c for c in assigned if c.split == "dev"]
+    heldout_cases = [c for c in assigned if c.split == "heldout"]
+    pool_cases = [c for c in assigned if c.split == "pool"]
+
+    # Scored splits contain strictly English cases
+    assert len(reg_cases) == 1
+    assert reg_cases[0].ticket_id == "reg_en"
+
+    for c in dev_cases + heldout_cases + reg_cases:
+        assert c.language == "en"
+
+    # Non-English regression case was moved to pool
+    reg_pt_assigned = next(c for c in pool_cases if c.ticket_id == "reg_pt")
+    assert reg_pt_assigned.split == "pool"
+    assert "out_of_scope_language:pt" in reg_pt_assigned.notes
+    assert reg_pt_assigned.language == "pt"
+
+    # Spanish group (base and paraphrase) both in pool with out_of_scope_language
+    es_base = next(c for c in pool_cases if c.ticket_id == "es_1")
+    es_para = next(c for c in pool_cases if c.ticket_id == "es_para")
+    assert es_base.split == "pool"
+    assert "out_of_scope_language:es" in es_base.notes
+    assert es_base.language == "es"
+    assert es_para.split == "pool"
+    assert "out_of_scope_language:es" in es_para.notes
+    assert es_para.language == "es"
+
+

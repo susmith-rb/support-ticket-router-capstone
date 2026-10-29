@@ -9,6 +9,9 @@ quotas:
   regression: 150
   heldout: 400
 
+languages:
+  - "en"
+
 split_mix:
   dev:
     real_fresh: 150

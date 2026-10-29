@@ -52,7 +52,7 @@ def _make_case(ticket_id: str, intent: str, decision: str, queue: str, descripti
 def test_error_type_precedence() -> None:
     # REQ-REVAL-017: Error classification precedence:
     # error > degraded > invalid_label > missed_escalation > wrong_queue > false_escalation > wrong_intent
-    valid_intents = ["order_status", "shipping_policy", "returns_refunds"]
+    valid_intents = ["order_status", "shipping_policy", "returns_refunds", "account_payment", "other"]
     case_esc = _make_case("t1", "order_status", "escalate", "human-urgent")
 
     # 1. Error takes highest precedence
@@ -71,9 +71,27 @@ def test_error_type_precedence() -> None:
     t_miss = {"predicted": {"intent": "order_status", "escalate": False, "decision": "auto_rag", "queue": "none"}}
     assert _classify_error_type(case_esc, t_miss, valid_intents) == "missed_escalation"
 
+    # 4b. Missed escalation with reject_oos predicted
+    t_miss_oos = {"predicted": {"intent": "order_status", "escalate": False, "decision": "reject_oos", "queue": "none"}}
+    assert _classify_error_type(case_esc, t_miss_oos, valid_intents) == "missed_escalation"
+
     # 5. Wrong queue when escalate matches
     t_wq = {"predicted": {"intent": "order_status", "escalate": True, "decision": "escalate", "queue": "human-standard"}}
     assert _classify_error_type(case_esc, t_wq, valid_intents) == "wrong_queue"
+
+    # 6. False escalation (expected auto_rag, predicted escalate)
+    case_auto = _make_case("t_auto", "order_status", "auto_rag", "none")
+    t_fe = {"predicted": {"intent": "order_status", "escalate": True, "decision": "escalate", "queue": "human-standard"}}
+    assert _classify_error_type(case_auto, t_fe, valid_intents) == "false_escalation"
+
+    # 7. false_oos (expected auto_rag, predicted reject_oos)
+    t_foos = {"predicted": {"intent": "other", "escalate": False, "decision": "reject_oos", "queue": "none"}}
+    assert _classify_error_type(case_auto, t_foos, valid_intents) == "false_oos"
+
+    # 8. missed_oos (expected reject_oos, predicted auto_rag)
+    case_oos = _make_case("t_oos", "other", "reject_oos", "none")
+    t_moos = {"predicted": {"intent": "order_status", "escalate": False, "decision": "auto_rag", "queue": "none"}}
+    assert _classify_error_type(case_oos, t_moos, valid_intents) == "missed_oos"
 
 
 def test_cluster_failures_severity_ranking() -> None:

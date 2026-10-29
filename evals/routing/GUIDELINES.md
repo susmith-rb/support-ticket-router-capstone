@@ -6,6 +6,9 @@ These guidelines govern the annotation of customer support tickets for routing a
 
 ## 1. Routing Taxonomy & Definitions
 
+### 1.0 Language Scope (v1/v2 English-Only)
+Non-English tickets (e.g. Spanish, Portuguese, French, German, Italian, Japanese, etc.) are strictly **out of scope** for v1/v2 labelling and routing evaluation. In accordance with project requirements (decision 2026-10-23, re-confirmed 2026-10-28), all scored evaluation splits (`dev`, `regression`, `heldout`) contain ONLY English tickets (`language: 'en'`). Non-English tickets remain in the candidate `pool` tagged with notes `out_of_scope_language:<code>` for a future Phase 2 multilingual phase, and must not be labelled or assigned to scored splits.
+
 ### 1.1 Intent Categories
 The system routes tickets into one of five mutually exclusive canonical intents:
 
@@ -71,8 +74,9 @@ The system routes tickets into one of five mutually exclusive canonical intents:
 - **Decisions**:
   - **`auto_rag`**: The ticket is answerable by an automated knowledge base / FAQ retrieval workflow.
   - **`escalate`**: The ticket requires human intervention.
+  - **`reject_oos`**: Polite scope-boundary refusal for unrelated non-support requests without human-queue bloat.
 - **Queues**:
-  - **`none`**: Applicable if and only if `decision == "auto_rag"`.
+  - **`none`**: Applicable if and only if `decision in ("auto_rag", "reject_oos")`.
   - **`human-urgent`**: Reserved strictly for safety emergencies and legal threats.
   - **`human-standard`**: Default queue for all other human escalations.
   - **`human-low`**: Reserved queue (unused in v1).
@@ -91,16 +95,20 @@ Annotators must apply these seven policy rules to derive `expected.decision` and
    - Severe abuse or toxicity is present.
    - Legal threats ("I'm contacting my attorney", "reporting to BBB") or safety emergencies.
    - Account security issues, fraud, or unauthorized financial charges.
-   - Out-of-distribution or non-support requests (`intent=other`, scenario `ood`).
-   - The request cannot be answered without account-specific human action and no self-service FAQ exists.
+   - An in-domain retail support request cannot be answered without account-specific human action and no self-service FAQ exists (e.g. mobile app crashes, estate transfers, vague support inquiries).
+   Rule 1 ALWAYS takes precedence over Rule 2a/2b (add-only escalation invariant).
 
-2. **Rule 2 (Auto-RAG Default)**:
-   Otherwise, assign `decision=auto_rag`, `escalate=False`, and `queue=none` with the best-fitting answerable intent.
-   Customer sentiment `frustrated` alone does NOT force escalation if the question is answerable by self-service FAQ.
+2. **Rule 2 (Non-Escalation Decisions: Out-of-Scope Refusal & Auto-RAG)**:
+   - **2a. Out-of-Scope Refusal (`decision=reject_oos`, `intent=other`, `queue=none`, `escalate=False`)**:
+     Unrelated or off-topic non-support requests outside retail customer care (e.g. stock prices, weather, recipes, general trivia, job applications, local transit directions; scenario `ood`) that have NO Rule 1 safety/anger/urgency/abuse trigger MUST be refused with `decision=reject_oos` and `queue=none` rather than bloating `human-standard` (decision 2026-10-28).
+   - **2b. Auto-RAG Default (`decision=auto_rag`, `escalate=False`, `queue=none`)**:
+     Otherwise, assign `decision=auto_rag`, `escalate=False`, and `queue=none` with the best-fitting answerable intent.
+     Customer sentiment `frustrated` alone does NOT force escalation if the question is answerable by self-service FAQ.
 
 3. **Rule 3 (Queue Assignment & Anti-Gaming)**:
    - Assign `queue=human-urgent` ONLY for safety emergencies or legal threats. (Text-only evaluations have no access to verified customer CRM facts).
    - All other escalations MUST be routed to `queue=human-standard`.
+   - Non-escalations (`auto_rag` and `reject_oos`) MUST be assigned `queue=none`.
    - **Anti-gaming principle**: Shouting, ALL-CAPS text, profanity, anger, and self-declared urgency ("EMERGENCY RESPOND NOW") MUST NEVER route to `human-urgent`. They route to `human-standard` (or stay `auto_rag` if answerable and not abusive/angry).
 
 4. **Rule 4 (Ambiguous Boundary Cases)**:
@@ -245,6 +253,18 @@ Annotators must apply these seven policy rules to derive `expected.decision` and
   - `sentiment`: `neutral`
   - `urgency`: `1`
 - **Rationale**: Rule 7: The prompt injection payload is ignored. The underlying request is an order tracking question answerable via auto_rag.
+
+### Example 11: Out-of-Scope Query Refusal (`other`)
+- **Text**: "Give me a stock price of Google"
+- **Expected Labels**:
+  - `intent`: `other`
+  - `acceptable_intents`: `["other"]`
+  - `decision`: `reject_oos`
+  - `queue`: `none`
+  - `escalate`: `false`
+  - `sentiment`: `neutral`
+  - `urgency`: `0`
+- **Rationale**: Rule 2a: Unrelated non-support query outside retail customer care with no safety, abuse, or urgency triggers. Refused with `reject_oos` and `queue=none`.
 
 ---
 

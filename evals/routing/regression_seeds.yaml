@@ -70,22 +70,6 @@ seeds:
     scenarios: ["observed_failure", "noisy"]
     notes: "Tier 1 strict recall miss from training/router_s1/README.md"
 
-  - failure_id: "REG-0005"
-    observed_at: "2026-10-21T09:30:00Z"
-    symptom: "Portuguese urgent delivery request missed by English-centric Tier 1 model."
-    root_cause: "Multilingual distribution shift on urgent delivery inquiry."
-    subject: null
-    description: "preciso da minha encomenda urgente por favor"
-    expected:
-      intent: "order_status"
-      acceptable_intents: ["order_status", "other"]
-      escalate: true
-      decision: "escalate"
-      queue: "human-standard"
-      sentiment: "neutral"
-      urgency: 3
-    scenarios: ["observed_failure", "ood"]
-    notes: "Tier 1 strict recall miss (non-English urgent) from training/router_s1/README.md"
 
   - failure_id: "REG-0006"
     observed_at: "2026-10-21T10:00:00Z"

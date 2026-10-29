@@ -185,12 +185,15 @@ def test_routing_correctness_definition() -> None:
     c_auto = _make_dummy_case("t1", "order_status", "auto_rag", "none", False)
     # escalate case: correct iff decision==escalate AND queue==expected.queue
     c_esc = _make_dummy_case("t2", "order_status", "escalate", "human-urgent", True)
+    # reject_oos case: correct iff decision==reject_oos AND queue==none
+    c_oos = _make_dummy_case("t3", "other", "reject_oos", "none", False)
 
     # Both predicted correctly
     t1 = _make_dummy_trace("t1", "order_status", "auto_rag", "none", False)
     t2 = _make_dummy_trace("t2", "returns_refunds", "escalate", "human-urgent", True)  # wrong intent but queue matches!
+    t3 = _make_dummy_trace("t3", "other", "reject_oos", "none", False)
 
-    scorecard = compute([t1, t2], [c_auto, c_esc], cfg={"bootstrap_resamples": 50})
+    scorecard = compute([t1, t2, t3], [c_auto, c_esc, c_oos], cfg={"bootstrap_resamples": 50})
     assert scorecard["all"]["routing_correctness"] == 1.0
 
 
@@ -314,4 +317,106 @@ def test_compute_objective_verified_scoping_and_rejected_handling() -> None:
     # In all view: c_rej is skipped; c_part and c_full are both scored (both 1.0)
     obj_all, sc_all = compute_objective([(c_rej, t_rej), (c_part, t_part), (c_full, t_full)], is_verified_view=False)
     assert obj_all == 1.0
+
+
+def test_reject_oos_routing_correctness_and_objective() -> None:
+    # REQ-REVAL-012: reject_oos cases scored True when decision="reject_oos" and queue="none", False otherwise.
+    # 1. Correct reject_oos case
+    c_oos_correct = _make_dummy_case(
+        ticket_id="t_oos_1",
+        intent="other",
+        decision="reject_oos",
+        queue="none",
+        escalate=False,
+        label_status="verified",
+        verified_fields=("intent", "decision", "queue", "escalate"),
+        scenarios=("ood",),
+    )
+    t_oos_correct = _make_dummy_trace(
+        ticket_id="t_oos_1",
+        intent="other",
+        decision="reject_oos",
+        queue="none",
+        escalate=False,
+    )
+
+    # 2. Incorrect reject_oos case (wrong queue)
+    c_oos_wrong_q = _make_dummy_case(
+        ticket_id="t_oos_2",
+        intent="other",
+        decision="reject_oos",
+        queue="none",
+        escalate=False,
+        label_status="verified",
+        verified_fields=("intent", "decision", "queue", "escalate"),
+        scenarios=("ood",),
+    )
+    t_oos_wrong_q = _make_dummy_trace(
+        ticket_id="t_oos_2",
+        intent="other",
+        decision="reject_oos",
+        queue="human-standard",
+        escalate=False,
+    )
+
+    # 3. Incorrect reject_oos case (wrong decision)
+    c_oos_wrong_dec = _make_dummy_case(
+        ticket_id="t_oos_3",
+        intent="other",
+        decision="reject_oos",
+        queue="none",
+        escalate=False,
+        label_status="verified",
+        verified_fields=("intent", "decision", "queue", "escalate"),
+        scenarios=("ood",),
+    )
+    t_oos_wrong_dec = _make_dummy_trace(
+        ticket_id="t_oos_3",
+        intent="other",
+        decision="auto_rag",
+        queue="none",
+        escalate=False,
+    )
+
+    # Test compute()
+    sc_correct = compute([t_oos_correct], [c_oos_correct], cfg={"bootstrap_resamples": 50})
+    assert sc_correct["all"]["routing_correctness"] == 1.0
+    assert sc_correct["verified"]["routing_correctness"] == 1.0
+    assert sc_correct["slices"]["scenario"]["ood"]["routing_correctness"] == 1.0
+
+    sc_wrong_q = compute([t_oos_wrong_q], [c_oos_wrong_q], cfg={"bootstrap_resamples": 50})
+    assert sc_wrong_q["all"]["routing_correctness"] == 0.0
+    assert sc_wrong_q["verified"]["routing_correctness"] == 0.0
+    assert sc_wrong_q["slices"]["scenario"]["ood"]["routing_correctness"] == 0.0
+
+    sc_wrong_dec = compute([t_oos_wrong_dec], [c_oos_wrong_dec], cfg={"bootstrap_resamples": 50})
+    assert sc_wrong_dec["all"]["routing_correctness"] == 0.0
+    assert sc_wrong_dec["verified"]["routing_correctness"] == 0.0
+    assert sc_wrong_dec["slices"]["scenario"]["ood"]["routing_correctness"] == 0.0
+
+    # Test compute_objective() (both all & verified views)
+    obj_all, sc_all = compute_objective([(c_oos_correct, t_oos_correct)], is_verified_view=False)
+    assert obj_all == 1.0
+    assert sc_all.get("ood") == 1.0
+
+    obj_ver, sc_ver = compute_objective([(c_oos_correct, t_oos_correct)], is_verified_view=True)
+    assert obj_ver == 1.0
+    assert sc_ver.get("ood") == 1.0
+
+    obj_wrong, _ = compute_objective([(c_oos_wrong_q, t_oos_wrong_q)], is_verified_view=False)
+    assert obj_wrong == 0.0
+
+    # Verified view drops reject_oos if queue not in verified_fields
+    c_oos_unver_q = _make_dummy_case(
+        ticket_id="t_oos_4",
+        intent="other",
+        decision="reject_oos",
+        queue="none",
+        escalate=False,
+        label_status="verified",
+        verified_fields=("intent", "decision"),  # queue missing
+        scenarios=("ood",),
+    )
+    obj_unver, _ = compute_objective([(c_oos_unver_q, t_oos_correct)], is_verified_view=True)
+    assert obj_unver is None
 

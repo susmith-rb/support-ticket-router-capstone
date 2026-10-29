@@ -1,0 +1,4 @@
+router:
+  tau_esc: 0.35
+prompts:
+  tier2_router_version: "v3"

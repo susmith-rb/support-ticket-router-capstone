@@ -511,6 +511,8 @@ def sample_inbound_parquet(
 
 
 # Alias for PII scrubber
+from evals.routing.lang import detect_language, is_english
+
 scrub_pii = scrub_text
 
 _NON_EN_CHARS = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\u0600-\u06ff\u0400-\u04ff\u0590-\u05ff]")
@@ -560,13 +562,14 @@ def sample_fresh_threads(
     seed: int = 20261028,
     exclude_hashes: Optional[Set[str]] = None,
     dataset_version: str = "routing_v1.0.0",
+    english_only: bool = False,
 ) -> List[RoutingCase]:
     """Sample fresh first-turn tweets from raw threads.jsonl.
 
     - Excludes content hashes in exclude_hashes (e.g. Laya train/val + test, or existing pool).
     - Runs PII scrubber (scrub_text) on text.
-    - Preserves ~8% non-English tweets (scenario 'ood', language 'other').
-    - English tweets get scenario 'normal', language 'en'.
+    - When english_only=False (v1 default), preserves ~8% non-English tweets (scenario 'ood', language detected)
+      so existing v1 ticket_ids stay byte-identical; when english_only=True, samples strictly English tweets.
     - Stratified by length bucket.
     - Placeholder expected labels are provisional rule-derived ('other', 'escalate', 'human-standard').
     - Cases tagged with notes='fresh_unlabeled'.
@@ -583,7 +586,7 @@ def sample_fresh_threads(
     seen_hashes: Set[str] = set()
 
     candidates_en: Dict[str, List[Tuple[Any, str, str, str]]] = collections.defaultdict(list)
-    candidates_non_en: Dict[str, List[Tuple[Any, str, str, str]]] = collections.defaultdict(list)
+    candidates_non_en: List[Tuple[Any, str, str, str]] = []
 
     with path.open("r", encoding="utf-8") as f:
         for line in f:
@@ -610,20 +613,23 @@ def sample_fresh_threads(
             bucket = _compute_length_bucket(scrubbed)
             tid = data.get("thread_id")
             entry = (tid, scrubbed, c_hash, bucket)
-            if _is_english(scrubbed):
-                candidates_en[bucket].append(entry)
+            if english_only:
+                if is_english(scrubbed):
+                    candidates_en[bucket].append(entry)
             else:
-                candidates_non_en[bucket].append(entry)
+                if _is_english(scrubbed):
+                    candidates_en[bucket].append(entry)
+                else:
+                    candidates_non_en.append(entry)
 
     rng = random.Random(seed)
 
-    all_non_en: List[Tuple[Any, str, str, str]] = []
-    for b_list in candidates_non_en.values():
-        all_non_en.extend(b_list)
-    all_non_en.sort(key=lambda x: x[2])  # deterministic ordering by hash
-
-    target_non_en = min(round(n * 0.08), len(all_non_en))
-    sampled_non_en = rng.sample(all_non_en, target_non_en) if target_non_en > 0 else []
+    sampled_non_en: List[Tuple[Any, str, str, str]] = []
+    if not english_only and candidates_non_en:
+        target_non_en = min(round(n * 0.08), len(candidates_non_en))
+        candidates_non_en.sort(key=lambda x: x[2])
+        if target_non_en > 0:
+            sampled_non_en = rng.sample(candidates_non_en, target_non_en)
 
     target_en = n - len(sampled_non_en)
     sampled_en: List[Tuple[Any, str, str, str]] = []
@@ -650,9 +656,11 @@ def sample_fresh_threads(
 
     cases: List[RoutingCase] = []
 
-    # English cases
-    for tid, desc, chash, bucket in sampled_en:
+    for tid, desc, chash, bucket in sampled_en + sampled_non_en:
         t_id = make_ticket_id("kaggle_twcs", chash)
+        lang = "en" if is_english(desc) else detect_language(desc)
+        scens = ("normal",) if lang == "en" else ("ood",)
+        notes = "fresh_unlabeled" if lang == "en" else f"fresh_unlabeled; out_of_scope_language:{lang}"
         exp = Expected(
             intent="other",
             acceptable_intents=("other",),
@@ -672,11 +680,11 @@ def sample_fresh_threads(
             subject=None,
             description=desc,
             channel="twitter",
-            language="en",
+            language=lang,
             pii_scrubbed=True,
             expected=exp,
             difficulty="medium",
-            scenarios=("normal",),
+            scenarios=scens,
             style=style,
             source="real",
             source_dataset="kaggle_twcs",
@@ -690,51 +698,7 @@ def sample_fresh_threads(
             parent_ticket_id=None,
             perturbation=None,
             failure_ref=None,
-            notes="fresh_unlabeled",
-        )
-        cases.append(case)
-
-    # Non-English cases
-    for tid, desc, chash, bucket in sampled_non_en:
-        t_id = make_ticket_id("kaggle_twcs", chash)
-        exp = Expected(
-            intent="other",
-            acceptable_intents=("other",),
-            escalate=True,
-            decision="escalate",
-            queue="human-standard",
-            sentiment="neutral",
-            urgency=1,
-        )
-        style = Style(register="casual", length_bucket=bucket)
-        case = RoutingCase(
-            ticket_id=t_id,
-            content_hash=chash,
-            dataset_version=dataset_version,
-            split="pool",
-            created_at="2026-10-28T00:00:00Z",
-            subject=None,
-            description=desc,
-            channel="twitter",
-            language="other",
-            pii_scrubbed=True,
-            expected=exp,
-            difficulty="medium",
-            scenarios=("ood",),
-            style=style,
-            source="real",
-            source_dataset="kaggle_twcs",
-            source_ref=f"twcs_thread_{tid}",
-            ground_truth_source="rule_derived",
-            label_status="provisional",
-            verified_fields=(),
-            annotations=(),
-            adjudication=None,
-            group_id=f"grp-{t_id}",
-            parent_ticket_id=None,
-            perturbation=None,
-            failure_ref=None,
-            notes="fresh_unlabeled",
+            notes=notes,
         )
         cases.append(case)
 

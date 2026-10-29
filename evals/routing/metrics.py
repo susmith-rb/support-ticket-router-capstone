@@ -341,6 +341,8 @@ def _compute_view_metrics(
                 continue
             if c.expected.decision == "escalate" and "queue" not in c.verified_fields:
                 continue
+            if c.expected.decision == "reject_oos" and "queue" not in c.verified_fields:
+                continue
         routing_eligible.append((c, t))
 
     def _is_routing_correct(c: RoutingCase, t: Dict[str, Any]) -> bool:
@@ -352,6 +354,8 @@ def _compute_view_metrics(
             return pred.get("intent") in c.expected.acceptable_intents
         if c.expected.decision == "escalate":
             return pred.get("queue") == c.expected.queue
+        if c.expected.decision == "reject_oos":
+            return pred.get("queue") == "none"
         return False
 
     n_rc = len(routing_eligible)
@@ -578,6 +582,8 @@ def _compute_slices(
             return pred.get("intent") in c.expected.acceptable_intents
         if c.expected.decision == "escalate":
             return pred.get("queue") == c.expected.queue
+        if c.expected.decision == "reject_oos":
+            return pred.get("queue") == "none"
         return False
 
     def _summarize_slice(pairs: List[Tuple[RoutingCase, Dict[str, Any]]]) -> Dict[str, Any]:
@@ -670,6 +676,8 @@ def compute_objective(
             return pred.get("intent") in c.expected.acceptable_intents
         if c.expected.decision == "escalate":
             return pred.get("queue") == c.expected.queue
+        if c.expected.decision == "reject_oos":
+            return pred.get("queue") == "none"
         return False
 
     eligible: List[Tuple[RoutingCase, Dict[str, Any]]] = []
@@ -684,6 +692,8 @@ def compute_objective(
             if c.expected.decision == "auto_rag" and "intent" not in c.verified_fields:
                 continue
             if c.expected.decision == "escalate" and "queue" not in c.verified_fields:
+                continue
+            if c.expected.decision == "reject_oos" and "queue" not in c.verified_fields:
                 continue
         eligible.append((c, t))
 

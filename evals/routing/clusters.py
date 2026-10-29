@@ -24,8 +24,10 @@ SEVERITY_WEIGHTS: Dict[str, int] = {
     "wrong_queue": 3,
     "degraded": 3,
     "invalid_label": 3,
+    "false_oos": 3,
     "error": 3,
     "false_escalation": 2,
+    "missed_oos": 2,
     "wrong_intent": 1,
 }
 
@@ -50,6 +52,8 @@ def _is_routing_correct(c: RoutingCase, t: Dict[str, Any]) -> bool:
         return pred.get("intent") in c.expected.acceptable_intents
     if c.expected.decision == "escalate":
         return pred.get("queue") == c.expected.queue
+    if c.expected.decision == "reject_oos":
+        return pred.get("queue") == "none"
     return False
 
 
@@ -60,7 +64,7 @@ def _classify_error_type(
 ) -> str:
     """Classify the primary error type adhering strictly to spec precedence.
 
-    Precedence: error > degraded > invalid_label > missed_escalation > wrong_queue > false_escalation > wrong_intent.
+    Precedence: error > degraded > invalid_label > missed_escalation > wrong_queue > false_escalation > false_oos > missed_oos > wrong_intent.
     """
     pred = t.get("predicted", {})
     p_tier = str(pred.get("tier", ""))
@@ -82,8 +86,8 @@ def _classify_error_type(
     if p_intent not in valid_intents:
         return "invalid_label"
 
-    # 4. missed_escalation (expected escalate, predicted auto_rag/not escalate)
-    if c.expected.escalate and (not p_escalate or p_dec == "auto_rag"):
+    # 4. missed_escalation (expected escalate, predicted auto_rag/reject_oos/not escalate)
+    if c.expected.escalate and (not p_escalate or p_dec in ("auto_rag", "reject_oos")):
         return "missed_escalation"
 
     # 5. wrong_queue (escalate case where queue doesn't match)
@@ -94,7 +98,15 @@ def _classify_error_type(
     if not c.expected.escalate and (p_escalate or p_dec == "escalate"):
         return "false_escalation"
 
-    # 7. wrong_intent (intent not in acceptable intents)
+    # 7. false_oos (expected auto_rag, predicted reject_oos)
+    if c.expected.decision == "auto_rag" and p_dec == "reject_oos":
+        return "false_oos"
+
+    # 8. missed_oos (expected reject_oos, predicted auto_rag)
+    if c.expected.decision == "reject_oos" and p_dec == "auto_rag":
+        return "missed_oos"
+
+    # 9. wrong_intent (intent not in acceptable intents)
     if p_intent not in c.expected.acceptable_intents:
         return "wrong_intent"
 

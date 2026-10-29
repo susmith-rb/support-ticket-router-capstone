@@ -669,3 +669,201 @@ def test_stage2b_and_stage3_multi_annotation(tmp_path: Path):
     assert updated_fresh.ground_truth_source == "llm_provisional"
     assert "fresh_llm_annotated" in updated_fresh.notes
 
+
+def test_stage3_pass_override_in_annotations_dir_order(tmp_path: Path) -> None:
+    """Verify that later annotation directories in annotations_dir override earlier passes per (ticket_id, pass_index)."""
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
+    ann_dir1 = tmp_path / "ann_initial"
+    ann_dir2 = tmp_path / "ann_override"
+    ann_dir1.mkdir()
+    ann_dir2.mkdir()
+
+    case = _make_valid_case(
+        source_dataset="synthetic_jetski",
+        description="Where is the company headquartered?",
+        intent="other",
+        split="pool",
+        label_status="provisional",
+        verified_fields=(),
+    )
+    t_id = case.ticket_id
+    write_jsonl(work_dir / "pool_stage2b.jsonl", [case])
+
+    # Initial directory has pass 0 marking auto_rag
+    p0_init = {
+        "pass_index": 0,
+        "annotator_id": "ann_init_p0",
+        "labels": [
+            {
+                "ticket_id": t_id,
+                "expected": {
+                    "intent": "other",
+                    "acceptable_intents": ["other"],
+                    "escalate": False,
+                    "decision": "auto_rag",
+                    "queue": "none",
+                    "sentiment": "neutral",
+                    "urgency": 0,
+                },
+                "confidence": 0.8,
+                "rationale": "Initial auto_rag",
+            }
+        ],
+    }
+    (ann_dir1 / "pass0.jsonl").write_text(json.dumps(p0_init) + "\n", encoding="utf-8")
+
+    # Override directory has pass 0 re-annotated under Rule 2a as reject_oos
+    p0_over = {
+        "pass_index": 0,
+        "annotator_id": "ann_over_p0",
+        "labels": [
+            {
+                "ticket_id": t_id,
+                "expected": {
+                    "intent": "other",
+                    "acceptable_intents": ["other"],
+                    "escalate": False,
+                    "decision": "reject_oos",
+                    "queue": "none",
+                    "sentiment": "neutral",
+                    "urgency": 0,
+                },
+                "confidence": 0.95,
+                "rationale": "Refusal under Rule 2a",
+            }
+        ],
+    }
+    (ann_dir2 / "pass0_oos.jsonl").write_text(json.dumps(p0_over) + "\n", encoding="utf-8")
+
+    res = stage3(work_dir=work_dir, annotations_dir=f"{ann_dir1},{ann_dir2}")
+    assert res["pool_stage3_count"] == 1
+
+    stage3_cases = read_jsonl(work_dir / "pool_stage3.jsonl")
+    updated = stage3_cases[0]
+
+    assert updated.expected.decision == "reject_oos"
+    # Verify that only 1 pass0 annotation is retained on the case (superseded, not duplicated)
+    llm_p0_annotations = [a for a in updated.annotations if a.annotator_type == "llm" and a.pass_index == 0]
+    assert len(llm_p0_annotations) == 1
+    assert llm_p0_annotations[0].annotator_id == "ann_over_p0"
+
+
+def test_stage3_meaning_preserving_child_inheritance(tmp_path: Path) -> None:
+    """Verify meaning-preserving children inherit updated parent decisions, while semantic-altering do not."""
+    from evals.routing.schema import Perturbation
+
+    work_dir = tmp_path / "work_mp"
+    work_dir.mkdir()
+    ann_dir = tmp_path / "annotations"
+    ann_dir.mkdir()
+
+    parent = _make_valid_case(
+        source_dataset="synthetic_jetski",
+        description="Local weather forecast please",
+        intent="other",
+        split="pool",
+        label_status="provisional",
+        verified_fields=(),
+    )
+    p_id = parent.ticket_id
+
+    # Meaning-preserving: typo perturbation
+    typo_desc = "Local wether forecast please"
+    typo_hash = compute_content_hash(subject=None, description=typo_desc)
+    child_typo = dataclasses.replace(
+        parent,
+        ticket_id=make_ticket_id("synthetic_jetski", typo_hash),
+        content_hash=typo_hash,
+        description=typo_desc,
+        parent_ticket_id=p_id,
+        perturbation=Perturbation(type="typos", seed=123, params={"rate": 0.1}),
+        scenarios=("perturbation",),
+    )
+
+    # Meaning-preserving: paraphrase
+    para_desc = "Can you give me the local weather forecast?"
+    para_hash = compute_content_hash(subject=None, description=para_desc)
+    child_para = dataclasses.replace(
+        parent,
+        ticket_id=make_ticket_id("synthetic_jetski", para_hash),
+        content_hash=para_hash,
+        description=para_desc,
+        parent_ticket_id=p_id,
+        perturbation=None,
+        scenarios=("paraphrase",),
+    )
+
+    # Semantic-altering: truncate
+    trunc_desc = "Local"
+    trunc_hash = compute_content_hash(subject=None, description=trunc_desc)
+    child_trunc = dataclasses.replace(
+        parent,
+        ticket_id=make_ticket_id("synthetic_jetski", trunc_hash),
+        content_hash=trunc_hash,
+        description=trunc_desc,
+        parent_ticket_id=p_id,
+        perturbation=Perturbation(type="truncate", seed=456, params={"length": 5}),
+        scenarios=("perturbation",),
+    )
+
+    # Semantic-altering: conflicting_info
+    conf_desc = "Local weather forecast please and refund my shoes"
+    conf_hash = compute_content_hash(subject=None, description=conf_desc)
+    child_conflict = dataclasses.replace(
+        parent,
+        ticket_id=make_ticket_id("synthetic_jetski", conf_hash),
+        content_hash=conf_hash,
+        description=conf_desc,
+        parent_ticket_id=p_id,
+        perturbation=Perturbation(type="conflicting_info", seed=789, params={"text": "refund"}),
+        scenarios=("perturbation",),
+    )
+
+    write_jsonl(work_dir / "pool_stage2b.jsonl", [parent, child_typo, child_para, child_trunc, child_conflict])
+
+    # Annotate ONLY parent with reject_oos across 3 passes
+    for p_idx in range(3):
+        pkt = {
+            "pass_index": p_idx,
+            "annotator_id": f"ann_p{p_idx}",
+            "labels": [
+                {
+                    "ticket_id": p_id,
+                    "expected": {
+                        "intent": "other",
+                        "acceptable_intents": ["other"],
+                        "escalate": False,
+                        "decision": "reject_oos",
+                        "queue": "none",
+                        "sentiment": "neutral",
+                        "urgency": 0,
+                    },
+                    "confidence": 0.95,
+                    "rationale": "Rule 2a OOS refusal",
+                }
+            ],
+        }
+        (ann_dir / f"pass{p_idx}.jsonl").write_text(json.dumps(pkt) + "\n", encoding="utf-8")
+
+    res = stage3(work_dir=work_dir, annotations_dir=str(ann_dir))
+    assert res["pool_stage3_count"] == 5
+
+    cases_out = {c.ticket_id: c for c in read_jsonl(work_dir / "pool_stage3.jsonl")}
+
+    # Parent got reject_oos
+    assert cases_out[p_id].expected.decision == "reject_oos"
+
+    # Meaning-preserving children inherited reject_oos
+    assert cases_out[child_typo.ticket_id].expected.decision == "reject_oos"
+    assert cases_out[child_typo.ticket_id].expected.queue == "none"
+    assert "inherited_from_parent" in cases_out[child_typo.ticket_id].notes
+
+    assert cases_out[child_para.ticket_id].expected.decision == "reject_oos"
+    assert cases_out[child_para.ticket_id].expected.queue == "none"
+    assert "inherited_from_parent" in cases_out[child_para.ticket_id].notes
+
+    # Semantic-altering children did NOT inherit reject_oos (retained original decision: escalate)
+    assert cases_out[child_trunc.ticket_id].expected.decision == "escalate"
+    assert cases_out[child_conflict.ticket_id].expected.decision == "escalate"
+

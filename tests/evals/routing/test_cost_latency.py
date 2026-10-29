@@ -95,7 +95,7 @@ def test_breakdown_hand_computed_example(eval_config):
             run_id="run_001",
             config_hash="h1",
             candidate="baseline",
-            predicted={"tier": "tier0_rules", "decision": "escalate", "intent": "human_escalation", "queue": "human-standard", "escalate": True, "sentiment": "neutral", "urgency": "normal", "degraded": False, "reason": "tier0"},
+            predicted={"tier": "tier0_rules", "decision": "escalate", "intent": "other", "queue": "human-standard", "escalate": True, "sentiment": "neutral", "urgency": "normal", "degraded": False, "reason": "tier0"},
             decision_raw={"tier": "tier0_rules"},
             tier_calls=[],
             latency_ms_total=1.0,
