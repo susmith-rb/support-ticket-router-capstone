@@ -459,7 +459,26 @@ class FaqResolverAgent:
             )
             and any(
                 kw in message.lower()
-                for kw in ("order", "package", "tracking", "status", "delivery", "item", "where is", "track")
+                for kw in (
+                    "order",
+                    "orders",
+                    "package",
+                    "packages",
+                    "tracking",
+                    "status",
+                    "delivery",
+                    "item",
+                    "items",
+                    "where is",
+                    "track",
+                    "recent",
+                    "purchase",
+                    "purchases",
+                    "bought",
+                    "shipment",
+                    "shipments",
+                    "history",
+                )
             )
         )
 
@@ -530,8 +549,11 @@ class FaqResolverAgent:
                             customer_id=customer_id or "",
                             limit=5,
                         )
-                    if listed and listed.get("orders"):
-                        order_info = listed
+                    if isinstance(listed, dict) and "orders" in listed:
+                        if listed.get("orders"):
+                            order_info = listed
+                        else:
+                            order_info = {"orders": [], "status": "NO_ORDERS_FOUND"}
                 except BolaViolationError:
                     return ResolutionResult(
                         status="ESCALATED",

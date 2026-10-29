@@ -991,6 +991,96 @@ def test_citation_validator_and_search_strip_discovery_engine_html_highlights():
     assert doc.title == "Order Status & Tracking"
 
 
+# REQ-AGENT-007, REQ-AGENT-012
+def test_faq_resolver_natural_recent_orders_lookup_and_sign_in_guard():
+    """Verify natural recent order queries invoke list_orders when verified or prompt sign-in when unverified."""
+    from ticket_router.common import resilience
+
+    # Verify ORDER_LOOKUP_MCP_TIMEOUT_S updated to 5.0s per REQ-AGENT-012
+    assert resilience.ORDER_LOOKUP_MCP_TIMEOUT_S == 5.0
+
+    queries = [
+        "what are my orders recently ?",
+        "what did I buy recently?",
+    ]
+
+    for q in queries:
+        # 1. Verified customer: invokes list_orders and injects orders into LLM
+        order_client = FakeOrderLookupClient()
+        order_client.add_order(
+            order_id="ORD-101",
+            customer_id="cust_1001",
+            status="SHIPPED",
+        )
+        fake_llm = RecordingLLMClient(
+            default_answer="You recently ordered ORD-101 which is shipped.",
+            default_doc_id="faq-shipping-rates",
+            default_quote="Standard shipping is free for orders over $35 and takes 3 to 5 business days.",
+        )
+        agent = FaqResolverAgent(
+            search_client=FakeSearchClient(),
+            llm_client=fake_llm,
+            order_client=order_client,
+        )
+
+        res_verified = agent.resolve(
+            ticket_id="t-recent-ver",
+            session_id="s-recent-ver",
+            message=q,
+            customer_id="cust_1001",
+            predicted_intent="order_status",
+            customer_verified=True,
+        )
+
+        assert res_verified.status == "AUTO_RESOLVED"
+        assert res_verified.route == "resolved"
+        assert len(res_verified.citations) >= 1
+        assert len(order_client.call_history) == 1
+        assert order_client.call_history[0]["action"] == "list_orders"
+        assert order_client.call_history[0]["customer_id"] == "cust_1001"
+        assert order_client.call_history[0]["limit"] == 5
+
+        assert len(fake_llm.recorded_order_info) >= 1
+        passed_order_info = fake_llm.recorded_order_info[-1]
+        assert passed_order_info is not None
+        assert "orders" in passed_order_info
+        assert len(passed_order_info["orders"]) == 1
+        assert passed_order_info["orders"][0]["order_id"] == "ORD-101"
+
+        # 2. Unverified customer: never invokes order_client, returns sign-in prompt
+        unverified_order_client = FakeOrderLookupClient()
+        unverified_order_client.add_order(
+            order_id="ORD-101",
+            customer_id="cust_1001",
+            status="SHIPPED",
+        )
+        unverified_fake_llm = RecordingLLMClient()
+        agent_unverified = FaqResolverAgent(
+            search_client=FakeSearchClient(),
+            llm_client=unverified_fake_llm,
+            order_client=unverified_order_client,
+        )
+
+        res_unverified = agent_unverified.resolve(
+            ticket_id="t-recent-unv",
+            session_id="s-recent-unv",
+            message=q,
+            customer_id="anon:guest_123",
+            predicted_intent="order_status",
+            customer_verified=False,
+        )
+
+        assert res_unverified.status == "AUTO_RESOLVED"
+        assert res_unverified.route == "resolved"
+        assert res_unverified.answer == (
+            "Please sign in to check your order details and track shipments. "
+            "If you need further assistance, I can also connect you with a human support specialist."
+        )
+        assert len(unverified_order_client.call_history) == 0
+        assert len(unverified_fake_llm.recorded_order_info) == 0
+
+
+
 
 
 

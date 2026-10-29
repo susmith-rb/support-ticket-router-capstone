@@ -76,7 +76,7 @@ class Tier0Result:
     matched: bool = False
     escalate: bool = False
     reason: Optional[str] = None
-    category: Optional[str] = None  # abuse, emergency, legal, human_request
+    category: Optional[str] = None  # abuse, emergency, legal, human_request, greeting, pleasantry
     sentiment: str = "neutral"
     urgency: str = "normal"
 
@@ -125,6 +125,28 @@ _HUMAN_REQUEST_REGEX = re.compile(
     re.IGNORECASE,
 )
 
+# Standalone conversational greetings and capability openers (REQ-AGENT-024)
+_GREETING_REGEX = re.compile(
+    r"^(?:"
+    r"(?:hi|hey|hello|howdy|hiya|greetings|good\s+(?:morning|afternoon|evening|day))"
+    r"(?:\s+(?:there|team|support|assistant|folks|everyone|all))?"
+    r"(?:[\s,!?.]+(?:how\s+are\s+you(?:\s+doing|\s+today)?|how['’]?s\s+it\s+going|how\s+can\s+you\s+help(?:\s+me)?|what\s+can\s+you\s+(?:do|help(?:\s+me)?\s+with)))?"
+    r"|"
+    r"(?:how\s+can\s+you\s+help(?:\s+me)?|what\s+can\s+you\s+(?:do|help(?:\s+me)?\s+with))"
+    r")[\s!?.]*$",
+    re.IGNORECASE,
+)
+
+# Standalone conversational pleasantries and polite thanks (REQ-AGENT-024)
+_PLEASANTRY_REGEX = re.compile(
+    r"^(?:thanks|thank\s+you|thx|ty|many\s+thanks|much\s+appreciated)"
+    r"(?:\s+(?:so\s+much|very\s+much|a\s+lot|a\s+bunch))?"
+    r"(?:\s+for\s+(?:your|the)\s+(?:help|assistance|support|info|information))?"
+    r"(?:\s+(?:team|support|assistant))?"
+    r"[\s!?.]*$",
+    re.IGNORECASE,
+)
+
 
 def evaluate_tier0_rules(text: str) -> Tier0Result:
     """Evaluate deterministic regex rules before invoking any neural model (REQ-AGENT-002).
@@ -133,6 +155,7 @@ def evaluate_tier0_rules(text: str) -> Tier0Result:
     - Abuse/toxic phrases escalate immediately to human review and are NEVER dropped (REQ-AGENT-003).
     - Emergency/legal threats escalate immediately with immediate urgency.
     - Explicit human requests bypass automated answering.
+    - Standalone greetings and pleasantries match without escalation (REQ-AGENT-024).
     """
     if not text or not text.strip():
         return Tier0Result(matched=False)
@@ -170,6 +193,29 @@ def evaluate_tier0_rules(text: str) -> Tier0Result:
             reason="tier0_human_agent_request",
             category="human_request",
             sentiment="neutral",
+            urgency="normal",
+        )
+
+    cleaned = text.strip()
+    # 4. Standalone conversational greeting (REQ-AGENT-024)
+    if _GREETING_REGEX.match(cleaned):
+        return Tier0Result(
+            matched=True,
+            escalate=False,
+            reason="tier0_conversational_greeting",
+            category="greeting",
+            sentiment="neutral",
+            urgency="normal",
+        )
+
+    # 5. Standalone conversational pleasantry (REQ-AGENT-024)
+    if _PLEASANTRY_REGEX.match(cleaned):
+        return Tier0Result(
+            matched=True,
+            escalate=False,
+            reason="tier0_conversational_pleasantry",
+            category="pleasantry",
+            sentiment="positive",
             urgency="normal",
         )
 
@@ -292,6 +338,22 @@ class TriagePolicy:
                 reason=tier0.reason or "tier0_rule_match",
                 degraded=False,
                 details=details_t0,
+            )
+
+        if tier0.matched and not tier0.escalate and tier0.category in ("greeting", "pleasantry"):
+            return RouterDecision(
+                ticket_id=t_id,
+                session_id=session_id,
+                decision="auto_rag",
+                tier="tier0_rules",
+                queue="none",
+                predicted_intent="other",
+                escalate=False,
+                sentiment=tier0.sentiment,
+                urgency=tier0.urgency,
+                reason=tier0.reason or f"tier0_conversational_{tier0.category}",
+                degraded=False,
+                details={"category": tier0.category},
             )
 
         ma_verdict: Optional[ModelArmorVerdict] = None

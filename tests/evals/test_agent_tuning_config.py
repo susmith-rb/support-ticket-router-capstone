@@ -33,7 +33,7 @@ def test_agent_tuning_config_and_hill_climb_invariants():
     assert cfg.tau_low == 0.15
     assert cfg.tau_intent == 0.70
     assert cfg.tier2_router_version == "v4"
-    assert cfg.faq_answer_version == "v1"
+    assert cfg.faq_answer_version == "v2"
     assert cfg.search_config == "intent_soft_noisy_0.2"
     assert cfg.top_k == 5
     assert cfg.rerank_enabled is False
@@ -113,6 +113,53 @@ def test_agent_tuning_config_and_hill_climb_invariants():
     assert rendered_faq_with_fb == expected_faq_head_with_fb, (
         f"FAQ v1 prompt (with feedback) does not match HEAD byte-for-byte:\nRendered:\n{rendered_faq_with_fb}\nExpected:\n{expected_faq_head_with_fb}"
     )
+
+    # 2c. FAQ answer prompt v2 with orders list and instructions
+    orders_data = {
+        "orders": [
+            {
+                "order_id": "ORD-12345",
+                "status": "DELIVERED",
+                "items": [{"sku": "SKU-1", "name": "Wireless Mouse", "price": 29.99}],
+                "tracking_number": "TRK-98765",
+                "promised_delivery": "2026-10-25",
+            }
+        ]
+    }
+    rendered_faq_v2_no_fb = get_faq_answer_prompt(
+        query=fixed_query,
+        docs_context=fixed_docs,
+        order_context=orders_data,
+        feedback=None,
+        version="v2",
+    )
+    assert "Order Context (Authenticated Customer Live Order Database Records):" in rendered_faq_v2_no_fb
+    assert "live personal order history" in rendered_faq_v2_no_fb
+    assert "NEVER claim that you do not have direct access" in rendered_faq_v2_no_fb
+    assert "ORD-12345" in rendered_faq_v2_no_fb
+    assert "citations" in rendered_faq_v2_no_fb
+    assert "exact verbatim substring copied character-for-character" in rendered_faq_v2_no_fb
+
+    rendered_faq_v2_with_fb = get_faq_answer_prompt(
+        query=fixed_query,
+        docs_context=fixed_docs,
+        order_context=orders_data,
+        feedback=fixed_fb,
+        version="v2",
+    )
+    assert f"Correction Feedback:\n{fixed_fb}\n\n" in rendered_faq_v2_with_fb
+    assert "live personal order history" in rendered_faq_v2_with_fb
+
+    # Verify fallback _V2_DEFAULT_FAQ_TEMPLATE renders identically to file template
+    from ticket_router.config.agent_tuning import _V2_DEFAULT_FAQ_TEMPLATE
+
+    expected_v2_code = _V2_DEFAULT_FAQ_TEMPLATE.format(
+        query=fixed_query,
+        docs_context=json.dumps(fixed_docs, indent=2),
+        order_context=json.dumps(orders_data, indent=2),
+        feedback_block="",
+    )
+    assert rendered_faq_v2_no_fb == expected_v2_code
 
     # 3. Hill climb log and documentation exist
     assert HILL_CLIMB_LOG.is_file(), f"Missing {HILL_CLIMB_LOG}"

@@ -9,7 +9,7 @@ router:
 
 prompts:
   tier2_router_version: "v4"
-  faq_answer_version: "v1"
+  faq_answer_version: "v2"
 
 retrieval:
   search_config: "intent_soft_noisy_0.2"

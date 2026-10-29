@@ -79,3 +79,24 @@ OUT_OF_SCOPE_TEMPLATE = (
 def render_out_of_scope_refusal(ticket_id: str) -> str:
     """Render a deterministic polite refusal for out-of-scope customer inquiries (REQ-AGENT-022)."""
     return OUT_OF_SCOPE_TEMPLATE.format(ticket_id=ticket_id)
+
+
+# REQ-AGENT-024: Conversational Greeting and Pleasantry Handling
+CONVERSATIONAL_GREETING_TEMPLATE = (
+    "Hello! I'm the Global Retail Hub Support Assistant. I can help you check your "
+    "recent orders, track a shipment, or answer questions about shipping policies, "
+    "returns and refunds, or account and payment billing. How can I help you today?"
+)
+
+CONVERSATIONAL_PLEASANTRY_TEMPLATE = (
+    "You're welcome! Please let me know if there's anything else I can help you "
+    "with regarding your Global Retail Hub orders or account."
+)
+
+
+def render_conversational_reply(category: Optional[str] = None) -> str:
+    """Render a deterministic friendly welcome or closing reply (REQ-AGENT-024)."""
+    if category == "pleasantry":
+        return CONVERSATIONAL_PLEASANTRY_TEMPLATE
+    return CONVERSATIONAL_GREETING_TEMPLATE
+

@@ -70,7 +70,8 @@ _V4_DEFAULT_SYSTEM_INSTRUCTION: str = (
     "   - shipping_policy: shipping speeds/options, shipping fees, delivery timeframes, destination/APO addresses.\n"
     "   - returns_refunds: return windows, initiating returns/exchanges, damaged/wrong items received, refund/rebate status, money-back guarantee.\n"
     "   - account_payment: login/password reset, registration/profile edits, payment method options/declines, billing charges, cancellation/early-exit fees, invoices, tax exemption, gift cards.\n"
-    '   - Note: Frustrated tone or casual profanity directed at an issue (not abusive insults at an agent, not hostile angry, and not immediate urgency) on an answerable self-service FAQ question stays sentiment: "frustrated" and escalate: false.\n\n'
+    '   - Note: Frustrated tone or casual profanity directed at an issue (not abusive insults at an agent, not hostile angry, and not immediate urgency) on an answerable self-service FAQ question stays sentiment: "frustrated" and escalate: false.\n'
+    '   - other (conversational greeting / capability opener only): standalone polite greetings, thanks, or capability questions asking what the assistant can help with (e.g. "hello there", "hey how can you help", "what can you help me with?") when NO support problem, device/store issue, or distress is mentioned.\n\n'
     "2. In-Scope Human Escalation (out_of_scope: false, escalate: true):\n"
     '   - Brand, store, digital/device, or retail issues lacking self-service FAQ or requiring human intervention: mobile app/website bugs or crashes, smart-device or streaming media issues (e.g. Alexa/Echo/Firestick/Prime Video playback, video quality, missing subtitles, catalog/movie/album additions, unreleased product launch dates), physical retail store operations/amenities/parking, marketplace seller inquiries, newsletter/review/feedback assistance, account security/fraud/unauthorized charges, estate transfers, explicit human-agent requests, social praise/shoutouts to the brand, or vague cries for help ("not working ?", "help me", "why 2 hours ?" -> intent: "other", escalate: true, out_of_scope: false). Never mark brand/product/device/media/store customer posts as out_of_scope: true.\n\n'
     '3. Out-of-Scope Refusal (out_of_scope: true, intent: "other", escalate: false):\n'
@@ -81,6 +82,22 @@ _V4_DEFAULT_SYSTEM_INSTRUCTION: str = (
 )
 
 _V4_DEFAULT_TEMPLATE: str = _V3_DEFAULT_TEMPLATE
+
+_V2_DEFAULT_FAQ_TEMPLATE: str = (
+    "Customer Inquiry: {query}\n\n"
+    "Retrieved Documents:\n{docs_context}\n\n"
+    "Order Context (Authenticated Customer Live Order Database Records):\n{order_context}\n\n"
+    "{feedback_block}Instructions:\n"
+    '1. If Order Context contains verified customer order data (an "order_id" record or a non-empty "orders" list), Order Context IS the signed-in customer\'s live personal order history from the Global Retail Hub database. Answer their question directly with those exact order details (order IDs, status, items, tracking numbers, and promised delivery dates). NEVER claim that you do not have direct access to their personal order history when Order Context contains order records.\n'
+    '2. If Order Context shows an empty "orders" list or "status": "NOT_FOUND", clearly inform the customer that no matching orders were found on their signed-in account. If Order Context is empty ({{}}), answer using Retrieved Documents only and do not invent order details.\n'
+    "3. Ground all retail policy, shipping, return, and account rules strictly in Retrieved Documents.\n"
+    "4. Return valid JSON strictly matching:\n"
+    "{{\n"
+    '  "answer": "your helpful answer here",\n'
+    '  "citations": [{{"doc_id": "document_id", "quote": "exact verbatim substring copied character-for-character from Retrieved Documents"}}]\n'
+    "}}\n"
+    'Every answer MUST include at least one citation in "citations" whose "quote" is an exact verbatim quotation copied character-for-character from Retrieved Documents (even when answering primarily from Order Context, include at least one relevant supporting policy citation from Retrieved Documents).'
+)
 
 
 @dataclass(frozen=True)
@@ -94,7 +111,7 @@ class AgentTuningConfig:
 
     # Prompt versions
     tier2_router_version: str = "v4"
-    faq_answer_version: str = "v1"
+    faq_answer_version: str = "v2"
 
     # Retrieval knobs
     search_config: str = "intent_soft_noisy_0.2"
@@ -198,7 +215,7 @@ def load_tuning_config(
         tau_low=float(router_data.get("tau_low", 0.15)),
         tau_intent=float(router_data.get("tau_intent", 0.70)),
         tier2_router_version=str(prompts_data.get("tier2_router_version", "v4")),
-        faq_answer_version=str(prompts_data.get("faq_answer_version", "v1")),
+        faq_answer_version=str(prompts_data.get("faq_answer_version", "v2")),
         search_config=str(retr_data.get("search_config", "intent_soft_noisy_0.2")),
         top_k=int(retr_data.get("top_k", 5)),
         rerank_enabled=bool(retr_data.get("rerank_enabled", False)),
@@ -324,6 +341,17 @@ def get_faq_answer_prompt(
                 )
             except Exception:
                 pass
+
+    if ver == "v2":
+        try:
+            return _V2_DEFAULT_FAQ_TEMPLATE.format(
+                query=query,
+                docs_context=docs_str,
+                order_context=order_str,
+                feedback_block=feedback_block,
+            )
+        except Exception:
+            pass
 
     # Standard fallback prompt matching HEAD byte-for-byte
     prompt = (

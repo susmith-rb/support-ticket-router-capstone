@@ -37,6 +37,7 @@ from ticket_router.agents.triage_router.policy import (
 )
 from ticket_router.agents.triage_router.templates import (
     render_calming_acknowledgement,
+    render_conversational_reply,
     render_out_of_scope_refusal,
 )
 from ticket_router.common.observability import (
@@ -479,56 +480,63 @@ class TriageRouterAgent:
                     decision=asdict(decision),
                 )
 
-                payload = A2AHandoffPayload(
-                    ticket_id=t_id,
-                    session_id=session_id,
-                    predicted_intent=decision.predicted_intent,
-                    redacted_message=body_to_persist,
-                    memory_summary=memory_summary,
-                    customer_id=cust_ctx.customer_id if cust_ctx.verified else None,
-                    customer_verified=customer_verified,
-                    identity_issuer=identity_issuer,
-                    traceparent=get_current_traceparent() or traceparent,
-                )
-                try:
-                    handoff_resp = self.a2a_client.handoff(payload)
-                    if isinstance(handoff_resp, dict) and handoff_resp.get("status") == "ESCALATED":
-                        calming_ack = str(
-                            handoff_resp.get("calming_ack")
-                            or render_calming_acknowledgement(
-                                queue=str(handoff_resp.get("queue", "human-standard")),
-                                ticket_id=t_id,
-                            )
-                        )
-                except Exception as exc:
-                    decision = replace(
-                        decision,
-                        decision="escalate",
-                        escalate=True,
-                        queue="human-standard",
-                        degraded=True,
-                        details={**decision.details, "a2a_error": type(exc).__name__},
-                    )
-                    calming_ack = render_calming_acknowledgement(
-                        queue=decision.queue,
-                        ticket_id=t_id,
-                    )
+                if decision.details.get("category") in ("greeting", "pleasantry"):
                     handoff_resp = {
-                        "status": "ESCALATED",
-                        "queue": decision.queue,
-                        "reason": "a2a_handoff_failed",
-                        "calming_ack": calming_ack,
+                        "status": "AUTO_RESOLVED",
+                        "route": "resolved",
+                        "answer": render_conversational_reply(decision.details.get("category")),
                     }
+                else:
+                    payload = A2AHandoffPayload(
+                        ticket_id=t_id,
+                        session_id=session_id,
+                        predicted_intent=decision.predicted_intent,
+                        redacted_message=body_to_persist,
+                        memory_summary=memory_summary,
+                        customer_id=cust_ctx.customer_id if cust_ctx.verified else None,
+                        customer_verified=customer_verified,
+                        identity_issuer=identity_issuer,
+                        traceparent=get_current_traceparent() or traceparent,
+                    )
                     try:
-                        self.mcp_client.upsert_ticket(
-                            idempotency_key=f"{idempotency_key}:a2a_degraded",
-                            customer_id=ticket_customer_id,
-                            channel=channel,
-                            body_redacted=message_text,
-                            decision=asdict(decision),
+                        handoff_resp = self.a2a_client.handoff(payload)
+                        if isinstance(handoff_resp, dict) and handoff_resp.get("status") == "ESCALATED":
+                            calming_ack = str(
+                                handoff_resp.get("calming_ack")
+                                or render_calming_acknowledgement(
+                                    queue=str(handoff_resp.get("queue", "human-standard")),
+                                    ticket_id=t_id,
+                                )
+                            )
+                    except Exception as exc:
+                        decision = replace(
+                            decision,
+                            decision="escalate",
+                            escalate=True,
+                            queue="human-standard",
+                            degraded=True,
+                            details={**decision.details, "a2a_error": type(exc).__name__},
                         )
-                    except Exception:
-                        pass
+                        calming_ack = render_calming_acknowledgement(
+                            queue=decision.queue,
+                            ticket_id=t_id,
+                        )
+                        handoff_resp = {
+                            "status": "ESCALATED",
+                            "queue": decision.queue,
+                            "reason": "a2a_handoff_failed",
+                            "calming_ack": calming_ack,
+                        }
+                        try:
+                            self.mcp_client.upsert_ticket(
+                                idempotency_key=f"{idempotency_key}:a2a_degraded",
+                                customer_id=ticket_customer_id,
+                                channel=channel,
+                                body_redacted=message_text,
+                                decision=asdict(decision),
+                            )
+                        except Exception:
+                            pass
 
             elapsed_ms = (time.monotonic() - start_time) * 1000.0
 

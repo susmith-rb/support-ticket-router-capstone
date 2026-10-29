@@ -20,7 +20,7 @@ ROUTER_S1_TIMEOUT_S: float = 0.500  # HTTP call timeout. Model budget is 150 ms 
 TIER2_FLASH_TIMEOUT_S: float = 1.500  # 1500 ms
 AGENT_SEARCH_TIMEOUT_S: float = 0.800  # 800 ms
 LAYA_RERANK_TIMEOUT_S: float = 0.600  # HTTP call timeout; measured in-region e2e rerank p95 ~200 ms
-ORDER_LOOKUP_MCP_TIMEOUT_S: float = 0.300  # 300 ms
+ORDER_LOOKUP_MCP_TIMEOUT_S: float = 5.000  # 5000 ms (REQ-AGENT-012: accommodates min_instance_count=0 Cloud Run + Cloud SQL IAM cold starts while preserving <300 ms warm latency within 20s FAQ_OVERALL_BUDGET_S)
 TICKET_DB_MCP_TIMEOUT_S: float = 0.500  # 500 ms
 TRIAGE_OVERALL_BUDGET_S: float = 3.000  # 3000 ms
 FAQ_OVERALL_BUDGET_S: float = 20.000  # 20000 ms
