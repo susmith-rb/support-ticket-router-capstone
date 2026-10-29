@@ -175,6 +175,8 @@ def extract_answer_from_result(result: TriageResult) -> str:
     """Extract final user-facing text from TriageResult for response event."""
     if result.decision.decision == "escalate":
         return result.calming_ack or "Your request has been routed to our specialist team."
+    if result.decision.decision == "reject_oos":
+        return result.calming_ack or "I can only assist with Global Retail Hub customer support inquiries."
     if result.handoff_response:
         ans = result.handoff_response.get("answer")
         if ans:

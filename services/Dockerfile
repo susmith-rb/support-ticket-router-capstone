@@ -35,6 +35,7 @@ RUN python /tmp/requirements_from_pyproject.py /app/pyproject.toml > /tmp/requir
     && pip install --no-cache-dir -r /tmp/requirements.txt
 
 COPY src/ /app/src/
+COPY prompts/ /app/prompts/
 # pyproject declares these offline packages too; setuptools needs them present to build (not imported at runtime)
 COPY evals/ /app/evals/
 COPY corpus/ /app/corpus/

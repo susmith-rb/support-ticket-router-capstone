@@ -18,7 +18,7 @@ Inbound Support Ticket (Session-authenticated)
 │ Identity: sa-triage@ (PredictionUser, MCP Invoker, PS) │
 └────────────┬─────────────────────────────┬─────────────┘
              │                             │
-    [p_esc < 0.15 & faq]          [p_esc >= 0.35 | urgent]
+    [p_esc < 0.15 & faq]          [p_esc >= 0.50 | urgent]
              ▼                             ▼
 ┌───────────────────────────┐ ┌───────────────────────────┐
 │ FaqResolverAgent          │ │ HumanQueueAgent           │
@@ -102,6 +102,8 @@ src/ticket_router/
 | `REQ-AGENT-018` | GKE Autopilot Workload Identity & HPA for FaqResolverAgent | `done` | `tests/infra/test_agent_infra_static.py::test_faq_gke_manifests` |
 | `REQ-AGENT-019` | Cloud Run MCP Microservices with IAM Authentication and Zero Standby Cost | `done` | `tests/infra/test_agent_infra_static.py::test_cloud_run_services_iam_and_cost_posture` |
 | `REQ-AGENT-020` | Resilient Escalation Queue with Dead-Letter Handling | `done` | `tests/infra/test_agent_infra_static.py::test_pubsub_escalation_and_dlq` |
+| `REQ-AGENT-021` | GKE Node Artifact Registry Pull Access and Least-Privilege Node Identity | `done` | `tests/infra/test_agent_infra_static.py::test_gke_node_artifact_registry_reader` |
+| `REQ-AGENT-022` | Out-of-Scope Query Refusal via Tier-2 System Prompt | `done` | `tests/agents/test_out_of_scope.py::test_out_of_scope_refusal_end_to_end` |
 
 
 ---
@@ -116,7 +118,7 @@ src/ticket_router/
 - **Owner**: agent-service
 
 ### REQ-AGENT-002: TriageRouter Tiered Decision Policy & Thresholds
-- **Statement**: `TriageRouterAgent` MUST evaluate inbound messages sequentially through: (1) Tier 0 deterministic safety, abuse, and keyword regex rules; (2) Tier 1 `router-s1` encoder via `:rawPredict` evaluating `{escalate, sentiment, urgency, intent}`; and (3) Tier 2 `gemini-3.8-flash` invoked ONLY when Tier 1 confidence lands in the uncertainty band ($\tau_{\text{low}} \le p_{\text{esc}} < \tau_{\text{esc}}$) or predicts `intent="other"`. Standard operating thresholds MUST be loaded from configuration: $\tau_{\text{esc}} = 0.35$, $\tau_{\text{low}} = 0.15$, $\tau_{\text{intent}} = 0.70$.
+- **Statement**: `TriageRouterAgent` MUST evaluate inbound messages sequentially through: (1) Tier 0 deterministic safety, abuse, and keyword regex rules; (2) Tier 1 `router-s1` encoder via `:rawPredict` evaluating `{escalate, sentiment, urgency, intent}`; and (3) Tier 2 `gemini-3.8-flash` invoked ONLY when Tier 1 confidence lands in the uncertainty band ($\tau_{\text{low}} \le p_{\text{esc}} < \tau_{\text{esc}}$) or predicts `intent="other"`. Standard operating thresholds MUST be loaded from configuration: $\tau_{\text{esc}} = 0.50$, $\tau_{\text{low}} = 0.15$, $\tau_{\text{intent}} = 0.70$. Tier 0, Model Armor, and degraded fallback escalations emit canonical `predicted_intent="other"` with the specific trigger preserved in `reason` and `details["category"]`.
 - **Rationale**: Enforces System-1/System-2 economics and guarantees sub-100 ms routing for definitive cases (TDD §3.6, §5.2).
 - **Acceptance**: `tests/agents/test_triage_router.py::test_tiered_policy_thresholds`
 - **Status**: done
@@ -239,7 +241,7 @@ src/ticket_router/
 - **Owner**: agent-service
 
 ### REQ-AGENT-017: Agent Runtime Deployment for TriageRouterAgent
-- **Statement**: TriageRouterAgent is deployed to Vertex AI Agent Engine / Reasoning Engine via the Vertex AI SDK (`scripts/deploy_agents/deploy_triage_agent_runtime.py`) or Cloud Run fallback. The deployment packaging script MUST isolate execution environments by setting `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, and `PYTHONPATH=/code/src:src:.` in-process and in container `env_vars` before importing or serializing agent closures, preventing local workstation project names from baking into the pickled artifact, normalize `staging_bucket` to `gs://<bucket>` for `vertexai.init`, and pin runtime dependencies (`cloudpickle==3.0.0`, `pydantic>=2.0.0`, `google-adk>=0.1.0`). `TriageRouterAdkAgent` MUST preserve lazy `_router` re-initialization across `cloudpickle` deserialization. The Reasoning Engine service agent MUST be granted `roles/storage.objectViewer` on the staging bucket.
+- **Statement**: TriageRouterAgent is deployed to Vertex AI Agent Engine / Reasoning Engine via the Vertex AI SDK (`scripts/deploy_agents/deploy_triage_agent_runtime.py`) or Cloud Run fallback. The deployment packaging script MUST isolate execution environments by setting `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, and `PYTHONPATH=/code/src:src:.` in-process and in container `env_vars` before importing or serializing agent closures, preventing local workstation project names from baking into the pickled artifact, stage both `src/ticket_router` and `prompts` via `extra_packages`, normalize `staging_bucket` to `gs://<bucket>` for `vertexai.init`, and pin runtime dependencies (`cloudpickle==3.0.0`, `pydantic>=2.0.0`, `google-adk>=0.1.0`). `TriageRouterAdkAgent` MUST preserve lazy `_router` re-initialization across `cloudpickle` deserialization, and `agent_tuning.py` MUST resolve `agent_tuning.yaml` and `prompts/tier2_router_*.yaml` cleanly across source checkouts, container builds (`services/Dockerfile`), and installed/unpickled Agent Engine runtimes. The Reasoning Engine service agent MUST be granted `roles/storage.objectViewer` on the staging bucket.
 - **Rationale**: Vertex AI Reasoning Engine manages serverless session state and Python code execution natively; isolation prevents deployment failure across dev/prod environments.
 - **Acceptance**: `tests/infra/test_agent_infra_static.py::test_triage_deployment_script`
 - **Status**: done
@@ -272,5 +274,13 @@ src/ticket_router/
 - **Acceptance**: `tests/infra/test_agent_infra_static.py::test_gke_node_artifact_registry_reader`
 - **Status**: done
 - **Owner**: agent-service
+
+### REQ-AGENT-022: Out-of-Scope Query Refusal via Tier-2 System Prompt
+- **Statement**: Unrelated or off-topic queries outside Global Retail Hub customer support (e.g., stock prices, weather, recipes, general trivia, coding/homework) MUST NOT escalate to `human-standard` or invoke `FaqResolverAgent`. Specifically: (1) Versioned Tier-2 prompt configs (`prompts/tier2_router_*.yaml`) MUST support an optional `system_instruction` field loaded via `ticket_router.config.agent_tuning.get_tier2_system_instruction()` and passed via `GenerateContentConfig(system_instruction=...)` in `invoke_tier2_gemini` when present (preserving exact call signatures for legacy `v1`/`v2` templates without `system_instruction`). (2) `prompts/tier2_router_v3.yaml` (active in `agent_tuning.yaml`) MUST define the Global Retail Hub support domain boundary in `system_instruction`, use the canonical 5-intent vocabulary (`order_status`, `shipping_policy`, `returns_refunds`, `account_payment`, `other`), and emit `out_of_scope: bool` (`true` with `intent: "other", escalate: false` for unrelated non-support queries; `false` with `escalate: true, intent: "other"` for in-domain support issues lacking a self-service FAQ such as app crashes, estate transfers, or vague support cries). (3) `RouterPrediction` MUST carry `out_of_scope: bool = False`. (4) `TriagePolicy.evaluate` MUST enforce the Add-Only Escalation Invariant (`REQ-AGENT-003`: `final_escalate = rules OR tier1 OR tier2` ALWAYS supersedes `out_of_scope`); only when `final_escalate` is `False` and `t2_pred.out_of_scope` is `True` does `TriagePolicy` emit `decision="reject_oos"`, `tier="tier2_flash"`, `queue="none"`, `predicted_intent="other"`, `escalate=False`, `reason="tier2_out_of_scope"`. (5) For `decision == "reject_oos"`, `TriageRouterAgent.triage` MUST render a deterministic scope-boundary message (`render_out_of_scope_refusal(ticket_id)`), persist the ticket via `ticket-db-mcp` with `status="resolved_auto"` and `assigned_queue=None` so it never enters `HumanQueueAgent` open queues, skip `FaqResolverAgent` A2A handoff, and return the boundary refusal via `TriageRouterAdkAgent` / `extract_answer_from_result`.
+- **Rationale**: Calm out-of-distribution queries predict `intent="other"` or low confidence in Tier 1 (`router-s1`) and fall through to Tier 2 (`gemini-3.8-flash`). Refusing unrelated queries deterministically at Tier 2 prevents human support queue bloat and avoids unnecessary RAG/rerank calls while strictly preserving safety and anger/abuse escalation invariants (decision 2026-10-28).
+- **Acceptance**: `tests/agents/test_out_of_scope.py::test_out_of_scope_refusal_end_to_end`
+- **Status**: done
+- **Owner**: agent-service
+
 
 

@@ -82,6 +82,14 @@ def sample_tree(tmp_path: Path) -> Path:
         "[project]\nname = 'support-ticket-router'\n", encoding="utf-8"
     )
 
+    (tmp_path / "prompts").mkdir(parents=True)
+    (tmp_path / "prompts" / "tier2_router_v3.yaml").write_text(
+        "version: v3\n", encoding="utf-8"
+    )
+    (tmp_path / "prompts" / "faq_answer_v1.yaml").write_text(
+        "version: v1\n", encoding="utf-8"
+    )
+
     # Excluded components
     (tmp_path / "src" / "ticket_router" / "agents" / "faq_resolver").mkdir(parents=True)
     (tmp_path / "src" / "ticket_router" / "agents" / "faq_resolver" / "faq.py").write_text(
@@ -169,7 +177,19 @@ def test_fingerprint_change_detection(sample_tree: Path) -> None:
     deploy_script.write_text(original_deploy, encoding="utf-8")
     assert compute_fingerprint(sample_tree) == base_fp
 
+    # Modifying prompts/tier2_router_v3.yaml
+    tier2_prompt_file = sample_tree / "prompts" / "tier2_router_v3.yaml"
+    original_tier2_prompt = tier2_prompt_file.read_text(encoding="utf-8")
+    tier2_prompt_file.write_text(original_tier2_prompt + "\n# prompt tweak\n", encoding="utf-8")
+    assert compute_fingerprint(sample_tree) != base_fp
+    tier2_prompt_file.write_text(original_tier2_prompt, encoding="utf-8")
+    assert compute_fingerprint(sample_tree) == base_fp
+
     # 2. NEGATIVE CASES: Excluded components DO NOT change the fingerprint
+    # Modifying prompts/faq_answer_v1.yaml
+    faq_prompt_file = sample_tree / "prompts" / "faq_answer_v1.yaml"
+    faq_prompt_file.write_text("faq prompt modified\n", encoding="utf-8")
+    assert compute_fingerprint(sample_tree) == base_fp
     # Modifying faq_resolver
     faq_file = sample_tree / "src" / "ticket_router" / "agents" / "faq_resolver" / "faq.py"
     faq_file.write_text("faq modified\n", encoding="utf-8")

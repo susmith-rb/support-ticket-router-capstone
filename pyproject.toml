@@ -85,5 +85,5 @@ packages = [
 ]
 
 [tool.setuptools.package-data]
-"ticket_router.config" = ["models.yaml", "taxonomy.yaml"]
+"ticket_router.config" = ["models.yaml", "taxonomy.yaml", "agent_tuning.yaml"]
 

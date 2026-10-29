@@ -37,7 +37,7 @@ class RouterThresholds:
     tau_low: Auto-RAG uncertainty lower bound
     tau_intent: Intent confidence floor
     """
-    tau_esc: float = 0.35
+    tau_esc: float = 0.50
     tau_low: float = 0.15
     tau_intent: float = 0.70
 
@@ -285,7 +285,7 @@ class TriagePolicy:
                 decision="escalate",
                 tier="tier0_rules",
                 queue=queue.value,
-                predicted_intent="human_escalation",
+                predicted_intent="other",
                 escalate=True,
                 sentiment=tier0.sentiment,
                 urgency=tier0.urgency,
@@ -336,7 +336,7 @@ class TriagePolicy:
                     decision="escalate",
                     tier="model_armor",
                     queue=sec_queue.value,
-                    predicted_intent="security_escalation",
+                    predicted_intent="other",
                     escalate=True,
                     sentiment="neutral",
                     urgency="normal",
@@ -363,7 +363,7 @@ class TriagePolicy:
                     decision="escalate",
                     tier="model_armor",
                     queue=queue.value,
-                    predicted_intent="abuse_escalation",
+                    predicted_intent="other",
                     escalate=True,
                     sentiment="angry",
                     urgency="normal",
@@ -384,7 +384,7 @@ class TriagePolicy:
                     decision="escalate",
                     tier="model_armor",
                     queue=QueuePriority.P2_STANDARD.value,
-                    predicted_intent="degraded_escalation",
+                    predicted_intent="other",
                     escalate=True,
                     sentiment="neutral",
                     urgency="normal",
@@ -398,7 +398,7 @@ class TriagePolicy:
 
         # If router-s1 succeeded, inspect prediction against operating thresholds
         if s1_pred is not None:
-            # 1. Definitive escalation: p_esc >= tau_esc (0.35), angry, or immediate
+            # 1. Definitive escalation: p_esc >= tau_esc (0.50), angry, or immediate
             is_definitive_escalate = (
                 s1_pred.escalate_prob >= self.thresholds.tau_esc
                 or s1_pred.sentiment == "angry"
@@ -476,7 +476,7 @@ class TriagePolicy:
         # ---------------------------------------------------------------------
         # Invoked if:
         # - s1 failed / breaker open
-        # - s1 confidence in uncertainty band: tau_low <= p_esc < tau_esc (0.15 <= p_esc < 0.35)
+        # - s1 confidence in uncertainty band: tau_low <= p_esc < tau_esc (0.15 <= p_esc < 0.50)
         # - intent == "other" or intent_prob < tau_intent (0.70)
         t2_pred: Optional[RouterPrediction] = None
         t2_error: Optional[str] = None
@@ -490,8 +490,14 @@ class TriagePolicy:
         if t2_pred is not None:
             # INVARIANT: Add-only escalation (REQ-AGENT-003)
             # final.escalate = rules OR tier1 OR tier2
-            t1_esc = (s1_pred.escalate if s1_pred else False) or (
-                s1_pred.escalate_prob >= self.thresholds.tau_esc if s1_pred else False
+            t1_esc = (
+                (
+                    s1_pred.escalate_prob >= self.thresholds.tau_esc
+                    or s1_pred.sentiment == "angry"
+                    or s1_pred.urgency == "immediate"
+                )
+                if s1_pred
+                else False
             )
             final_escalate = (
                 tier0.escalate
@@ -528,6 +534,32 @@ class TriagePolicy:
                     degraded=bool(s1_error),
                     latency_ms=t2_pred.latency_ms,
                     details=details_t2,
+                )
+
+            if t2_pred.out_of_scope:
+                details_t2_oos: Dict[str, Any] = {
+                    "s1_error": s1_error,
+                    "out_of_scope": True,
+                }
+                if ma_details:
+                    details_t2_oos["model_armor"] = ma_details
+                if sanitized_text:
+                    details_t2_oos["sanitized_text"] = sanitized_text
+
+                return RouterDecision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="reject_oos",
+                    tier="tier2_flash",
+                    queue="none",
+                    predicted_intent="other",
+                    escalate=False,
+                    sentiment=t2_pred.sentiment,
+                    urgency=t2_pred.urgency,
+                    reason="tier2_out_of_scope",
+                    degraded=bool(s1_error),
+                    latency_ms=t2_pred.latency_ms,
+                    details=details_t2_oos,
                 )
 
             details_t2_rag: Dict[str, Any] = {"s1_error": s1_error}
@@ -569,7 +601,7 @@ class TriagePolicy:
             decision="escalate",
             tier="fallback_degraded",
             queue=fallback_queue.value,
-            predicted_intent="unknown_degraded",
+            predicted_intent="other",
             escalate=True,
             sentiment="neutral",
             urgency="normal",

@@ -66,3 +66,16 @@ def render_calming_acknowledgement(
         template = CALMING_ACK_TEMPLATES["standard"]
 
     return template.format(ticket_id=ticket_id, sla_eta=sla_eta)
+
+
+OUT_OF_SCOPE_TEMPLATE = (
+    "Thank you for reaching out (ref #{ticket_id}). I am the Global Retail Hub customer "
+    "support assistant and can only help with orders, shipping policies, returns and refunds, "
+    "or account and payment questions. I'm unable to assist with unrelated topics, but please "
+    "let me know if you need help with a Global Retail Hub order or account!"
+)
+
+
+def render_out_of_scope_refusal(ticket_id: str) -> str:
+    """Render a deterministic polite refusal for out-of-scope customer inquiries (REQ-AGENT-022)."""
+    return OUT_OF_SCOPE_TEMPLATE.format(ticket_id=ticket_id)

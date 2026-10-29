@@ -112,7 +112,7 @@ def test_routing_thresholds_and_invariants():
     # REQ-AGENT-003
     # REQ-AGENT-004
     text = _read_spec()
-    assert "0.35" in text  # tau_esc
+    assert "0.50" in text  # tau_esc
     assert "0.15" in text  # tau_low
     assert "0.70" in text  # tau_intent
     assert "final.escalate" in text or "Add-Only" in text

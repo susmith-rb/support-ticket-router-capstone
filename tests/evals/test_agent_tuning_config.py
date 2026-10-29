@@ -13,6 +13,7 @@ from ticket_router.config.agent_tuning import (
     AgentTuningConfig,
     get_faq_answer_prompt,
     get_tier2_prompt,
+    get_tier2_system_instruction,
     get_tuning_config,
 )
 
@@ -28,15 +29,27 @@ def test_agent_tuning_config_and_hill_climb_invariants():
     # 1. Default config matches production baseline (zero behavior change)
     cfg = get_tuning_config(reload=True)
     assert isinstance(cfg, AgentTuningConfig)
-    assert cfg.tau_esc == 0.35
+    assert cfg.tau_esc == 0.50
     assert cfg.tau_low == 0.15
     assert cfg.tau_intent == 0.70
-    assert cfg.tier2_router_version == "v1"
+    assert cfg.tier2_router_version == "v4"
     assert cfg.faq_answer_version == "v1"
     assert cfg.search_config == "intent_soft_noisy_0.2"
     assert cfg.top_k == 5
     assert cfg.rerank_enabled is False
     assert cfg.citation_strictness == 0.70
+
+    # 1b. Verify system instruction retrieval for v4 and v3 vs legacy v1/v2
+    sys_inst_v4 = get_tier2_system_instruction("v4")
+    assert sys_inst_v4 is not None
+    assert "Global Retail Hub" in sys_inst_v4
+    assert get_tier2_system_instruction() == sys_inst_v4
+
+    sys_inst_v3 = get_tier2_system_instruction("v3")
+    assert sys_inst_v3 is not None
+    assert "Global Retail Hub" in sys_inst_v3
+    assert get_tier2_system_instruction("v1") is None
+    assert get_tier2_system_instruction("v2") is None
 
     # 2. Golden test: rendering v1 templates with fixed inputs == exact strings HEAD code produced
     fixed_msg = "Customer says package ORD-999 is damaged and needs immediate replacement."

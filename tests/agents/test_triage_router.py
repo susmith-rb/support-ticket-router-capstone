@@ -31,7 +31,9 @@ from ticket_router.agents.triage_router.policy import (
 )
 from ticket_router.agents.triage_router.templates import render_calming_acknowledgement
 from ticket_router.common.resilience import CircuitBreakerOpenError
+from ticket_router.config.taxonomy import is_valid_intent
 from ticket_router.models.router_s1_client import RouterPrediction, RouterS1Client
+from ticket_router.security.model_armor import FilterVerdict, ModelArmorVerdict
 
 
 def _make_prediction(
@@ -62,8 +64,115 @@ def _make_prediction(
 # REQ-AGENT-002: TriageRouter Tiered Decision Policy & Thresholds
 # -----------------------------------------------------------------------------
 
+def test_all_policy_tiers_emit_canonical_taxonomy_intent():
+    # REQ-AGENT-002: All policy tiers emit canonical taxonomy intent ("other" for off-taxonomy escalations).
+    # REQ-REVAL-001: Intent validated against canonical taxonomy source of truth.
+    policy = TriagePolicy(thresholds=RouterThresholds())
+
+    # 1. Tier 0 rules: emergency keyword
+    dec_emerg = policy.evaluate("Call the police, there is an emergency.", session_id="s_em", customer_id="c1")
+    assert dec_emerg.tier == "tier0_rules"
+    assert dec_emerg.decision == "escalate"
+    assert dec_emerg.predicted_intent == "other"
+    assert is_valid_intent(dec_emerg.predicted_intent)
+    assert dec_emerg.details["category"] == "emergency"
+    assert dec_emerg.reason == "tier0_emergency_trigger"
+
+    # Tier 0 rules: abuse keyword
+    dec_abuse = policy.evaluate("You are a stupid idiot and a moron", session_id="s_ab", customer_id="c1")
+    assert dec_abuse.tier == "tier0_rules"
+    assert dec_abuse.decision == "escalate"
+    assert dec_abuse.predicted_intent == "other"
+    assert is_valid_intent(dec_abuse.predicted_intent)
+    assert dec_abuse.details["category"] == "abuse"
+    assert dec_abuse.reason == "tier0_abusive_language"
+
+    # Tier 0 rules: human agent request
+    dec_human = policy.evaluate("I want to speak to a human representative please.", session_id="s_hu", customer_id="c1")
+    assert dec_human.tier == "tier0_rules"
+    assert dec_human.decision == "escalate"
+    assert dec_human.predicted_intent == "other"
+    assert is_valid_intent(dec_human.predicted_intent)
+    assert dec_human.details["category"] == "human_request"
+    assert dec_human.reason == "tier0_human_agent_request"
+
+    # 2. Model Armor security trigger (PI/JB)
+    mock_ma = MagicMock()
+    mock_ma.sanitize_user_prompt.return_value = ModelArmorVerdict(
+        is_clean=False,
+        blocked=True,
+        action="BLOCK",
+        pi_jb=FilterVerdict(tripped=True, confidence="HIGH"),
+        sanitized_text="clean text",
+    )
+    policy_ma = TriagePolicy(thresholds=RouterThresholds(), model_armor_client=mock_ma)
+    dec_ma_sec = policy_ma.evaluate("Harmless inquiry", session_id="s_masec", customer_id="c1")
+    assert dec_ma_sec.tier == "model_armor"
+    assert dec_ma_sec.decision == "escalate"
+    assert dec_ma_sec.predicted_intent == "other"
+    assert is_valid_intent(dec_ma_sec.predicted_intent)
+    assert dec_ma_sec.details["category"] == "security"
+    assert dec_ma_sec.reason == "model_armor_security_trigger"
+
+    # Model Armor RAI abuse trigger
+    mock_ma_rai = MagicMock()
+    mock_ma_rai.sanitize_user_prompt.return_value = ModelArmorVerdict(
+        is_clean=False,
+        blocked=True,
+        action="BLOCK",
+        rai_categories={"harassment": FilterVerdict(tripped=True, confidence="HIGH")},
+        sanitized_text="clean text",
+    )
+    policy_ma_rai = TriagePolicy(thresholds=RouterThresholds(), model_armor_client=mock_ma_rai)
+    dec_ma_rai = policy_ma_rai.evaluate("Harmless inquiry", session_id="s_marai", customer_id="c1")
+    assert dec_ma_rai.tier == "model_armor"
+    assert dec_ma_rai.decision == "escalate"
+    assert dec_ma_rai.predicted_intent == "other"
+    assert is_valid_intent(dec_ma_rai.predicted_intent)
+    assert dec_ma_rai.details["category"] == "abuse"
+    assert dec_ma_rai.reason == "model_armor_rai_trigger"
+
+    # Model Armor degraded
+    mock_ma_deg = MagicMock()
+    mock_ma_deg.sanitize_user_prompt.return_value = ModelArmorVerdict(
+        is_clean=False,
+        blocked=False,
+        action="DEGRADE",
+        degraded=True,
+    )
+    policy_ma_deg = TriagePolicy(thresholds=RouterThresholds(), model_armor_client=mock_ma_deg)
+    dec_ma_deg = policy_ma_deg.evaluate("Harmless inquiry", session_id="s_madeg", customer_id="c1")
+    assert dec_ma_deg.tier == "model_armor"
+    assert dec_ma_deg.decision == "escalate"
+    assert dec_ma_deg.predicted_intent == "other"
+    assert is_valid_intent(dec_ma_deg.predicted_intent)
+    assert dec_ma_deg.details["category"] == "degraded"
+    assert dec_ma_deg.reason == "model_armor_degraded"
+
+    # 3. Fallback degraded (Tier 1 & Tier 2 unavailable)
+    mock_s1_fail = MagicMock(spec=RouterS1Client)
+    mock_s1_fail.route.side_effect = RuntimeError("S1 down")
+    mock_t2_fail = MagicMock()
+    mock_t2_fail.side_effect = RuntimeError("T2 down")
+    policy_deg = TriagePolicy(
+        thresholds=RouterThresholds(),
+        s1_client=mock_s1_fail,
+        tier2_invoker=mock_t2_fail,
+    )
+    dec_deg = policy_deg.evaluate("Where is my package?", session_id="s_deg", customer_id="c1")
+    assert dec_deg.tier == "fallback_degraded"
+    assert dec_deg.decision == "escalate"
+    assert dec_deg.predicted_intent == "other"
+    assert is_valid_intent(dec_deg.predicted_intent)
+    assert "degraded_fallback" in dec_deg.reason
+    assert "s1_error" in dec_deg.details
+
+
 def test_tiered_policy_thresholds():
     # REQ-AGENT-002: Test boundary value conditions at each threshold
+    assert RouterThresholds().tau_esc == 0.50
+    assert RouterThresholds().tau_low == 0.15
+    assert RouterThresholds().tau_intent == 0.70
     thresholds = RouterThresholds(tau_esc=0.35, tau_low=0.15, tau_intent=0.70)
 
     # 1. Tier 0 Rule triggers: Emergency keyword
@@ -161,6 +270,27 @@ def test_tiered_policy_thresholds():
     decision = policy.evaluate("Unclassified inquiry", session_id="s1", customer_id="c1")
     assert mock_tier2.called
     assert decision.tier == "tier2_flash"
+
+    # 5. Configurable tau_esc > 0.50 (e.g. 0.60): S1 raw binary escalate=True does NOT auto-escalate
+    # when p_esc < tau_esc; falls through to Tier 2 Flash (REQ-AGENT-002)
+    thresholds_high = RouterThresholds(tau_esc=0.60, tau_low=0.15, tau_intent=0.70)
+    mock_s1_high = MagicMock(spec=RouterS1Client)
+    mock_tier2_high = MagicMock()
+    policy_high = TriagePolicy(thresholds=thresholds_high, s1_client=mock_s1_high, tier2_invoker=mock_tier2_high)
+
+    mock_s1_high.route.return_value = _make_prediction(
+        escalate=True,
+        escalate_prob=0.55,
+        sentiment="neutral",
+        urgency="normal",
+        intent="order_status",
+        intent_prob=0.85,
+    )
+    mock_tier2_high.return_value = _make_prediction(escalate=False, intent="order_status")
+    decision_high = policy_high.evaluate("Order status check", session_id="s1", customer_id="c1")
+    assert mock_tier2_high.called
+    assert decision_high.decision == "auto_rag"
+    assert decision_high.tier == "tier2_flash"
 
 
 # -----------------------------------------------------------------------------
@@ -524,7 +654,7 @@ def test_invoke_tier2_gemini_json_parsing_and_invoker_wiring(monkeypatch):
             recorded_clients.append(kwargs)
             self.models = SimpleNamespace(generate_content=self._generate_content)
 
-        def _generate_content(self, model, contents):
+        def _generate_content(self, model, contents, **kwargs):
             if "i want a refund" in contents.lower():
                 return SimpleNamespace(
                     text='```json\n{"escalate": true, "escalate_prob": 0.91, "sentiment": "angry", "urgency": "immediate", "intent": "returns_refunds", "intent_prob": 0.88}\n```'

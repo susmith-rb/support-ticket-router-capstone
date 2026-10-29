@@ -21,7 +21,7 @@ Key deployment invariants:
 3. Pinned Runtime Dependencies: Requirements combine pyproject.toml [agents, runtime]
    extras, pinned cloudpickle, pydantic>=2.0.0, google-adk>=2.2.0, and
    google-cloud-aiplatform[agent_engines,adk]>=1.75.0.
-4. Extra Packages: Stages local package code (src/ticket_router).
+4. Extra Packages: Stages local package code and prompt definitions (src/ticket_router, prompts).
 5. Service Account Association: Binds remote execution identity to sa-triage@.
 6. Staging Bucket: gs://susmith-fde-ticket-router-laya/agent-engine-staging.
 7. Support for in-place updates (--update <resource_name>).
@@ -69,7 +69,7 @@ PINNED_REQUIREMENTS = [
     "pyyaml>=6.0.1",
 ]
 
-DEFAULT_EXTRA_PACKAGES = ["src/ticket_router"]
+DEFAULT_EXTRA_PACKAGES = ["src/ticket_router", "prompts"]
 
 # Default contract endpoints and live service URLs
 DEFAULT_ROUTER_ENDPOINT = (

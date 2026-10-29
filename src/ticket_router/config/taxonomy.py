@@ -178,13 +178,19 @@ def validate_expected(d: Dict[str, Any]) -> List[str]:
         errors.append(f"Invalid queue '{queue}'. Must be one of {list(tax.queues)}")
 
     # 5. decision <-> queue consistency
-    if decision == "auto_rag" and queue != "none":
+    if decision in ("auto_rag", "reject_oos") and queue != "none":
         errors.append(
-            f"Inconsistent decision/queue: decision 'auto_rag' requires queue 'none', got '{queue}'"
+            f"Inconsistent decision/queue: decision '{decision}' requires queue 'none', got '{queue}'"
         )
     elif decision == "escalate" and queue == "none":
         errors.append(
             "Inconsistent decision/queue: decision 'escalate' cannot have queue 'none'"
+        )
+
+    # 5b. decision <-> intent consistency
+    if decision == "reject_oos" and intent != "other":
+        errors.append(
+            f"Inconsistent decision/intent: decision 'reject_oos' requires intent 'other', got '{intent}'"
         )
 
     # 6. escalate bool consistency
@@ -200,9 +206,9 @@ def validate_expected(d: Dict[str, Any]) -> List[str]:
             errors.append(
                 f"Inconsistent escalate flag: escalate=True requires decision='escalate', got '{decision}'"
             )
-        elif escalate is False and decision != "auto_rag":
+        elif escalate is False and decision not in ("auto_rag", "reject_oos"):
             errors.append(
-                f"Inconsistent escalate flag: escalate=False requires decision='auto_rag', got '{decision}'"
+                f"Inconsistent escalate flag: escalate=False requires decision in ('auto_rag', 'reject_oos'), got '{decision}'"
             )
 
     # 7. sentiment validation (optional)

@@ -100,6 +100,7 @@ def test_triage_deployment_script():
     assert "agent-engine-staging" in script_content
     assert "sa-triage@" in script_content
     assert "src/ticket_router" in script_content
+    assert "prompts" in script_content
 
     # Contract environment variables verified in deploy_triage_agent_runtime.py
     for env_var in [

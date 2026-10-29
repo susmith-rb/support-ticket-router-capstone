@@ -132,9 +132,10 @@ async def upsert_ticket(
 
     # Map decision to initial status & queue
     dec = req.decision or {}
-    assigned_queue = dec.get("queue")
+    raw_queue = dec.get("queue")
+    assigned_queue = None if raw_queue in (None, "", "none") else raw_queue
     status_val = "open"
-    if dec.get("decision") == "resolve" or dec.get("route") == "resolved":
+    if dec.get("decision") in ("resolve", "reject_oos") or dec.get("route") == "resolved":
         status_val = "resolved_auto"
 
     ticket_create = TicketCreate(

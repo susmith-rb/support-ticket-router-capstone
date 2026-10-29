@@ -20,7 +20,7 @@ from typing import Any
 # =============================================================================
 # REQ-CD-011: Inclusion and Exclusion Specifications
 # =============================================================================
-INCLUDE_DIRS: tuple[str, ...] = ("src/ticket_router",)
+INCLUDE_DIRS: tuple[str, ...] = ("src/ticket_router", "prompts")
 INCLUDE_FILES: tuple[str, ...] = (
     "scripts/deploy_agents/deploy_triage_agent_runtime.py",
     "pyproject.toml",
@@ -35,6 +35,7 @@ EXCLUDE_SUBPATHS: tuple[str, ...] = (
 )
 EXCLUDE_DIR_NAMES: tuple[str, ...] = ("__pycache__",)
 EXCLUDE_FILENAME_SUFFIXES: tuple[str, ...] = (".pyc",)
+EXCLUDE_FILENAME_PREFIXES: tuple[str, ...] = ("faq_answer_",)
 
 GCS_RECORD_PATH: str = "cd/agent_engine_deployed.json"
 
@@ -74,6 +75,8 @@ def find_fingerprint_files(root: Path | str = ".") -> list[tuple[str, Path]]:
             if any(part in EXCLUDE_DIR_NAMES for part in path.parts):
                 continue
             if any(path.name.endswith(suffix) for suffix in EXCLUDE_FILENAME_SUFFIXES):
+                continue
+            if any(path.name.startswith(pfx) for pfx in EXCLUDE_FILENAME_PREFIXES):
                 continue
 
             sub = path.relative_to(dir_path).as_posix()

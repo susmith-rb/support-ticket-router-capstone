@@ -64,6 +64,7 @@ class RouterPrediction:
     probabilities: Dict[str, Dict[str, float]] = field(default_factory=dict)
     latency_ms: float = 0.0
     raw: Dict[str, Any] = field(default_factory=dict)
+    out_of_scope: bool = False
 
 
 class RouterS1Client:

@@ -57,6 +57,7 @@ urgency:
 decisions:
   - "auto_rag"
   - "escalate"
+  - "reject_oos"
 
 queues:
   - "none"
@@ -79,16 +80,16 @@ expected_behaviour:
     - "abuse or toxicity"
     - "legal threat or safety emergency"
     - "account security, fraud, or unauthorized charge"
-    - "out-of-distribution or non-support request (intent == 'other' and scenario == 'ood')"
     - "request requires account-specific human action with no self-service FAQ"
 
   queue_rules:
     - "human-urgent only for legal threat or safety emergency"
     - "human-standard for all other escalations"
-    - "none for auto_rag"
+    - "none for auto_rag and reject_oos"
     - "human-low is reserved and unused in v1"
 
   decision_rules:
+    - "reject_oos for calm out-of-scope non-support requests with no safety/anger/urgency/abuse trigger (intent=other, queue=none, escalate=false, scenario=ood)"
     - "auto_rag otherwise with best-fitting answerable intent; frustrated alone does not force escalation"
     - "ambiguous boundary: intent is best label, acceptable_intents lists defensible labels"
     - "conflicting info: label by most recent explicit customer statement; safety-relevant content wins"

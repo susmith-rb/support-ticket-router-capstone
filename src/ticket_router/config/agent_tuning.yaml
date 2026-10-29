@@ -3,12 +3,12 @@
 # All knobs default to existing production operating points (zero behavior change).
 
 router:
-  tau_esc: 0.35      # Escalation confidence floor
+  tau_esc: 0.50      # Escalation confidence floor
   tau_low: 0.15      # Auto-RAG uncertainty lower bound
   tau_intent: 0.70   # Intent classification confidence floor
 
 prompts:
-  tier2_router_version: "v1"
+  tier2_router_version: "v4"
   faq_answer_version: "v1"
 
 retrieval:

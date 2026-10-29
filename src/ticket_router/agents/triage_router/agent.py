@@ -35,7 +35,10 @@ from ticket_router.agents.triage_router.policy import (
     TriagePolicy,
     VerifiedFacts,
 )
-from ticket_router.agents.triage_router.templates import render_calming_acknowledgement
+from ticket_router.agents.triage_router.templates import (
+    render_calming_acknowledgement,
+    render_out_of_scope_refusal,
+)
 from ticket_router.common.observability import (
     StructuredJsonLogger,
     generate_traceparent,
@@ -82,12 +85,30 @@ def invoke_tier2_gemini(
         if location:
             client_kwargs["location"] = location
         client = genai.Client(**client_kwargs)
-        from ticket_router.config.agent_tuning import get_tier2_prompt
-        prompt = get_tier2_prompt(text)
-        resp = client.models.generate_content(
-            model=target_model,
-            contents=prompt,
+        from ticket_router.config.agent_tuning import (
+            get_tier2_prompt,
+            get_tier2_system_instruction,
         )
+        prompt = get_tier2_prompt(text)
+        sys_inst = get_tier2_system_instruction()
+
+        call_kwargs: Dict[str, Any] = {
+            "model": target_model,
+            "contents": prompt,
+        }
+        if sys_inst:
+            gen_cfg: Any = None
+            try:
+                from google.genai import types as genai_types  # type: ignore[import-untyped]
+                if hasattr(genai_types, "GenerateContentConfig"):
+                    gen_cfg = genai_types.GenerateContentConfig(system_instruction=sys_inst)
+                else:
+                    gen_cfg = {"system_instruction": sys_inst}
+            except Exception:
+                gen_cfg = {"system_instruction": sys_inst}
+            call_kwargs["config"] = gen_cfg
+
+        resp = client.models.generate_content(**call_kwargs)
 
         usage_data: Optional[Dict[str, int]] = None
         usage_meta = getattr(resp, "usage_metadata", None)
@@ -141,7 +162,23 @@ def invoke_tier2_gemini(
                 urgency = str(parsed.get("urgency") or "normal").strip().lower()
                 if sentiment == "angry" or urgency == "immediate":
                     is_esc = True
-                intent = str(parsed.get("intent") or ("other" if is_esc else "faq")).strip()
+
+                oos_raw = parsed.get("out_of_scope", False)
+                if isinstance(oos_raw, bool):
+                    is_oos = oos_raw
+                elif isinstance(oos_raw, str):
+                    is_oos = oos_raw.strip().lower() in ("true", "yes", "1")
+                else:
+                    is_oos = bool(oos_raw)
+
+                if is_esc:
+                    is_oos = False
+
+                if is_oos:
+                    intent = "other"
+                else:
+                    intent = str(parsed.get("intent") or ("other" if is_esc else "faq")).strip()
+
                 esc_prob = float(parsed.get("escalate_prob", 0.85 if is_esc else 0.10))
                 intent_prob = float(parsed.get("intent_prob", 0.80))
                 merged_raw = {**parsed, **extra_raw}
@@ -156,6 +193,7 @@ def invoke_tier2_gemini(
                     intent_prob=intent_prob,
                     latency_ms=120.0,
                     raw=merged_raw,
+                    out_of_scope=is_oos,
                 )
         except Exception:
             pass
@@ -175,6 +213,7 @@ def invoke_tier2_gemini(
             intent_prob=0.80,
             latency_ms=120.0,
             raw=fallback_raw,
+            out_of_scope=False,
         )
     except Exception as exc:
         raise RuntimeError(f"Tier 2 model call failed ({target_model}): {exc}") from exc
@@ -394,6 +433,15 @@ class TriageRouterAgent:
                         category=decision.details.get("category"),
                     )
 
+                self.mcp_client.upsert_ticket(
+                    idempotency_key=idempotency_key,
+                    customer_id=ticket_customer_id,
+                    channel=channel,
+                    body_redacted=body_to_persist,
+                    decision=asdict(decision),
+                )
+            elif decision.decision == "reject_oos":
+                calming_ack = render_out_of_scope_refusal(ticket_id=t_id)
                 self.mcp_client.upsert_ticket(
                     idempotency_key=idempotency_key,
                     customer_id=ticket_customer_id,
