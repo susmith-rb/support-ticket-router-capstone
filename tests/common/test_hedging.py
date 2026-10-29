@@ -385,6 +385,17 @@ def test_invoke_tier2_gemini_passes_low_thinking_and_hedges(monkeypatch: pytest.
 # REQ-AGENT-025, REQ-AGENT-008
 def test_gemini_answer_client_hedging_and_faq_resolver_timeout_escalation(monkeypatch: pytest.MonkeyPatch):
     """Verify GeminiAnswerClient wraps generate_content (and TypeError fallback) in hedged_call, and FaqResolverAgent escalates on LLM exception."""
+    # CI installs only the [dev] extra (no google-genai), so inject a minimal google.genai.types
+    # stub to make GeminiAnswerClient build a config and exercise the TypeError fallback path.
+    import types as _pytypes
+
+    fake_types = _pytypes.ModuleType("google.genai.types")
+    fake_types.GenerateContentConfig = lambda **kw: dict(kw)
+    fake_types.ThinkingConfig = lambda **kw: dict(kw)
+    fake_genai = _pytypes.ModuleType("google.genai")
+    fake_genai.types = fake_types
+    monkeypatch.setitem(sys.modules, "google.genai", fake_genai)
+    monkeypatch.setitem(sys.modules, "google.genai.types", fake_types)
     hedged_calls: list[dict[str, Any]] = []
     call_count = 0
 
