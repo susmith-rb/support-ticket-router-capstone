@@ -15,13 +15,17 @@ from typing import Any, Callable, Optional, TypeVar
 
 T = TypeVar("T")
 
-# Latency budget constants per REQ-AGENT-012
+# Latency budget constants per REQ-AGENT-012, REQ-AGENT-025, REQ-AGENT-027
 ROUTER_S1_TIMEOUT_S: float = 0.500  # HTTP call timeout. Model budget is 150 ms (server p95 59 ms); e2e :rawPredict p95 ~189 ms in-region
-TIER2_FLASH_TIMEOUT_S: float = 1.500  # 1500 ms
+TIER2_FLASH_TIMEOUT_S: float = 1.500  # Kept for backward compatibility; superseded by TIER2_HEDGE_AFTER_S / TIER2_DEADLINE_S (REQ-AGENT-025)
+TIER2_HEDGE_AFTER_S: float = 3.5
+TIER2_DEADLINE_S: float = 9.0
+ANSWER_HEDGE_AFTER_S: float = 7.0
+ANSWER_DEADLINE_S: float = 15.0
 AGENT_SEARCH_TIMEOUT_S: float = 0.800  # 800 ms
 LAYA_RERANK_TIMEOUT_S: float = 0.600  # HTTP call timeout; measured in-region e2e rerank p95 ~200 ms
 ORDER_LOOKUP_MCP_TIMEOUT_S: float = 5.000  # 5000 ms (REQ-AGENT-012: accommodates min_instance_count=0 Cloud Run + Cloud SQL IAM cold starts while preserving <300 ms warm latency within 20s FAQ_OVERALL_BUDGET_S)
-TICKET_DB_MCP_TIMEOUT_S: float = 0.500  # 500 ms
+TICKET_DB_MCP_TIMEOUT_S: float = 3.0  # 3000 ms (REQ-AGENT-012, REQ-AGENT-027: scale-to-zero cold starts; non-fatal persistence)
 TRIAGE_OVERALL_BUDGET_S: float = 3.000  # 3000 ms
 FAQ_OVERALL_BUDGET_S: float = 20.000  # 20000 ms
 

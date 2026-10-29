@@ -29,6 +29,7 @@ models:
   router_tier2:
     id: "gemini-3.8-flash"
     location: "global"
+    thinking_level: "LOW"
     notes: "Live Tier-2 fallback router when Tier-1 is uncertain"
 
   tier3_multihop:

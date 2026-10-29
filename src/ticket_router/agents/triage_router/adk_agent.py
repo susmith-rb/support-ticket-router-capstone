@@ -324,7 +324,6 @@ class TriageRouterAdkAgent(BaseAgent):
             customer_id_token=customer_id_token,
             oauth_access_token=oauth_access_token,
         )
-        flush_traces(timeout_millis=1500)
         final_text = extract_answer_from_result(result)
 
         inv_id = ""
@@ -346,7 +345,13 @@ class TriageRouterAdkAgent(BaseAgent):
             final_text=final_text,
             result=result,
         )
-        yield event
+        try:
+            yield event
+        finally:
+            try:
+                flush_traces(timeout_millis=1500)
+            except Exception:
+                pass
 
     def query(
         self,

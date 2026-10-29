@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+import concurrent.futures
+import contextvars
 import json
 import logging
 import os
@@ -40,14 +42,16 @@ from ticket_router.agents.triage_router.templates import (
     render_conversational_reply,
     render_out_of_scope_refusal,
 )
+from ticket_router.common.hedging import hedged_call
 from ticket_router.common.observability import (
     StructuredJsonLogger,
     generate_traceparent,
     get_current_traceparent,
     start_span,
 )
+from ticket_router.common.resilience import TIER2_DEADLINE_S, TIER2_HEDGE_AFTER_S
 from ticket_router.common.settings import Settings
-from ticket_router.config.models import model_id, model_location
+from ticket_router.config.models import model_id, model_location, model_thinking_level
 from ticket_router.identity import resolve_identity
 from ticket_router.models.router_s1_client import RouterPrediction, RouterS1Client
 from ticket_router.security.model_armor import (
@@ -93,24 +97,50 @@ def invoke_tier2_gemini(
         )
         prompt = get_tier2_prompt(text)
         sys_inst = get_tier2_system_instruction()
+        thinking_lvl = model_thinking_level("router_tier2")
 
         call_kwargs: Dict[str, Any] = {
             "model": target_model,
             "contents": prompt,
         }
-        if sys_inst:
+        if sys_inst or thinking_lvl:
             gen_cfg: Any = None
             try:
                 from google.genai import types as genai_types  # type: ignore[import-untyped]
                 if hasattr(genai_types, "GenerateContentConfig"):
-                    gen_cfg = genai_types.GenerateContentConfig(system_instruction=sys_inst)
+                    cfg_kwargs: Dict[str, Any] = {}
+                    if sys_inst:
+                        cfg_kwargs["system_instruction"] = sys_inst
+                    if thinking_lvl:
+                        if hasattr(genai_types, "ThinkingConfig"):
+                            cfg_kwargs["thinking_config"] = genai_types.ThinkingConfig(
+                                thinking_level=thinking_lvl
+                            )
+                        else:
+                            cfg_kwargs["thinking_config"] = {"thinking_level": thinking_lvl}
+                    gen_cfg = genai_types.GenerateContentConfig(**cfg_kwargs)
                 else:
-                    gen_cfg = {"system_instruction": sys_inst}
+                    dict_cfg: Dict[str, Any] = {}
+                    if sys_inst:
+                        dict_cfg["system_instruction"] = sys_inst
+                    if thinking_lvl:
+                        dict_cfg["thinking_config"] = {"thinking_level": thinking_lvl}
+                    gen_cfg = dict_cfg
             except Exception:
-                gen_cfg = {"system_instruction": sys_inst}
+                dict_cfg = {}
+                if sys_inst:
+                    dict_cfg["system_instruction"] = sys_inst
+                if thinking_lvl:
+                    dict_cfg["thinking_config"] = {"thinking_level": thinking_lvl}
+                gen_cfg = dict_cfg
             call_kwargs["config"] = gen_cfg
 
-        resp = client.models.generate_content(**call_kwargs)
+        resp = hedged_call(
+            lambda: client.models.generate_content(**call_kwargs),
+            TIER2_HEDGE_AFTER_S,
+            TIER2_DEADLINE_S,
+            span_name="tier2.generate_content",
+        )
 
         usage_data: Optional[Dict[str, int]] = None
         usage_meta = getattr(resp, "usage_metadata", None)
@@ -369,6 +399,43 @@ class TriageRouterAgent:
         assert self._a2a_client is not None
         return self._a2a_client
 
+    def _safe_upsert(
+        self,
+        *,
+        ticket_id: str,
+        idempotency_key: str,
+        customer_id: str,
+        channel: str,
+        body_redacted: str,
+        decision: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Persist ticket with 1 retry; log PII-free warning on final failure (REQ-AGENT-027)."""
+        last_exc: Optional[Exception] = None
+        for _attempt in range(2):
+            try:
+                return self.mcp_client.upsert_ticket(
+                    idempotency_key=idempotency_key,
+                    customer_id=customer_id,
+                    channel=channel,
+                    body_redacted=body_redacted,
+                    decision=decision,
+                )
+            except Exception as exc:
+                last_exc = exc
+
+        err_type = type(last_exc).__name__ if last_exc is not None else "UnknownError"
+        logger.warning(
+            json.dumps(
+                {
+                    "event": "ticket_upsert_failed",
+                    "ticket_id": ticket_id,
+                    "error_type": err_type,
+                },
+                separators=(",", ":"),
+            )
+        )
+        return None
+
     def triage(
         self,
         session_id: str,
@@ -398,26 +465,38 @@ class TriageRouterAgent:
             attributes={"session_id": session_id, "ticket_id": t_id, "channel": channel},
             traceparent=traceparent,
         ) as turn_span:
-            # Resolve customer identity from token via ticket-db-mcp (REQ-IDENT-003, REQ-IDENT-004, REQ-IDENT-009)
-            cust_ctx = resolve_identity(
-                token=customer_id_token,
-                ticket_db_client=self.mcp_client,
-                oauth_access_token=oauth_access_token,
-                expected_oauth_client_id=self._expected_oauth_client_id,
-            )
-            ticket_customer_id = cust_ctx.customer_id if cust_ctx.verified else f"anon:{session_id}"
+            # REQ-AGENT-027: Run identity resolution concurrently with policy evaluation
+            mcp_client = self.mcp_client
+            policy = self.policy
+            placeholder_cid = f"anon:{session_id}"
+            id_ctx = contextvars.copy_context()
+            pol_ctx = contextvars.copy_context()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as step1_pool:
+                id_fut = step1_pool.submit(
+                    id_ctx.run,
+                    resolve_identity,
+                    token=customer_id_token,
+                    ticket_db_client=mcp_client,
+                    oauth_access_token=oauth_access_token,
+                    expected_oauth_client_id=self._expected_oauth_client_id,
+                )
+                pol_fut = step1_pool.submit(
+                    pol_ctx.run,
+                    policy.evaluate,
+                    text=message_text,
+                    session_id=session_id,
+                    customer_id=placeholder_cid,
+                    verified_facts=verified_facts,
+                    ticket_id=t_id,
+                )
+                cust_ctx = id_fut.result()
+                decision = pol_fut.result()
+
+            ticket_customer_id = cust_ctx.customer_id if cust_ctx.verified else placeholder_cid
             customer_verified = cust_ctx.verified
             identity_issuer = cust_ctx.issuer if cust_ctx.verified else None
             identity_reason = cust_ctx.reason
 
-            # 1. Evaluate tiered policy
-            decision = self.policy.evaluate(
-                text=message_text,
-                session_id=session_id,
-                customer_id=ticket_customer_id,
-                verified_facts=verified_facts,
-                ticket_id=t_id,
-            )
             # Set PII-safe attributes on turn_span (REQ-AGENT-014)
             turn_span.set_attribute("decision", decision.decision)
             turn_span.set_attribute("tier", decision.tier)
@@ -455,7 +534,8 @@ class TriageRouterAgent:
                         category=decision.details.get("category"),
                     )
 
-                self.mcp_client.upsert_ticket(
+                self._safe_upsert(
+                    ticket_id=t_id,
                     idempotency_key=idempotency_key,
                     customer_id=ticket_customer_id,
                     channel=channel,
@@ -464,39 +544,53 @@ class TriageRouterAgent:
                 )
             elif decision.decision == "reject_oos":
                 calming_ack = render_out_of_scope_refusal(ticket_id=t_id)
-                self.mcp_client.upsert_ticket(
+                self._safe_upsert(
+                    ticket_id=t_id,
                     idempotency_key=idempotency_key,
                     customer_id=ticket_customer_id,
                     channel=channel,
                     body_redacted=body_to_persist,
                     decision=asdict(decision),
                 )
+            elif decision.details.get("category") in ("greeting", "pleasantry"):
+                self._safe_upsert(
+                    ticket_id=t_id,
+                    idempotency_key=idempotency_key,
+                    customer_id=ticket_customer_id,
+                    channel=channel,
+                    body_redacted=body_to_persist,
+                    decision=asdict(decision),
+                )
+                handoff_resp = {
+                    "status": "AUTO_RESOLVED",
+                    "route": "resolved",
+                    "answer": render_conversational_reply(decision.details.get("category")),
+                }
             else:
-                self.mcp_client.upsert_ticket(
-                    idempotency_key=idempotency_key,
-                    customer_id=ticket_customer_id,
-                    channel=channel,
-                    body_redacted=body_to_persist,
-                    decision=asdict(decision),
+                payload = A2AHandoffPayload(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    predicted_intent=decision.predicted_intent,
+                    redacted_message=body_to_persist,
+                    memory_summary=memory_summary,
+                    customer_id=cust_ctx.customer_id if cust_ctx.verified else None,
+                    customer_verified=customer_verified,
+                    identity_issuer=identity_issuer,
+                    traceparent=get_current_traceparent() or traceparent,
                 )
-
-                if decision.details.get("category") in ("greeting", "pleasantry"):
-                    handoff_resp = {
-                        "status": "AUTO_RESOLVED",
-                        "route": "resolved",
-                        "answer": render_conversational_reply(decision.details.get("category")),
-                    }
-                else:
-                    payload = A2AHandoffPayload(
+                decision_snapshot = asdict(decision)
+                upsert_ctx = contextvars.copy_context()
+                a2a_failed_exc: Optional[Exception] = None
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as upsert_pool:
+                    upsert_fut = upsert_pool.submit(
+                        upsert_ctx.run,
+                        self._safe_upsert,
                         ticket_id=t_id,
-                        session_id=session_id,
-                        predicted_intent=decision.predicted_intent,
-                        redacted_message=body_to_persist,
-                        memory_summary=memory_summary,
-                        customer_id=cust_ctx.customer_id if cust_ctx.verified else None,
-                        customer_verified=customer_verified,
-                        identity_issuer=identity_issuer,
-                        traceparent=get_current_traceparent() or traceparent,
+                        idempotency_key=idempotency_key,
+                        customer_id=ticket_customer_id,
+                        channel=channel,
+                        body_redacted=body_to_persist,
+                        decision=decision_snapshot,
                     )
                     try:
                         handoff_resp = self.a2a_client.handoff(payload)
@@ -509,34 +603,37 @@ class TriageRouterAgent:
                                 )
                             )
                     except Exception as exc:
-                        decision = replace(
-                            decision,
-                            decision="escalate",
-                            escalate=True,
-                            queue="human-standard",
-                            degraded=True,
-                            details={**decision.details, "a2a_error": type(exc).__name__},
-                        )
-                        calming_ack = render_calming_acknowledgement(
-                            queue=decision.queue,
-                            ticket_id=t_id,
-                        )
-                        handoff_resp = {
-                            "status": "ESCALATED",
-                            "queue": decision.queue,
-                            "reason": "a2a_handoff_failed",
-                            "calming_ack": calming_ack,
-                        }
-                        try:
-                            self.mcp_client.upsert_ticket(
-                                idempotency_key=f"{idempotency_key}:a2a_degraded",
-                                customer_id=ticket_customer_id,
-                                channel=channel,
-                                body_redacted=message_text,
-                                decision=asdict(decision),
-                            )
-                        except Exception:
-                            pass
+                        a2a_failed_exc = exc
+                    finally:
+                        upsert_fut.result()
+
+                if a2a_failed_exc is not None:
+                    decision = replace(
+                        decision,
+                        decision="escalate",
+                        escalate=True,
+                        queue="human-standard",
+                        degraded=True,
+                        details={**decision.details, "a2a_error": type(a2a_failed_exc).__name__},
+                    )
+                    calming_ack = render_calming_acknowledgement(
+                        queue=decision.queue,
+                        ticket_id=t_id,
+                    )
+                    handoff_resp = {
+                        "status": "ESCALATED",
+                        "queue": decision.queue,
+                        "reason": "a2a_handoff_failed",
+                        "calming_ack": calming_ack,
+                    }
+                    self._safe_upsert(
+                        ticket_id=t_id,
+                        idempotency_key=f"{idempotency_key}:a2a_degraded",
+                        customer_id=ticket_customer_id,
+                        channel=channel,
+                        body_redacted=body_to_persist,
+                        decision=asdict(decision),
+                    )
 
             elapsed_ms = (time.monotonic() - start_time) * 1000.0
 

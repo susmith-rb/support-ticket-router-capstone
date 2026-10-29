@@ -106,6 +106,9 @@ src/ticket_router/
 | `REQ-AGENT-022` | Out-of-Scope Query Refusal via Tier-2 System Prompt | `done` | `tests/agents/test_out_of_scope.py::test_out_of_scope_refusal_end_to_end` |
 | `REQ-AGENT-023` | Gemini Enterprise Web App Front-Door and ADK Agent Registration | `done` | `tests/infra/test_ge_app_and_trace.py::test_ge_app_infra_and_registration_contract` |
 | `REQ-AGENT-024` | Conversational Greeting and Pleasantry Handling | `done` | `tests/agents/test_greetings.py::test_conversational_greetings_do_not_escalate` |
+| `REQ-AGENT-025` | Gemini Call Deadlines, Hedged Requests, and Router Thinking Cap | `done` | `tests/common/test_hedging.py::test_hedged_gemini_calls_bound_tail_latency` |
+| `REQ-AGENT-026` | Deterministic Order-Lookup Intent Rule and Pleasantry Coverage | `done` | `tests/agents/test_order_lookup_rule.py::test_order_lookup_rule_skips_tier2_safely` |
+| `REQ-AGENT-027` | Concurrent Turn I/O, Non-Fatal Ticket Persistence, and Post-Response Trace Flush | `done` | `tests/agents/test_triage_concurrency.py::test_triage_parallel_io_and_nonfatal_upsert` |
 
 
 ---
@@ -195,8 +198,8 @@ src/ticket_router/
 ### REQ-AGENT-012: Execution Budgets, Service Timeouts, and Latency SLAs
 - **Statement**: Service calls MUST enforce strict timeout budgets and connection pooling:
   - Clients MUST reuse connections via persistent pooled keep-alive HTTPS sessions (`requests.Session` with `HTTPAdapter(pool_connections, pool_maxsize, max_retries=0)`). Unpooled HTTPS/urllib connections incur ~185 ms p95 TLS handshake overhead. Persistent keep-alive connections achieve shared endpoint latency of p50 96 ms / p95 134 ms, and dedicated endpoint latency of p50 54 ms / p95 77 ms / p99 135 ms.
-  - `TriageRouterAgent` overall turn budget: $\le 3,000\text{ ms}$. Tier 1 `router-s1` endpoint call HTTP timeout: 500 ms (protecting 150 ms model budget); Tier 2 Flash fallback timeout: 1,500 ms.
-  - `FaqResolverAgent` overall turn budget: $\le 20,000\text{ ms}$ (and `HttpA2AClient` default timeout `20.0\text{ s}`). Agent Search query timeout: 800 ms; Laya rerank call HTTP timeout: 600 ms (protecting 200 ms model budget); `order-lookup-mcp` HTTP timeout: 5,000 ms (accommodating `min_instance_count = 0` Cloud Run + Cloud SQL IAM cold starts while preserving $< 300\text{ ms}$ warm p95); `ticket-db-mcp` timeout: 500 ms. FastAPI `/resolve` executes `handle_a2a_request` via `starlette.concurrency.run_in_threadpool` so synchronous downstream calls do not block the event loop or starve GKE `/healthz` probes.
+  - `TriageRouterAgent` overall turn budget: $\le 3,000\text{ ms}$ for Tier 0/1 decisions. Tier 1 `router-s1` endpoint call HTTP timeout: 500 ms (protecting 150 ms model budget); Tier 2 Flash routing is bounded by the hedged-call deadline in `REQ-AGENT-025` (hedge after 3.5 s, hard deadline 9 s).
+  - `FaqResolverAgent` overall turn budget: $\le 20,000\text{ ms}$ (and `HttpA2AClient` default timeout `20.0\text{ s}`). Agent Search query timeout: 800 ms; Laya rerank call HTTP timeout: 600 ms (protecting 200 ms model budget); `order-lookup-mcp` HTTP timeout: 5,000 ms (accommodating `min_instance_count = 0` Cloud Run + Cloud SQL IAM cold starts while preserving $< 300\text{ ms}$ warm p95); `ticket-db-mcp` HTTP timeout: 3,000 ms (scale-to-zero cold starts; warm p95 $< 400\text{ ms}$, failures are non-fatal per `REQ-AGENT-027`); answer synthesis bounded by the hedged-call deadline in `REQ-AGENT-025` (hedge after 7 s, hard deadline 15 s). FastAPI `/resolve` executes `handle_a2a_request` via `starlette.concurrency.run_in_threadpool` so synchronous downstream calls do not block the event loop or starve GKE `/healthz` probes.
 - **Rationale**: Enforces customer-facing latency SLAs and eliminates TLS connection setup overhead across repeated agent requests (TDD §3.5, §10.1).
 - **Acceptance**: `tests/common/test_resilience.py::test_latency_budgets_and_timeouts`
 - **Status**: done
@@ -309,3 +312,35 @@ src/ticket_router/
 
 
 
+### REQ-AGENT-025: Gemini Call Deadlines, Hedged Requests, and Router Thinking Cap
+- **Statement**: Every live `gemini-3.8-flash` call on the customer path (Tier 2 routing in `invoke_tier2_gemini` and FAQ answer synthesis in `GeminiAnswerClient.generate_answer`) MUST run through a shared hedged-call helper `ticket_router.common.hedging.hedged_call(fn, hedge_after_s, deadline_s, max_attempts=2)`:
+  1. **Hedging**: start attempt 1; if it has not completed after `hedge_after_s`, start one identical attempt 2 in parallel and return whichever succeeds first. If an attempt fails with an exception before the hedge point, the hedge starts immediately. At most `max_attempts` calls are in flight, and losing or stale attempts are abandoned with `executor.shutdown(wait=False, cancel_futures=True)` so a hung call never blocks the turn.
+  2. **Deadline**: if no attempt succeeds within `deadline_s`, raise `ServiceTimeoutError`. Tier 2 then follows the existing degraded fallback hierarchy (`REQ-AGENT-011`: human escalation, `degraded=True`), and answer synthesis follows the existing non-hallucination escalation path (`REQ-AGENT-008`), so no ungrounded answer is ever returned.
+  3. **Budgets** (constants in `ticket_router.common.resilience`): `TIER2_HEDGE_AFTER_S = 3.5`, `TIER2_DEADLINE_S = 9.0`, `ANSWER_HEDGE_AFTER_S = 7.0`, `ANSWER_DEADLINE_S = 15.0`, so answer synthesis plus retrieval stays inside the 20 s A2A budget.
+  4. **Router thinking cap**: `models.yaml` `router_tier2` MUST set `thinking_level: "LOW"`, and `invoke_tier2_gemini` MUST pass `ThinkingConfig(thinking_level=model_thinking_level("router_tier2"))` alongside the system instruction (`MINIMAL` is rejected by `gemini-3.8-flash` with HTTP 400, probed 2026-10-29).
+  5. **Observability**: each hedged call MUST record span attributes `hedge.attempts`, `hedge.winner` (1 or 2), and `hedge.timed_out` (bool), with no prompt or response content.
+- **Rationale**: The live latency baseline (`evals/results/latency/run_002_baseline`, 160 turns) showed `gemini-3.8-flash` latency is bimodal: Tier 2 routing p50 3.8 s / p90 24.9 s / max 35 s and answer synthesis p50 3.9 s / p90 28 s / max 43 s. 7.5% of turns hit the 20 s A2A timeout and returned a false human-escalation ack for simple FAQ questions. A single hedge at roughly the warm p95 bounds the tail at the cost of ~10% extra model calls, and LOW thinking cut router p50 from 2.49 s to 1.87 s with identical decisions in a 12-call probe (decision 2026-10-29).
+- **Acceptance**: `tests/common/test_hedging.py::test_hedged_gemini_calls_bound_tail_latency`
+- **Status**: done
+- **Owner**: agent-service
+
+### REQ-AGENT-026: Deterministic Order-Lookup Intent Rule and Pleasantry Coverage
+- **Statement**: Common calm order-lookup and closing messages MUST NOT fall through to Tier 2:
+  1. **Order-lookup rule (post-Tier-1)**: in `TriagePolicy.evaluate`, only AFTER Tier 0, Model Armor ingress checks, and a successful Tier 1 prediction that is NOT a definitive escalation (`escalate_prob < tau_esc`, sentiment not `angry`, urgency not `immediate`), a message that fully matches the anchored `_ORDER_LOOKUP_REGEX` MUST return `RouterDecision(decision="auto_rag", tier="tier1_router_s1", queue="none", predicted_intent="order_status", escalate=False, reason="tier1_order_lookup_rule", details={"category": "order_lookup", ...s1 probabilities})` instead of invoking Tier 2. The regex covers calm own-order history and order-ID lookups only (e.g. "what are my orders recently ?", "what did I buy recently?", "show my recent purchases", "can you list my orders from the last month", "my order history", "where is ORD-10042?", "status of ORD-10001", "track ORD-10151") and MUST NOT match messages containing complaints, refunds/returns, cancellation, damage, or distress words. If Tier 1 is unavailable (breaker open or error), the rule MUST NOT apply and Tier 2 runs as before, so anger detection is never skipped (`REQ-AGENT-003`).
+  2. **Pleasantry coverage (Tier 0)**: `_PLEASANTRY_REGEX` MUST also match standalone closings such as "have a (great|good|nice|wonderful) day", "appreciate (it|your help|that)", "cheers", "ok thanks", "that's (helpful|great|perfect), thanks", "bye"/"goodbye", which return `REQ-AGENT-024` pleasantry handling.
+  3. Both rules MUST produce zero matches on any `escalate` or `reject_oos` gold case across `evals/data/routing_v2.1.0/{dev,heldout,regression}.jsonl` and `evals/data/agent_e2e_v1/{dev,test}.jsonl`.
+- **Rationale**: In the latency baseline, Tier 2 decided 39% of turns. Every "my recent orders" phrasing, unknown order IDs, and closings like "appreciate your help" took 3–35 s in Tier 2; signed-out users waited up to 30 s for a sign-in prompt, and one closing escalated to a human after 24.7 s. Applying the rule only after a non-escalating Tier 1 prediction keeps the angry/urgent invariant intact (decision 2026-10-29).
+- **Acceptance**: `tests/agents/test_order_lookup_rule.py::test_order_lookup_rule_skips_tier2_safely`
+- **Status**: done
+- **Owner**: agent-service
+
+### REQ-AGENT-027: Concurrent Turn I/O, Non-Fatal Ticket Persistence, and Post-Response Trace Flush
+- **Statement**: `TriageRouterAgent.triage` MUST minimize serial I/O without changing routing semantics:
+  1. **Concurrent identity resolution**: `resolve_identity(...)` (the `ticket-db-mcp` `resolve_customer` call for OAuth turns) MUST run concurrently with `TriagePolicy.evaluate(...)`, propagating `contextvars` (trace context) into worker threads; the policy result does not depend on identity.
+  2. **Concurrent ticket upsert**: on the `auto_rag` A2A path, `upsert_ticket` MUST run concurrently with the `FaqResolverAgent` handoff; both complete before the turn returns.
+  3. **Non-fatal persistence**: an `upsert_ticket` failure or timeout MUST NOT fail the customer turn (previously a cold `ticket-db-mcp` surfaced streamed error 498). The agent MUST retry once, then log a PII-free `ticket_upsert_failed` warning and still return the decision response. `TICKET_DB_MCP_TIMEOUT_S` is raised to 3.0 s for scale-to-zero cold starts.
+  4. **Post-response trace flush**: `TriageRouterAdkAgent._run_async_impl` MUST yield the response event BEFORE calling `flush_traces(...)`, so time-to-first-event does not include span export.
+- **Rationale**: The baseline measured `resolve_customer` ~230 ms and `upsert_ticket` 250–370 ms running serially on every FAQ/order turn, about 0.9 s of fixed Agent Engine overhead per turn (partly the synchronous trace flush before the response), and a cold-start 498 error on the first greeting after idle (decision 2026-10-29).
+- **Acceptance**: `tests/agents/test_triage_concurrency.py::test_triage_parallel_io_and_nonfatal_upsert`
+- **Status**: done
+- **Owner**: agent-service

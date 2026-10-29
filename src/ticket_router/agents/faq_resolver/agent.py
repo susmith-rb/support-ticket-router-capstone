@@ -43,8 +43,11 @@ from ticket_router.agents.faq_resolver.search import (
     execute_faq_search,
 )
 from ticket_router.agents.faq_resolver.validator import CitationValidator
+from ticket_router.common.hedging import hedged_call
 from ticket_router.common.observability import start_span
 from ticket_router.common.resilience import (
+    ANSWER_DEADLINE_S,
+    ANSWER_HEDGE_AFTER_S,
     FAQ_OVERALL_BUDGET_S,
     CircuitBreaker,
 )
@@ -223,11 +226,20 @@ class GeminiAnswerClient(LLMClientProtocol):
             except Exception:
                 pass
 
-        try:
-            resp = client.models.generate_content(**call_kwargs)
-        except TypeError:
-            call_kwargs.pop("config", None)
-            resp = client.models.generate_content(**call_kwargs)
+        def _invoke_generate() -> Any:
+            call_args = dict(call_kwargs)
+            try:
+                return client.models.generate_content(**call_args)
+            except TypeError:
+                call_args.pop("config", None)
+                return client.models.generate_content(**call_args)
+
+        resp = hedged_call(
+            _invoke_generate,
+            ANSWER_HEDGE_AFTER_S,
+            ANSWER_DEADLINE_S,
+            span_name="faq_resolver.generate_content",
+        )
         raw_text = ""
         try:
             raw_text = str(resp.text)
@@ -653,33 +665,57 @@ class FaqResolverAgent:
         if self.llm_client is None:
             self.llm_client = FakeLLMClient()
 
-        with start_span("faq_resolver.generate_answer"):
-            answer_payload = self.llm_client.generate_answer(
-                query=message,
-                retrieved_docs=candidate_docs_list,
-                order_info=order_info,
-                model_id=self.resolved_model_id,
-            )
-
-        val_result = self.validator.validate(answer_payload, retrieved_docs_map)
-
-        # -----------------------------------------------------------------
-        # Step 5: Conditional 1-Time Answer Regeneration
-        # -----------------------------------------------------------------
-        if not val_result.is_valid and regeneration_count < self.max_regenerations and not self._is_budget_exhausted(t_start):
-            regeneration_count += 1
-            feedback = (
-                f"Citation validation rejected previous response: {val_result.reason} ({val_result.details}). "
-                "You MUST supply at least one citation with a quote verbatim present in the retrieved articles."
-            )
+        llm_failed = False
+        try:
             with start_span("faq_resolver.generate_answer"):
                 answer_payload = self.llm_client.generate_answer(
                     query=message,
                     retrieved_docs=candidate_docs_list,
                     order_info=order_info,
                     model_id=self.resolved_model_id,
-                    feedback=feedback,
                 )
+        except Exception as exc:
+            logger.warning(
+                "Answer synthesis failed (%s) for ticket %s",
+                type(exc).__name__,
+                ticket_id,
+            )
+            llm_failed = True
+            answer_payload = {}
+
+        val_result = self.validator.validate(answer_payload, retrieved_docs_map)
+
+        # -----------------------------------------------------------------
+        # Step 5: Conditional 1-Time Answer Regeneration
+        # -----------------------------------------------------------------
+        if (
+            not llm_failed
+            and not val_result.is_valid
+            and regeneration_count < self.max_regenerations
+            and not self._is_budget_exhausted(t_start)
+        ):
+            regeneration_count += 1
+            feedback = (
+                f"Citation validation rejected previous response: {val_result.reason} ({val_result.details}). "
+                "You MUST supply at least one citation with a quote verbatim present in the retrieved articles."
+            )
+            try:
+                with start_span("faq_resolver.generate_answer"):
+                    answer_payload = self.llm_client.generate_answer(
+                        query=message,
+                        retrieved_docs=candidate_docs_list,
+                        order_info=order_info,
+                        model_id=self.resolved_model_id,
+                        feedback=feedback,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Answer regeneration failed (%s) for ticket %s",
+                    type(exc).__name__,
+                    ticket_id,
+                )
+                llm_failed = True
+                answer_payload = {}
             val_result = self.validator.validate(answer_payload, retrieved_docs_map)
 
         # -----------------------------------------------------------------
@@ -691,7 +727,7 @@ class FaqResolverAgent:
                 route="human",
                 queue="human-standard",
                 reason="uncited_answer",
-                degraded=False,
+                degraded=llm_failed,
                 message="To ensure complete accuracy, I've escalated your ticket to our support specialists.",
                 tool_calls_count=tool_calls_count,
                 retrieval_passes_count=retrieval_passes_count,

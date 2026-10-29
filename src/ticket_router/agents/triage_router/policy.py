@@ -3,6 +3,7 @@
 # REQ-AGENT-002: TriageRouter Tiered Decision Policy & Thresholds
 # REQ-AGENT-003: Invariant: Add-Only Escalation and Abuse-Resistant Routing
 # REQ-AGENT-004: Gaming-Resistant Queue Priority Assignment
+# REQ-AGENT-026: Deterministic Order-Lookup Intent Rule and Pleasantry Coverage
 """
 
 from __future__ import annotations
@@ -137,13 +138,26 @@ _GREETING_REGEX = re.compile(
     re.IGNORECASE,
 )
 
-# Standalone conversational pleasantries and polite thanks (REQ-AGENT-024)
+# Standalone conversational pleasantries and polite thanks (REQ-AGENT-024, REQ-AGENT-026)
 _PLEASANTRY_REGEX = re.compile(
-    r"^(?:thanks|thank\s+you|thx|ty|many\s+thanks|much\s+appreciated)"
+    r"^(?:"
+    r"(?:(?:ok|okay)[\s,]+)?(?:thanks|thank\s+you|thx|ty|many\s+thanks|much\s+appreciated)"
     r"(?:\s+(?:so\s+much|very\s+much|a\s+lot|a\s+bunch))?"
     r"(?:\s+for\s+(?:your|the)\s+(?:help|assistance|support|info|information))?"
     r"(?:\s+(?:team|support|assistant))?"
-    r"[\s!?.]*$",
+    r"|"
+    r"(?:(?:thanks|thank\s+you)[\s,]+)?have\s+a\s+(?:great|good|nice|wonderful|lovely)\s+(?:day|evening|weekend)"
+    r"|"
+    r"(?:i\s+)?appreciate\s+(?:it|that|your\s+help|the\s+help)"
+    r"|"
+    r"cheers"
+    r"|"
+    r"much\s+obliged"
+    r"|"
+    r"that(?:'s|’s|\s+is)\s+(?:helpful|great|perfect|awesome)(?:[\s,]+(?:thanks|thank\s+you|thx|ty))"
+    r"|"
+    r"bye|goodbye|good\s+bye|bye\s+bye|see\s+you"
+    r")[\s!?.]*$",
     re.IGNORECASE,
 )
 
@@ -220,6 +234,75 @@ def evaluate_tier0_rules(text: str) -> Tier0Result:
         )
 
     return Tier0Result(matched=False)
+
+
+# -----------------------------------------------------------------------------
+# Tier 1 Order-Lookup Deterministic Rule (REQ-AGENT-026)
+# -----------------------------------------------------------------------------
+
+# Words indicating complaints, distress, or non-order-status intents
+_ORDER_LOOKUP_EXCLUDE_REGEX = re.compile(
+    r"\b("
+    r"refund\w*|"
+    r"return\w*|"
+    r"cancel\w*|"
+    r"damaged?|"
+    r"broken|"
+    r"wrong|"
+    r"missing|"
+    r"late|"
+    r"never\s+arrived|"
+    r"angry|"
+    r"ridiculous|"
+    r"scam\w*|"
+    r"lawyer\w*|"
+    r"attorney\w*|"
+    r"help\s+me|"
+    r"urgent\w*|"
+    r"asap"
+    r")\b|!{2,}",
+    re.IGNORECASE,
+)
+
+# Anchored regex for calm own-order history and order-ID lookups (REQ-AGENT-026)
+_ORDER_LOOKUP_REGEX = re.compile(
+    r"^(?!.*(?:\b(?:refund\w*|return\w*|cancel\w*|damaged?|broken|wrong|missing|late|never\s+arrived|angry|ridiculous|scam\w*|lawyer\w*|attorney\w*|help\s+me|urgent\w*|asap)\b|!{2,}))(?:"
+    # own-order history
+    r"what(?:\s+are|'re)\s+my\s+(?:recent\s+)?orders(?:\s+recently)?"
+    r"|"
+    r"what\s+(?:did|have)\s+i\s+(?:buy|bought|order|ordered|purchase|purchased)(?:\s+(?:recently|lately))?"
+    r"|"
+    r"(?:(?:can|could)\s+you\s+)?(?:show|list|give\s+me|give|get|check|see|view)(?:\s+me)?\s+my\s+(?:recent\s+|latest\s+|past\s+)?(?:orders|purchases|order\s+history)(?:\s+(?:from|in)\s+the\s+(?:last|past)\s+(?:week|month|\d+\s+days))?"
+    r"|"
+    r"my\s+(?:recent\s+|latest\s+|past\s+)?(?:orders|purchases|order\s+history)"
+    r"|"
+    r"(?:check|see|view)\s+my\s+(?:recent\s+)?orders"
+    r"|"
+    r"order\s+history"
+    r"|"
+    # order-ID lookups
+    r"(?:where\s+is|where['’]?s)\s+(?:(?:my|the)\s+order\s+)?ORD-\d{3,}"
+    r"|"
+    r"(?:(?:what['’]?s|what\s+is)\s+the\s+)?status\s+of\s+(?:(?:my|the)\s+order\s+)?ORD-\d{3,}"
+    r"|"
+    r"(?:(?:can|could)\s+you\s+)?(?:track|tracking|locate|find|check)(?:\s+(?:the\s+)?status\s+of)?\s+(?:(?:my|the)\s+order\s+)?ORD-\d{3,}"
+    r"|"
+    r"(?:(?:my|the)\s+order\s+)?ORD-\d{3,}\s+status"
+    r"|"
+    r"status\s+(?:(?:my|the)\s+order\s+)?ORD-\d{3,}"
+    r")[\s!?.]*$",
+    re.IGNORECASE,
+)
+
+
+def matches_order_lookup(text: str) -> bool:
+    """Return True if text matches calm order-lookup intent rule (REQ-AGENT-026)."""
+    if not text:
+        return False
+    cleaned = text.strip()
+    if _ORDER_LOOKUP_EXCLUDE_REGEX.search(cleaned):
+        return False
+    return bool(_ORDER_LOOKUP_REGEX.match(cleaned))
 
 
 # -----------------------------------------------------------------------------
@@ -531,6 +614,34 @@ class TriagePolicy:
                     degraded=False,
                     latency_ms=s1_pred.latency_ms,
                     details=details_rag,
+                )
+
+            # 3. Deterministic order-lookup intent rule (REQ-AGENT-026)
+            if matches_order_lookup(text):
+                details_order: Dict[str, Any] = {
+                    "category": "order_lookup",
+                    "escalate_prob": s1_pred.escalate_prob,
+                    "intent_prob": s1_pred.intent_prob,
+                }
+                if ma_details:
+                    details_order["model_armor"] = ma_details
+                if sanitized_text:
+                    details_order["sanitized_text"] = sanitized_text
+
+                return RouterDecision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="auto_rag",
+                    tier="tier1_router_s1",
+                    queue="none",
+                    predicted_intent="order_status",
+                    escalate=False,
+                    sentiment=s1_pred.sentiment,
+                    urgency=s1_pred.urgency,
+                    reason="tier1_order_lookup_rule",
+                    degraded=False,
+                    latency_ms=s1_pred.latency_ms,
+                    details=details_order,
                 )
 
         # ---------------------------------------------------------------------

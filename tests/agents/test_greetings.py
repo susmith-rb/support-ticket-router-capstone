@@ -1,6 +1,7 @@
 """Tests for conversational greeting, capability opener, and pleasantry handling.
 
 # REQ-AGENT-024: Conversational Greeting and Pleasantry Handling
+# REQ-AGENT-026: Deterministic Order-Lookup Intent Rule and Pleasantry Coverage
 # REQ-AGENT-003: Invariant: Add-Only Escalation and Abuse-Resistant Routing
 """
 
@@ -54,6 +55,11 @@ def test_conversational_greetings_do_not_escalate():
         ("what can you help me with?", "greeting"),
         ("thanks", "pleasantry"),
         ("thank you so much!", "pleasantry"),
+        ("have a wonderful day!", "pleasantry"),
+        ("appreciate your help", "pleasantry"),
+        ("cheers", "pleasantry"),
+        ("ok thanks", "pleasantry"),
+        ("bye", "pleasantry"),
     ]
 
     for idx, (msg, expected_cat) in enumerate(test_messages):
@@ -167,6 +173,8 @@ def test_greeting_add_only_escalation_and_negative_guards():
         "hey where is my order",
         "hi what is your return policy",
         "thanks, where is ORD-10001?",
+        "thanks, where is my order?",
+        "bye, I want a refund",
         "@AmazonHelp hi",
     ]
     for msg in negative_guards:

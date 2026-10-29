@@ -323,13 +323,20 @@ def test_tier2_system_instruction_wiring_and_legacy_compat(monkeypatch):
 
     recorded_calls = []
 
+    def _extract_sys_inst(cfg: object) -> str | None:
+        if cfg is None:
+            return None
+        if isinstance(cfg, dict):
+            return cfg.get("system_instruction")
+        return getattr(cfg, "system_instruction", None)
+
     class FakeGenaiClient:
         def __init__(self, **kwargs):
             self.models = SimpleNamespace(generate_content=self._generate_content)
 
         def _generate_content(self, model, contents, **kwargs):
             recorded_calls.append({"model": model, "contents": contents, "kwargs": kwargs})
-            if "config" in kwargs:
+            if _extract_sys_inst(kwargs.get("config")):
                 return SimpleNamespace(
                     text='{"escalate": false, "escalate_prob": 0.02, "out_of_scope": true, "sentiment": "neutral", "urgency": "can wait days", "intent": "other", "intent_prob": 0.95}'
                 )
@@ -373,7 +380,7 @@ def test_tier2_system_instruction_wiring_and_legacy_compat(monkeypatch):
     finally:
         _CONTEXT_TIER2_VERSION.reset(token_v3)
 
-    # 2. Under legacy v1, NO config kwarg is passed
+    # 2. Under legacy v1, NO system_instruction is passed (only thinking_config from REQ-AGENT-025)
     token = _CONTEXT_TIER2_VERSION.set("v1")
     try:
         pred_v1 = invoke_tier2_gemini(
@@ -382,11 +389,11 @@ def test_tier2_system_instruction_wiring_and_legacy_compat(monkeypatch):
         )
         assert pred_v1.out_of_scope is False
         last_call_v1 = recorded_calls[-1]
-        assert "config" not in last_call_v1["kwargs"]
+        assert _extract_sys_inst(last_call_v1["kwargs"].get("config")) is None
     finally:
         _CONTEXT_TIER2_VERSION.reset(token)
 
-    # 3. Under legacy v2, NO config kwarg is passed
+    # 3. Under legacy v2, NO system_instruction is passed (only thinking_config from REQ-AGENT-025)
     token = _CONTEXT_TIER2_VERSION.set("v2")
     try:
         pred_v2 = invoke_tier2_gemini(
@@ -395,7 +402,7 @@ def test_tier2_system_instruction_wiring_and_legacy_compat(monkeypatch):
         )
         assert pred_v2.out_of_scope is False
         last_call_v2 = recorded_calls[-1]
-        assert "config" not in last_call_v2["kwargs"]
+        assert _extract_sys_inst(last_call_v2["kwargs"].get("config")) is None
     finally:
         _CONTEXT_TIER2_VERSION.reset(token)
 
