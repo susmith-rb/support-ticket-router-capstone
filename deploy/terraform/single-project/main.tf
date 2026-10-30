@@ -169,6 +169,7 @@ module "agents_iam" {
   pubsub_human_queue_sub_name      = module.pubsub.subscription_name
   corpus_bucket_name               = data.google_storage_bucket.corpus_bucket.name
   enable_re_service_agent_bindings = var.enable_re_service_agent_bindings
+  triage_agent_principal           = var.triage_agent_principal
 
   depends_on = [module.project_services, module.pubsub, module.cloud_sql, module.router_endpoint]
 }
@@ -177,7 +178,7 @@ module "kms_identity" {
   source           = "./modules/kms-identity"
   project_id       = var.project_id
   region           = var.region
-  signer_members   = ["serviceAccount:${module.agents_iam.sa_triage_email}"]
+  signer_members   = compact(["serviceAccount:${module.agents_iam.sa_triage_email}", var.triage_agent_principal])
   verifier_members = ["serviceAccount:${module.cloud_sql.sa_order_mcp_email}"]
   labels           = var.labels
 
@@ -195,6 +196,7 @@ module "cloud_run_services" {
   sa_queue_email            = module.cloud_sql.sa_queue_email
   sa_triage_email           = module.agents_iam.sa_triage_email
   sa_faq_email              = module.agents_iam.sa_faq_email
+  triage_agent_principal    = var.triage_agent_principal
   min_instance_count        = var.cloud_run_min_instances
   max_instance_count        = var.cloud_run_max_instances
   cct_key_prefix            = module.kms_identity.key_prefix
@@ -220,6 +222,8 @@ module "model_armor" {
   triage_sa_email = module.agents_iam.sa_triage_email
   faq_sa_email    = module.agents_iam.sa_faq_email
   labels          = var.labels
+
+  triage_agent_principal = var.triage_agent_principal
 
   depends_on = [module.project_services, module.agents_iam]
 }

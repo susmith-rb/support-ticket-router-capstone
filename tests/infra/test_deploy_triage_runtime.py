@@ -19,6 +19,8 @@ from scripts.deploy_agents.deploy_triage_agent_runtime import (
     build_agent_app,
     deploy_reasoning_engine,
     filter_reserved_env_vars,
+    format_effective_identity_principal,
+    main,
     parse_args,
     prepare_environment,
 )
@@ -174,3 +176,180 @@ def test_deploy_reasoning_engine_mock_api_calls():
         assert "GOOGLE_CLOUD_PROJECT" not in env_passed
         assert "ROUTER_S1_ENDPOINT" in env_passed
         assert "TICKET_DB_MCP_URL" in env_passed
+        assert "ID_TOKEN_IMPERSONATE_SA" not in env_passed
+
+
+# REQ-AUTH-004
+def test_parse_args_identity_type_and_separate_staging_engine():
+    """Verify --identity-type {sa,agent}, --display-name, and --resource-name parsing."""
+    # Default is sa with no target resource (creates new engine)
+    default_args = parse_args([])
+    assert default_args.identity_type == "sa"
+    assert default_args.resource_name is None
+    assert default_args.target_resource_name is None
+
+    # Creating a separate staging engine with --identity-type agent and --display-name
+    staging_args = parse_args(["--identity-type", "agent", "--display-name", "TriageRouterAgent-staging"])
+    assert staging_args.identity_type == "agent"
+    assert staging_args.display_name == "TriageRouterAgent-staging"
+    assert staging_args.target_resource_name is None
+
+    # Updating an existing engine via --resource-name
+    res_args = parse_args(
+        [
+            "--identity-type",
+            "agent",
+            "--resource-name",
+            "projects/620485621180/locations/us-central1/reasoningEngines/999",
+        ]
+    )
+    assert res_args.resource_name == "projects/620485621180/locations/us-central1/reasoningEngines/999"
+    assert res_args.target_resource_name == "projects/620485621180/locations/us-central1/reasoningEngines/999"
+
+    # Conflicting --update and --resource-name fails fast
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "--update",
+                "projects/p/locations/l/reasoningEngines/111",
+                "--resource-name",
+                "projects/p/locations/l/reasoningEngines/222",
+            ]
+        )
+
+
+# REQ-AUTH-004
+def test_format_effective_identity_principal():
+    """Verify SPIFFE identity normalization to principal:// IAM member string."""
+    raw = (
+        "agents.global.org-123456.system.id.goog/resources/aiplatform/"
+        "projects/620485621180/locations/us-central1/reasoningEngines/777"
+    )
+    assert format_effective_identity_principal(raw) == f"principal://{raw}"
+    assert format_effective_identity_principal(f"principal://{raw}") == f"principal://{raw}"
+    assert format_effective_identity_principal(None) is None
+    assert format_effective_identity_principal("   ") is None
+
+
+# REQ-AUTH-004
+def test_deploy_agent_identity_creates_staging_engine_via_client_api(capsys):
+    """Verify --identity-type agent creates separate staging engine with AGENT_IDENTITY, no SA, and impersonation env."""
+    import vertexai
+
+    fake_resource = "projects/620485621180/locations/us-central1/reasoningEngines/555000111"
+    raw_spiffe = (
+        "agents.global.org-987654.system.id.goog/resources/aiplatform/"
+        "projects/620485621180/locations/us-central1/reasoningEngines/555000111"
+    )
+
+    mock_engine = MagicMock()
+    mock_engine.api_resource.name = fake_resource
+    mock_engine.api_resource.spec.effective_identity = raw_spiffe
+
+    mock_client = MagicMock()
+    mock_client.agent_engines.create.return_value = mock_engine
+
+    with patch.object(vertexai, "Client", return_value=mock_client) as mock_client_cls:
+        main(
+            [
+                "--project",
+                "my-pilot-proj",
+                "--region",
+                "us-central1",
+                "--staging-bucket",
+                "gs://my-pilot-bucket/agent-engine-staging",
+                "--display-name",
+                "TriageRouterAgent-staging",
+                "--identity-type",
+                "agent",
+            ]
+        )
+
+    mock_client_cls.assert_called_once_with(project="my-pilot-proj", location="us-central1")
+    mock_client.agent_engines.create.assert_called_once()
+    mock_client.agent_engines.update.assert_not_called()
+
+    create_kwargs = mock_client.agent_engines.create.call_args.kwargs
+    assert "agent" in create_kwargs and create_kwargs["agent"] is not None
+    cfg = create_kwargs["config"]
+    assert cfg["identity_type"] == vertexai.types.IdentityType.AGENT_IDENTITY
+    assert "service_account" not in cfg
+    assert cfg["display_name"] == "TriageRouterAgent-staging"
+    assert cfg["staging_bucket"] == "gs://my-pilot-bucket"
+    assert cfg["gcs_dir_name"] == "agent_engine/triage_router"
+    assert "src/ticket_router" in cfg["extra_packages"]
+
+    env_vars = cfg["env_vars"]
+    assert env_vars["ID_TOKEN_IMPERSONATE_SA"] == "sa-triage@my-pilot-proj.iam.gserviceaccount.com"
+    assert "GOOGLE_CLOUD_PROJECT" not in env_vars
+    assert "ROUTER_S1_ENDPOINT" in env_vars
+    assert "TICKET_DB_MCP_URL" in env_vars
+    assert "CCT_KEY_VERSION" in env_vars
+
+    stdout = capsys.readouterr().out
+    assert fake_resource in stdout
+    assert f"principal://{raw_spiffe}" in stdout
+
+
+# REQ-AUTH-004
+def test_deploy_agent_identity_updates_existing_engine_and_fetches_effective_identity(capsys):
+    """Verify --identity-type agent updates target --resource-name and falls back to get() for effective_identity."""
+    import vertexai
+
+    target = "projects/620485621180/locations/us-central1/reasoningEngines/888000222"
+    expected_principal = (
+        "principal://agents.global.org-987654.system.id.goog/resources/aiplatform/"
+        "projects/620485621180/locations/us-central1/reasoningEngines/888000222"
+    )
+
+    # Simulate LRO response missing spec.effective_identity until get() is called
+    mock_update_engine = MagicMock()
+    mock_update_engine.api_resource.name = target
+    mock_update_engine.api_resource.spec.effective_identity = None
+    mock_update_engine.api_resource.effective_identity = None
+    mock_update_engine.effective_identity = None
+
+    mock_fetched_engine = MagicMock()
+    mock_fetched_engine.api_resource.name = target
+    mock_fetched_engine.api_resource.spec.effective_identity = expected_principal
+
+    mock_client = MagicMock()
+    mock_client.agent_engines.update.return_value = mock_update_engine
+    mock_client.agent_engines.get.return_value = mock_fetched_engine
+
+    with (
+        patch.object(vertexai, "Client", return_value=mock_client),
+        patch(
+            "scripts.deploy_agents.deploy_triage_agent_runtime.wait_for_reasoning_engine_idle"
+        ) as mock_wait,
+    ):
+        returned = deploy_reasoning_engine(
+            project="susmith-fde-ticket-router",
+            region="us-central1",
+            staging_bucket="gs://susmith-fde-ticket-router-laya/agent-engine-staging",
+            display_name="TriageRouterAgent-staging",
+            identity_type="agent",
+            resource_name=target,
+            dry_run=False,
+        )
+
+    assert returned == target
+    mock_wait.assert_called_once_with(
+        resource_name=target,
+        project="susmith-fde-ticket-router",
+        region="us-central1",
+    )
+    mock_client.agent_engines.update.assert_called_once()
+    upd_kwargs = mock_client.agent_engines.update.call_args.kwargs
+    assert upd_kwargs["name"] == target
+    assert "service_account" not in upd_kwargs["config"]
+    assert upd_kwargs["config"]["identity_type"] == vertexai.types.IdentityType.AGENT_IDENTITY
+    assert (
+        upd_kwargs["config"]["env_vars"]["ID_TOKEN_IMPERSONATE_SA"]
+        == "sa-triage@susmith-fde-ticket-router.iam.gserviceaccount.com"
+    )
+    mock_client.agent_engines.get.assert_called_once_with(name=target)
+
+    stdout = capsys.readouterr().out
+    assert target in stdout
+    assert expected_principal in stdout

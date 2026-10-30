@@ -2,6 +2,7 @@
 """Deploy TriageRouterAgent to Vertex AI Agent Engine / Reasoning Engine runtime.
 
 Implements REQ-AGENT-017: Agent Runtime deployment for TriageRouterAgent.
+Implements REQ-AUTH-004: SPIFFE Agent Identity (--identity-type agent) deployment option.
 
 Key deployment invariants:
 1. Environment Isolation & Contract: Sets all contract environment variables
@@ -122,6 +123,7 @@ def prepare_environment(
     cct_issuer: str = DEFAULT_CCT_ISSUER,
     cct_audience: str = DEFAULT_CCT_AUDIENCE,
     cct_ttl_s: str = DEFAULT_CCT_TTL_S,
+    id_token_impersonate_sa: str | None = None,
 ) -> dict[str, str]:
     """Set environment variables in-process before importing or pickling.
 
@@ -163,6 +165,11 @@ def prepare_environment(
     oauth_client_id = ge_oauth_client_id or os.environ.get("GE_OAUTH_CLIENT_ID")
     if oauth_client_id:
         env_vars["GE_OAUTH_CLIENT_ID"] = oauth_client_id
+
+    if id_token_impersonate_sa:
+        env_vars["ID_TOKEN_IMPERSONATE_SA"] = id_token_impersonate_sa
+    else:
+        os.environ.pop("ID_TOKEN_IMPERSONATE_SA", None)
 
     for key, val in env_vars.items():
         os.environ[key] = val
@@ -255,6 +262,92 @@ def wait_for_reasoning_engine_idle(
         logger.warning("Could not check active operations for %s: %s", resource_name, exc)
 
 
+def _non_empty_str(val: Any) -> str | None:
+    """Return stripped string if val is a non-empty str, else None."""
+    if isinstance(val, str):
+        stripped = val.strip()
+        if stripped:
+            return stripped
+    return None
+
+
+def format_effective_identity_principal(raw_identity: str | None) -> str | None:
+    """Normalize Vertex AI ReasoningEngine effective_identity into IAM member format.
+
+    # REQ-AUTH-004: SDK returns SPIFFE identity without 'principal://' prefix
+    # (agents.global.org-<ORG>.system.id.goog/resources/aiplatform/...).
+    """
+    ident = _non_empty_str(raw_identity)
+    if not ident:
+        return None
+    if ident.startswith(("principal://", "serviceAccount:")):
+        return ident
+    if "@" in ident and "/" not in ident:
+        return f"serviceAccount:{ident}"
+    return f"principal://{ident}"
+
+
+def _extract_raw_engine_fields(engine: Any) -> tuple[str | None, str | None]:
+    """Extract (resource_name, raw_effective_identity) from a Client AgentEngine object."""
+    if engine is None:
+        return None, None
+
+    api_res = getattr(engine, "api_resource", None)
+    res_name: str | None = None
+    raw_identity: str | None = None
+
+    if isinstance(api_res, dict):
+        res_name = _non_empty_str(api_res.get("name"))
+        spec = api_res.get("spec")
+        if isinstance(spec, dict):
+            raw_identity = _non_empty_str(spec.get("effective_identity"))
+        else:
+            raw_identity = _non_empty_str(getattr(spec, "effective_identity", None))
+        if not raw_identity:
+            raw_identity = _non_empty_str(api_res.get("effective_identity"))
+    elif api_res is not None:
+        res_name = _non_empty_str(getattr(api_res, "name", None))
+        spec = getattr(api_res, "spec", None)
+        if isinstance(spec, dict):
+            raw_identity = _non_empty_str(spec.get("effective_identity"))
+        elif spec is not None:
+            raw_identity = _non_empty_str(getattr(spec, "effective_identity", None))
+        if not raw_identity:
+            raw_identity = _non_empty_str(getattr(api_res, "effective_identity", None))
+
+    if not res_name:
+        res_name = _non_empty_str(getattr(engine, "resource_name", None)) or _non_empty_str(
+            getattr(engine, "name", None)
+        )
+    if not raw_identity:
+        raw_identity = _non_empty_str(getattr(engine, "effective_identity", None))
+
+    return res_name, raw_identity
+
+
+def _extract_client_engine_info(
+    engine: Any,
+    client: Any = None,
+    fallback_name: str | None = None,
+) -> tuple[str | None, str | None]:
+    """Resolve resource_name and IAM principal string from client.agent_engines response."""
+    res_name, raw_identity = _extract_raw_engine_fields(engine)
+    if not res_name:
+        res_name = _non_empty_str(fallback_name)
+
+    if not raw_identity and client is not None and res_name:
+        try:
+            fetched = client.agent_engines.get(name=res_name)
+            fetched_name, fetched_identity = _extract_raw_engine_fields(fetched)
+            if not res_name and fetched_name:
+                res_name = fetched_name
+            raw_identity = fetched_identity
+        except Exception as exc:
+            logger.warning("Could not fetch effective_identity via get(%s): %s", res_name, exc)
+
+    return res_name, format_effective_identity_principal(raw_identity)
+
+
 def deploy_reasoning_engine(
     project: str,
     region: str,
@@ -266,11 +359,30 @@ def deploy_reasoning_engine(
     contract_vars: dict[str, str] | None = None,
     update_resource_name: str | None = None,
     dry_run: bool = False,
+    identity_type: str = "sa",
+    resource_name: str | None = None,
 ) -> str | None:
     """Package and deploy or update TriageRouterAgent on Vertex AI Agent Engine."""
+    if identity_type not in ("sa", "agent"):
+        raise ValueError(f"Unsupported identity_type={identity_type!r}; expected 'sa' or 'agent'")
+
+    upd_arg = _non_empty_str(update_resource_name)
+    res_arg = _non_empty_str(resource_name)
+    if upd_arg and res_arg and upd_arg != res_arg:
+        raise ValueError("update_resource_name and resource_name must match when both are provided")
+    target_resource = res_arg or upd_arg
+
     reqs = requirements or PINNED_REQUIREMENTS
     pkgs = extra_packages or DEFAULT_EXTRA_PACKAGES
     contract = contract_vars or {}
+
+    if identity_type == "agent":
+        default_triage_sa = f"sa-triage@{project}.iam.gserviceaccount.com"
+        impersonate_sa = _non_empty_str(contract.get("ID_TOKEN_IMPERSONATE_SA")) or default_triage_sa
+        default_allowed_callers = impersonate_sa
+    else:
+        impersonate_sa = None
+        default_allowed_callers = service_account
 
     raw_env_vars = prepare_environment(
         project=project,
@@ -284,7 +396,7 @@ def deploy_reasoning_engine(
         router_s1_base_url=contract.get("ROUTER_S1_BASE_URL", DEFAULT_ROUTER_BASE_URL),
         agent_search_location=contract.get("AGENT_SEARCH_LOCATION", "global"),
         agent_search_engine_id=contract.get("AGENT_SEARCH_ENGINE_ID", "support-kb-search"),
-        allowed_callers=contract.get("ALLOWED_CALLERS", service_account),
+        allowed_callers=contract.get("ALLOWED_CALLERS", default_allowed_callers),
         require_real_deps=contract.get("REQUIRE_REAL_DEPS", "1"),
         service=contract.get("SERVICE", "triage_router"),
         ge_oauth_auth_id=contract.get(
@@ -297,6 +409,7 @@ def deploy_reasoning_engine(
         cct_issuer=contract.get("CCT_ISSUER", DEFAULT_CCT_ISSUER),
         cct_audience=contract.get("CCT_AUDIENCE", DEFAULT_CCT_AUDIENCE),
         cct_ttl_s=contract.get("CCT_TTL_S", DEFAULT_CCT_TTL_S),
+        id_token_impersonate_sa=impersonate_sa,
     )
     remote_env_vars = filter_reserved_env_vars(raw_env_vars)
     agent_app = build_agent_app()
@@ -305,103 +418,166 @@ def deploy_reasoning_engine(
     logger.info("Target Region:         %s", region)
     logger.info("Staging Bucket:        %s", staging_bucket)
     logger.info("Display Name:          %s", display_name)
-    logger.info("Service Account:       %s", service_account)
+    logger.info("Identity Type:         %s", identity_type)
+    if identity_type == "agent":
+        logger.info("Impersonate SA (OIDC): %s", impersonate_sa)
+    else:
+        logger.info("Service Account:       %s", service_account)
     logger.info("Extra Packages:        %s", pkgs)
     logger.info("Requirements:          %s", reqs)
     logger.info("Remote Env Vars:       %d variables (reserved excluded)", len(remote_env_vars))
-    logger.info("Update Resource:       %s", update_resource_name or "None (Creating new)")
+    logger.info("Update Resource:       %s", target_resource or "None (Creating new)")
     logger.info("Dry Run:               %s", dry_run)
 
     if dry_run:
+        sample_name = f"projects/{project}/locations/{region}/reasoningEngines/dry-run-sample-id"
         logger.info("[Dry Run] Agent application built and serialized successfully without calling GCP APIs.")
-        return f"projects/{project}/locations/{region}/reasoningEngines/dry-run-sample-id"
+        if identity_type == "agent":
+            sample_principal = (
+                f"principal://agents.global.org-dry-run.system.id.goog/resources/aiplatform/{sample_name}"
+            )
+            print(sample_name)
+            print(f"effective_identity: {sample_principal}")
+        return sample_name
 
     import vertexai
+
     bucket_uri = staging_bucket
     if "/" in staging_bucket.replace("gs://", ""):
         bucket_name = staging_bucket.replace("gs://", "").split("/")[0]
         bucket_uri = f"gs://{bucket_name}"
-    vertexai.init(project=project, location=region, staging_bucket=bucket_uri)
 
-    has_agent_engines = False
-    try:
-        from vertexai import agent_engines
-        has_agent_engines = True
-    except (ImportError, AttributeError):
-        has_agent_engines = False
-
-    resource_name: str | None = None
-    if update_resource_name:
-        wait_for_reasoning_engine_idle(
-            resource_name=update_resource_name,
-            project=project,
-            region=region,
-        )
-        logger.info("Updating existing Agent Engine: %s", update_resource_name)
-        if has_agent_engines:
-            from vertexai import agent_engines
-            engine = agent_engines.update(
-                resource_name=update_resource_name,
-                agent_engine=agent_app,
-                requirements=reqs,
-                extra_packages=pkgs,
-                env_vars=remote_env_vars,
-                display_name=display_name,
-                description="Support Ticket Router Triage Agent",
-                service_account=service_account,
-                gcs_dir_name="agent_engine/triage_router",
+    deployed_resource_name: str | None = None
+    if identity_type == "agent":
+        # REQ-AUTH-004: Deploy via vertexai.Client().agent_engines with AGENT_IDENTITY and no service_account.
+        client = vertexai.Client(project=project, location=region)
+        agent_config: dict[str, Any] = {
+            "staging_bucket": bucket_uri,
+            "requirements": reqs,
+            "extra_packages": pkgs,
+            "env_vars": remote_env_vars,
+            "display_name": display_name,
+            "description": "Support Ticket Router Triage Agent",
+            "gcs_dir_name": "agent_engine/triage_router",
+            "identity_type": vertexai.types.IdentityType.AGENT_IDENTITY,
+        }
+        if target_resource:
+            wait_for_reasoning_engine_idle(
+                resource_name=target_resource,
+                project=project,
+                region=region,
             )
-            resource_name = str(engine.resource_name)
+            logger.info("Updating existing Agent Engine (AGENT_IDENTITY): %s", target_resource)
+            engine = client.agent_engines.update(
+                name=target_resource,
+                agent=agent_app,
+                config=agent_config,
+            )
+            deployed_resource_name, effective_principal = _extract_client_engine_info(
+                engine,
+                client=client,
+                fallback_name=target_resource,
+            )
+            logger.info("Agent Engine updated successfully: %s", deployed_resource_name)
         else:
-            from vertexai.preview import reasoning_engines
-            target_engine = reasoning_engines.ReasoningEngine(update_resource_name)
-            target_engine.update(
-                reasoning_engine=agent_app,
-                requirements=reqs,
-                extra_packages=pkgs,
-                display_name=display_name,
-                description="Support Ticket Router Triage Agent",
+            logger.info("Creating new Agent Engine on Vertex AI (AGENT_IDENTITY)...")
+            engine = client.agent_engines.create(
+                agent=agent_app,
+                config=agent_config,
             )
-            resource_name = update_resource_name
-        logger.info("Agent Engine updated successfully: %s", resource_name)
+            deployed_resource_name, effective_principal = _extract_client_engine_info(
+                engine,
+                client=client,
+            )
+            logger.info("Agent Engine deployed successfully: %s", deployed_resource_name)
+
+        if effective_principal:
+            logger.info("Effective Identity:    %s", effective_principal)
+        if deployed_resource_name:
+            print(deployed_resource_name)
+        if effective_principal:
+            print(f"effective_identity: {effective_principal}")
     else:
-        logger.info("Creating new Agent Engine on Vertex AI...")
-        if has_agent_engines:
-            from vertexai import agent_engines
-            engine = agent_engines.create(
-                agent_engine=agent_app,
-                requirements=reqs,
-                extra_packages=pkgs,
-                env_vars=remote_env_vars,
-                display_name=display_name,
-                description="Support Ticket Router Triage Agent",
-                service_account=service_account,
-                gcs_dir_name="agent_engine/triage_router",
-            )
-            resource_name = str(engine.resource_name)
-        else:
-            from vertexai.preview import reasoning_engines
-            create_kwargs: dict[str, Any] = {
-                "reasoning_engine": agent_app,
-                "requirements": reqs,
-                "extra_packages": pkgs,
-                "display_name": display_name,
-                "description": "Support Ticket Router Triage Agent",
-            }
-            if service_account:
-                create_kwargs["service_account"] = service_account
-            engine = reasoning_engines.ReasoningEngine.create(**create_kwargs)
-            resource_name = str(engine.resource_name)
-        logger.info("Agent Engine deployed successfully: %s", resource_name)
+        vertexai.init(project=project, location=region, staging_bucket=bucket_uri)
 
-    if resource_name:
+        has_agent_engines = False
+        try:
+            from vertexai import agent_engines
+            has_agent_engines = True
+        except (ImportError, AttributeError):
+            has_agent_engines = False
+
+        if target_resource:
+            wait_for_reasoning_engine_idle(
+                resource_name=target_resource,
+                project=project,
+                region=region,
+            )
+            logger.info("Updating existing Agent Engine: %s", target_resource)
+            if has_agent_engines:
+                from vertexai import agent_engines
+                engine = agent_engines.update(
+                    resource_name=target_resource,
+                    agent_engine=agent_app,
+                    requirements=reqs,
+                    extra_packages=pkgs,
+                    env_vars=remote_env_vars,
+                    display_name=display_name,
+                    description="Support Ticket Router Triage Agent",
+                    service_account=service_account,
+                    gcs_dir_name="agent_engine/triage_router",
+                )
+                deployed_resource_name = str(engine.resource_name)
+            else:
+                from vertexai.preview import reasoning_engines
+                target_engine = reasoning_engines.ReasoningEngine(target_resource)
+                target_engine.update(
+                    reasoning_engine=agent_app,
+                    requirements=reqs,
+                    extra_packages=pkgs,
+                    display_name=display_name,
+                    description="Support Ticket Router Triage Agent",
+                )
+                deployed_resource_name = target_resource
+            logger.info("Agent Engine updated successfully: %s", deployed_resource_name)
+        else:
+            logger.info("Creating new Agent Engine on Vertex AI...")
+            if has_agent_engines:
+                from vertexai import agent_engines
+                engine = agent_engines.create(
+                    agent_engine=agent_app,
+                    requirements=reqs,
+                    extra_packages=pkgs,
+                    env_vars=remote_env_vars,
+                    display_name=display_name,
+                    description="Support Ticket Router Triage Agent",
+                    service_account=service_account,
+                    gcs_dir_name="agent_engine/triage_router",
+                )
+                deployed_resource_name = str(engine.resource_name)
+            else:
+                from vertexai.preview import reasoning_engines
+                create_kwargs: dict[str, Any] = {
+                    "reasoning_engine": agent_app,
+                    "requirements": reqs,
+                    "extra_packages": pkgs,
+                    "display_name": display_name,
+                    "description": "Support Ticket Router Triage Agent",
+                }
+                if service_account:
+                    create_kwargs["service_account"] = service_account
+                engine = reasoning_engines.ReasoningEngine.create(**create_kwargs)
+                deployed_resource_name = str(engine.resource_name)
+            logger.info("Agent Engine deployed successfully: %s", deployed_resource_name)
+
+    if deployed_resource_name:
         query_cmd = (
             f"python scripts/deploy_agents/query_triage_agent.py "
-            f"--resource-name {resource_name} --project {project} --region {region}"
+            f"--resource-name {deployed_resource_name} --project {project} --region {region}"
         )
         logger.info("Query the deployed agent with:\n  %s", query_cmd)
 
-    return resource_name
+    return deployed_resource_name
 
 
 def parse_args(args: list[str] | None = None) -> argparse.Namespace:
@@ -518,21 +694,39 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         help=f"Extra local packages to upload (default: {DEFAULT_EXTRA_PACKAGES})",
     )
     parser.add_argument(
+        "--identity-type",
+        choices=["sa", "agent"],
+        default="sa",
+        help="Runtime workload identity type: 'sa' (default service account) or 'agent' (SPIFFE AGENT_IDENTITY, REQ-AUTH-004)",
+    )
+    parser.add_argument(
         "--update",
         metavar="RESOURCE_NAME",
         default=None,
         help="Existing reasoning engine resource name to update in place",
     )
     parser.add_argument(
+        "--resource-name",
+        metavar="RESOURCE_NAME",
+        default=None,
+        help="Existing reasoning engine resource name to update in place (omit with --display-name to create a separate staging engine)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Validate packaging and environment isolation without deploying to GCP",
     )
-    return parser.parse_args(args)
+    parsed = parser.parse_args(args)
+    upd_val = _non_empty_str(parsed.update)
+    res_val = _non_empty_str(parsed.resource_name)
+    if upd_val and res_val and upd_val != res_val:
+        parser.error("--update and --resource-name must match when both are provided")
+    parsed.target_resource_name = res_val or upd_val
+    return parsed
 
 
-def main() -> None:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
     contract_vars = {
         "TICKET_DB_MCP_URL": args.ticket_db_url,
         "ORDER_LOOKUP_MCP_URL": args.order_lookup_url,
@@ -562,11 +756,12 @@ def main() -> None:
             requirements=PINNED_REQUIREMENTS,
             extra_packages=args.extra_packages,
             contract_vars=contract_vars,
-            update_resource_name=args.update,
+            update_resource_name=args.target_resource_name,
             dry_run=args.dry_run,
+            identity_type=args.identity_type,
         )
         logger.info("Deployment script completed. Output: %s", resource_name)
-        if resource_name:
+        if resource_name and args.identity_type != "agent":
             print(resource_name)
     except Exception as e:
         logger.error("Deployment failed: %s", e)

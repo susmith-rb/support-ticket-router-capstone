@@ -49,6 +49,16 @@ resource "google_vertex_ai_endpoint_iam_member" "triage_prediction_user" {
   member   = "serviceAccount:${google_service_account.sa_triage.email}"
 }
 
+resource "google_vertex_ai_endpoint_iam_member" "triage_agent_prediction_user" {
+  provider = google-beta
+  count    = var.router_endpoint_id != null && var.router_endpoint_id != "" && var.triage_agent_principal != "" ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  endpoint = var.router_endpoint_id
+  role     = "roles/aiplatform.predictionUser"
+  member   = var.triage_agent_principal
+}
+
 resource "google_vertex_ai_endpoint_iam_member" "faq_prediction_user" {
   provider = google-beta
   count    = var.router_endpoint_id != null && var.router_endpoint_id != "" ? 1 : 0
@@ -67,6 +77,16 @@ resource "google_vertex_ai_endpoint_iam_member" "triage_dedicated_prediction_use
   endpoint = var.dedicated_router_endpoint_id
   role     = "roles/aiplatform.predictionUser"
   member   = "serviceAccount:${google_service_account.sa_triage.email}"
+}
+
+resource "google_vertex_ai_endpoint_iam_member" "triage_agent_dedicated_prediction_user" {
+  provider = google-beta
+  count    = var.dedicated_router_endpoint_id != "" && var.triage_agent_principal != "" ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  endpoint = var.dedicated_router_endpoint_id
+  role     = "roles/aiplatform.predictionUser"
+  member   = var.triage_agent_principal
 }
 
 resource "google_vertex_ai_endpoint_iam_member" "faq_dedicated_prediction_user" {
@@ -124,6 +144,13 @@ resource "google_project_iam_member" "triage_runtime_custom_role" {
   member  = "serviceAccount:${google_service_account.sa_triage.email}"
 }
 
+resource "google_project_iam_member" "triage_agent_runtime_custom_role" {
+  count   = var.triage_agent_principal != "" ? 1 : 0
+  project = var.project_id
+  role    = google_project_iam_custom_role.triage_runtime.id
+  member  = var.triage_agent_principal
+}
+
 resource "google_project_iam_member" "faq_inference_custom_role" {
   project = var.project_id
   role    = google_project_iam_custom_role.agent_inference.id
@@ -150,6 +177,14 @@ resource "google_pubsub_topic_iam_member" "triage_human_queue_publisher" {
   project = var.project_id
   role    = "roles/pubsub.publisher"
   member  = "serviceAccount:${google_service_account.sa_triage.email}"
+}
+
+resource "google_pubsub_topic_iam_member" "triage_agent_human_queue_publisher" {
+  count   = var.pubsub_human_queue_topic_name != "" && var.triage_agent_principal != "" ? 1 : 0
+  topic   = var.pubsub_human_queue_topic_name
+  project = var.project_id
+  role    = "roles/pubsub.publisher"
+  member  = var.triage_agent_principal
 }
 
 resource "google_pubsub_subscription_iam_member" "queue_human_queue_subscriber" {
@@ -179,6 +214,13 @@ resource "google_project_iam_member" "triage_cloudtrace_agent" {
   project = var.project_id
   role    = "roles/cloudtrace.agent"
   member  = "serviceAccount:${google_service_account.sa_triage.email}"
+}
+
+resource "google_project_iam_member" "triage_agent_cloudtrace_agent" {
+  count   = var.triage_agent_principal != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = var.triage_agent_principal
 }
 
 resource "google_project_iam_member" "faq_cloudtrace_agent" {
@@ -213,4 +255,15 @@ resource "google_project_iam_member" "re_service_agent_cloudtrace_agent" {
   project = var.project_id
   role    = "roles/cloudtrace.agent"
   member  = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+}
+
+# -----------------------------------------------------------------------------
+# 9. SPIFFE Agent Identity OIDC Impersonation Grant on sa-triage (REQ-AUTH-004)
+# -----------------------------------------------------------------------------
+
+resource "google_service_account_iam_member" "triage_agent_sa_openid_token_creator" {
+  count              = var.triage_agent_principal != "" ? 1 : 0
+  service_account_id = google_service_account.sa_triage.name
+  role               = "roles/iam.serviceAccountOpenIdTokenCreator"
+  member             = var.triage_agent_principal
 }

@@ -179,3 +179,9 @@ variable "cct_mode" {
     error_message = "cct_mode must be one of off, accept, require."
   }
 }
+
+variable "triage_agent_principal" {
+  description = "SPIFFE IAM principal (principal://...) for TriageRouter Agent Runtime identity (REQ-AUTH-004). Empty string grants nothing."
+  type        = string
+  default     = ""
+}

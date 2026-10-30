@@ -102,6 +102,15 @@ resource "google_cloud_run_v2_service_iam_member" "ticket_db_invoker" {
   member   = "serviceAccount:${each.value}"
 }
 
+resource "google_cloud_run_v2_service_iam_member" "ticket_db_invoker_triage_agent" {
+  count    = local.service_count > 0 && var.triage_agent_principal != "" ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.ticket_db_mcp[0].name
+  role     = "roles/run.invoker"
+  member   = var.triage_agent_principal
+}
+
 # -----------------------------------------------------------------------------
 # 2. Order Lookup MCP Server
 # -----------------------------------------------------------------------------
@@ -288,4 +297,13 @@ resource "google_cloud_run_v2_service_iam_member" "human_queue_invoker" {
   name     = google_cloud_run_v2_service.human_queue[0].name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${var.sa_triage_email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "human_queue_invoker_triage_agent" {
+  count    = local.service_count > 0 && var.triage_agent_principal != "" ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.human_queue[0].name
+  role     = "roles/run.invoker"
+  member   = var.triage_agent_principal
 }

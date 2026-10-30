@@ -64,3 +64,9 @@ variable "enable_re_service_agent_bindings" {
   default     = false
 }
 
+variable "triage_agent_principal" {
+  description = "SPIFFE IAM principal (principal://...) for TriageRouter Agent Runtime identity (REQ-AUTH-004)"
+  type        = string
+  default     = ""
+}
+

@@ -77,3 +77,9 @@ variable "cct_key_prefix" {
   default     = ""
 }
 
+variable "triage_agent_principal" {
+  description = "SPIFFE IAM principal (principal://...) for TriageRouter Agent Runtime identity (REQ-AUTH-004)"
+  type        = string
+  default     = ""
+}
+

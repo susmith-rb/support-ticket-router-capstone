@@ -55,6 +55,13 @@ resource "google_project_iam_member" "model_armor_user_triage" {
   member  = "serviceAccount:${var.triage_sa_email}"
 }
 
+resource "google_project_iam_member" "model_armor_user_triage_agent" {
+  count   = var.triage_agent_principal != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/modelarmor.user"
+  member  = var.triage_agent_principal
+}
+
 resource "google_project_iam_member" "model_armor_user_faq" {
   project = var.project_id
   role    = "roles/modelarmor.user"
