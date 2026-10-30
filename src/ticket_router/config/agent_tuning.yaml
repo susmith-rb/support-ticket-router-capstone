@@ -16,3 +16,4 @@ retrieval:
   top_k: 5
   rerank_enabled: false
   citation_strictness: 0.70
+  static_fallback_min_score: 0.50  # REQ-AGENT-028: Relevance score floor for static grounded fallback

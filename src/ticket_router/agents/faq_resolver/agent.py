@@ -30,6 +30,9 @@ from ticket_router.agents.faq_resolver.mcp_client import (
     HttpOrderLookupClient,
     OrderLookupProtocol,
 )
+from ticket_router.agents.faq_resolver.passage_selector import (
+    build_static_fallback_payload,
+)
 from ticket_router.agents.faq_resolver.protocols import (
     Clock,
     LLMClientProtocol,
@@ -123,6 +126,8 @@ class FakeLLMClient(LLMClientProtocol):
         model_id: Optional[str] = None,
         system_instruction: Optional[str] = None,
         feedback: Optional[str] = None,
+        deadline_s: Optional[float] = None,
+        **kwargs: Any,
     ) -> Dict[str, Any]:
         self.call_count += 1
         self.history.append({
@@ -131,6 +136,7 @@ class FakeLLMClient(LLMClientProtocol):
             "order_info": order_info,
             "feedback": feedback,
             "model_id": model_id,
+            "deadline_s": deadline_s,
         })
 
         if self.always_fail_citations or (self.fail_citations_once and self.call_count == 1):
@@ -196,6 +202,9 @@ class GeminiAnswerClient(LLMClientProtocol):
         model_id: Optional[str] = None,
         system_instruction: Optional[str] = None,
         feedback: Optional[str] = None,
+        deadline_s: Optional[float] = None,
+        hedge_after_s: Optional[float] = None,
+        **kwargs: Any,
     ) -> Dict[str, Any]:
         """Synthesize answer with mandatory citations based strictly on retrieved docs."""
         client = self._get_client()
@@ -234,10 +243,13 @@ class GeminiAnswerClient(LLMClientProtocol):
                 call_args.pop("config", None)
                 return client.models.generate_content(**call_args)
 
+        effective_deadline = deadline_s if deadline_s is not None else ANSWER_DEADLINE_S
+        effective_hedge = hedge_after_s if hedge_after_s is not None else ANSWER_HEDGE_AFTER_S
+
         resp = hedged_call(
             _invoke_generate,
-            ANSWER_HEDGE_AFTER_S,
-            ANSWER_DEADLINE_S,
+            effective_hedge,
+            effective_deadline,
             span_name="faq_resolver.generate_content",
         )
         raw_text = ""
@@ -372,9 +384,177 @@ class FaqResolverAgent:
         """Return elapsed milliseconds since t_start."""
         return round((self._clock() - t_start) * 1000.0, 2)
 
+    def _elapsed_s(self, t_start: float) -> float:
+        """Return elapsed seconds since t_start."""
+        return self._clock() - t_start
+
     def _is_budget_exhausted(self, t_start: float) -> bool:
         """Check if elapsed time since t_start exceeds total budget."""
-        return (self._clock() - t_start) >= self.total_budget_s
+        return self._elapsed_s(t_start) >= self.total_budget_s
+
+    def _invoke_generate_answer(
+        self,
+        query: str,
+        retrieved_docs: Sequence[Dict[str, Any]],
+        order_info: Optional[Dict[str, Any]] = None,
+        model_id: Optional[str] = None,
+        system_instruction: Optional[str] = None,
+        feedback: Optional[str] = None,
+        deadline_s: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """Invoke generate_answer on llm_client, safely propagating deadline_s."""
+        assert self.llm_client is not None
+        call_kwargs: Dict[str, Any] = {
+            "query": query,
+            "retrieved_docs": retrieved_docs,
+            "order_info": order_info,
+            "model_id": model_id,
+        }
+        if system_instruction is not None:
+            call_kwargs["system_instruction"] = system_instruction
+        if feedback is not None:
+            call_kwargs["feedback"] = feedback
+        if deadline_s is not None:
+            call_kwargs["deadline_s"] = deadline_s
+
+        try:
+            return self.llm_client.generate_answer(**call_kwargs)
+        except TypeError as exc:
+            if "deadline_s" in str(exc) or "unexpected keyword" in str(exc):
+                call_kwargs.pop("deadline_s", None)
+                return self.llm_client.generate_answer(**call_kwargs)
+            raise
+
+    def _is_static_fallback_eligible(
+        self,
+        predicted_intent: Optional[str],
+        order_info: Optional[Dict[str, Any]],
+        order_id: Optional[str],
+        ordered_doc_ids: Sequence[str],
+        retrieved_docs_map: Dict[str, Dict[str, Any]],
+    ) -> bool:
+        """Evaluate eligibility for REQ-AGENT-028 static grounded fallback.
+
+        Ineligible if:
+        1. Order intents (order_status) or order_id or order_info present.
+        2. No articles retrieved or retrieved doc has no content/title.
+        3. Top-ranked article score < static_fallback_min_score from config.
+        """
+        if predicted_intent == "order_status" or bool(order_id) or bool(order_info):
+            return False
+
+        if not ordered_doc_ids or not retrieved_docs_map:
+            return False
+
+        top_doc_id = ordered_doc_ids[0]
+        if top_doc_id not in retrieved_docs_map:
+            return False
+
+        top_doc = retrieved_docs_map[top_doc_id]
+        content = str(
+            top_doc.get("content") or top_doc.get("body") or top_doc.get("text") or ""
+        ).strip()
+        title = str(top_doc.get("title") or "").strip()
+        if not content and not title:
+            return False
+
+        from ticket_router.config.agent_tuning import get_tuning_config
+        cfg = get_tuning_config()
+        min_score = getattr(cfg, "static_fallback_min_score", 0.50)
+
+        # Inspect score fields on top_doc
+        doc_score = top_doc.get("score")
+        if doc_score is None:
+            doc_score = top_doc.get("relevance_score")
+        if doc_score is None:
+            doc_score = top_doc.get("relevanceScore")
+        if doc_score is None:
+            raw = top_doc.get("raw", {})
+            if isinstance(raw, dict):
+                doc_score = raw.get("score") or raw.get("relevance_score") or raw.get("relevanceScore")
+
+        if doc_score is not None:
+            try:
+                if float(doc_score) < float(min_score):
+                    return False
+            except (ValueError, TypeError):
+                pass
+
+        return True
+
+    def _execute_static_fallback(
+        self,
+        message: str,
+        ordered_doc_ids: Sequence[str],
+        retrieved_docs_map: Dict[str, Dict[str, Any]],
+        tool_calls_count: int,
+        retrieval_passes_count: int,
+        regeneration_count: int,
+        t_start: float,
+    ) -> ResolutionResult:
+        """Produce deterministic static grounded fallback per REQ-AGENT-028."""
+        top_doc_id = ordered_doc_ids[0]
+        top_doc = retrieved_docs_map[top_doc_id]
+
+        fallback_payload = build_static_fallback_payload(query=message, top_doc=top_doc)
+        val_result = self.validator.validate(fallback_payload, retrieved_docs_map)
+
+        if not val_result.is_valid:
+            return ResolutionResult(
+                status="ESCALATED",
+                route="human",
+                queue="human-standard",
+                reason="uncited_answer",
+                degraded=True,
+                message="To ensure complete accuracy, I've escalated your ticket to our support specialists.",
+                tool_calls_count=tool_calls_count,
+                retrieval_passes_count=retrieval_passes_count,
+                regeneration_count=regeneration_count,
+                latency_ms=self._elapsed_ms(t_start),
+            )
+
+        raw_answer = fallback_payload.get("answer", "")
+        if self.model_armor_client is not None:
+            ma_verdict = self.model_armor_client.sanitize_model_response(raw_answer)
+            if ma_verdict.blocked:
+                return ResolutionResult(
+                    status="ESCALATED",
+                    route="human",
+                    queue="human-standard",
+                    reason="model_armor_response_blocked",
+                    degraded=False,
+                    message="To ensure your issue is safely and accurately handled, I have escalated your ticket to our customer support specialists.",
+                    tool_calls_count=tool_calls_count,
+                    retrieval_passes_count=retrieval_passes_count,
+                    regeneration_count=regeneration_count,
+                    latency_ms=self._elapsed_ms(t_start),
+                )
+            if ma_verdict.degraded:
+                return ResolutionResult(
+                    status="ESCALATED",
+                    route="human",
+                    queue="human-standard",
+                    reason="model_armor_degraded",
+                    degraded=True,
+                    message="Our system is temporarily experiencing technical delays. A support specialist will follow up with you.",
+                    tool_calls_count=tool_calls_count,
+                    retrieval_passes_count=retrieval_passes_count,
+                    regeneration_count=regeneration_count,
+                    latency_ms=self._elapsed_ms(t_start),
+                )
+
+        return ResolutionResult(
+            status="AUTO_RESOLVED",
+            route="resolved",
+            answer=raw_answer,
+            citations=[c.to_dict() for c in val_result.citations],
+            reason="static_fallback",
+            degraded=True,
+            tool_calls_count=tool_calls_count,
+            retrieval_passes_count=retrieval_passes_count,
+            regeneration_count=regeneration_count,
+            latency_ms=self._elapsed_ms(t_start),
+        )
 
     def resolve(
         self,
@@ -633,6 +813,8 @@ class FaqResolverAgent:
                     "id": doc.id,
                     "title": doc.title,
                     "content": doc.content,
+                    "score": doc.score,
+                    "raw": doc.raw,
                 }
             ordered_doc_ids = list(search_res.document_ids)
 
@@ -651,6 +833,10 @@ class FaqResolverAgent:
                 reranked, _ = self.reranker.rerank(query=message, candidates=candidates)
             if reranked:
                 ordered_doc_ids = [r["id"] for r in reranked if "id" in r]
+                for r in reranked:
+                    rid = r.get("id")
+                    if rid and rid in retrieved_docs_map and "score" in r:
+                        retrieved_docs_map[rid]["score"] = r["score"]
 
         # -----------------------------------------------------------------
         # Step 4: Grounded Answer Synthesis & Mandatory Citations
@@ -677,7 +863,7 @@ class FaqResolverAgent:
         llm_failed = False
         try:
             with start_span("faq_resolver.generate_answer"):
-                answer_payload = self.llm_client.generate_answer(
+                answer_payload = self._invoke_generate_answer(
                     query=message,
                     retrieved_docs=candidate_docs_list,
                     order_info=order_info,
@@ -692,40 +878,142 @@ class FaqResolverAgent:
             llm_failed = True
             answer_payload = {}
 
+        if llm_failed:
+            if self._is_static_fallback_eligible(
+                predicted_intent=predicted_intent,
+                order_info=order_info,
+                order_id=order_id,
+                ordered_doc_ids=ordered_doc_ids,
+                retrieved_docs_map=retrieved_docs_map,
+            ):
+                return self._execute_static_fallback(
+                    message=message,
+                    ordered_doc_ids=ordered_doc_ids,
+                    retrieved_docs_map=retrieved_docs_map,
+                    tool_calls_count=tool_calls_count,
+                    retrieval_passes_count=retrieval_passes_count,
+                    regeneration_count=regeneration_count,
+                    t_start=t_start,
+                )
+            return ResolutionResult(
+                status="ESCALATED",
+                route="human",
+                queue="human-standard",
+                reason="uncited_answer",
+                degraded=True,
+                message="To ensure complete accuracy, I've escalated your ticket to our support specialists.",
+                tool_calls_count=tool_calls_count,
+                retrieval_passes_count=retrieval_passes_count,
+                regeneration_count=regeneration_count,
+                latency_ms=self._elapsed_ms(t_start),
+            )
+
         val_result = self.validator.validate(answer_payload, retrieved_docs_map)
 
         # -----------------------------------------------------------------
-        # Step 5: Conditional 1-Time Answer Regeneration
+        # Step 5: Conditional 1-Time Answer Regeneration (REQ-AGENT-029)
         # -----------------------------------------------------------------
         if (
             not llm_failed
             and not val_result.is_valid
             and regeneration_count < self.max_regenerations
-            and not self._is_budget_exhausted(t_start)
         ):
-            regeneration_count += 1
-            feedback = (
-                f"Citation validation rejected previous response: {val_result.reason} ({val_result.details}). "
-                "You MUST supply at least one citation with a quote verbatim present in the retrieved articles."
-            )
-            try:
-                with start_span("faq_resolver.generate_answer"):
-                    answer_payload = self.llm_client.generate_answer(
-                        query=message,
-                        retrieved_docs=candidate_docs_list,
-                        order_info=order_info,
-                        model_id=self.resolved_model_id,
-                        feedback=feedback,
-                    )
-            except Exception as exc:
-                logger.warning(
-                    "Answer regeneration failed (%s) for ticket %s",
-                    type(exc).__name__,
-                    ticket_id,
+            elapsed = self._elapsed_s(t_start)
+            remaining_budget = self.total_budget_s - elapsed
+            min_budget_for_regen = ANSWER_HEDGE_AFTER_S + 2.0
+
+            if remaining_budget >= min_budget_for_regen:
+                regeneration_count += 1
+                regen_deadline = min(ANSWER_DEADLINE_S, remaining_budget - 1.0)
+                feedback = (
+                    f"Citation validation rejected previous response: {val_result.reason} ({val_result.details}). "
+                    "You MUST supply at least one citation with a quote verbatim present in the retrieved articles."
                 )
-                llm_failed = True
-                answer_payload = {}
-            val_result = self.validator.validate(answer_payload, retrieved_docs_map)
+                try:
+                    with start_span("faq_resolver.generate_answer"):
+                        answer_payload = self._invoke_generate_answer(
+                            query=message,
+                            retrieved_docs=candidate_docs_list,
+                            order_info=order_info,
+                            model_id=self.resolved_model_id,
+                            feedback=feedback,
+                            deadline_s=regen_deadline,
+                        )
+                except Exception as exc:
+                    logger.warning(
+                        "Answer regeneration failed (%s) for ticket %s",
+                        type(exc).__name__,
+                        ticket_id,
+                    )
+                    llm_failed = True
+                    answer_payload = {}
+
+                if llm_failed:
+                    if self._is_static_fallback_eligible(
+                        predicted_intent=predicted_intent,
+                        order_info=order_info,
+                        order_id=order_id,
+                        ordered_doc_ids=ordered_doc_ids,
+                        retrieved_docs_map=retrieved_docs_map,
+                    ):
+                        return self._execute_static_fallback(
+                            message=message,
+                            ordered_doc_ids=ordered_doc_ids,
+                            retrieved_docs_map=retrieved_docs_map,
+                            tool_calls_count=tool_calls_count,
+                            retrieval_passes_count=retrieval_passes_count,
+                            regeneration_count=regeneration_count,
+                            t_start=t_start,
+                        )
+                    return ResolutionResult(
+                        status="ESCALATED",
+                        route="human",
+                        queue="human-standard",
+                        reason="uncited_answer",
+                        degraded=True,
+                        message="To ensure complete accuracy, I've escalated your ticket to our support specialists.",
+                        tool_calls_count=tool_calls_count,
+                        retrieval_passes_count=retrieval_passes_count,
+                        regeneration_count=regeneration_count,
+                        latency_ms=self._elapsed_ms(t_start),
+                    )
+
+                val_result = self.validator.validate(answer_payload, retrieved_docs_map)
+            else:
+                # REQ-AGENT-029: Not enough remaining budget for regeneration -> skip regeneration!
+                logger.info(
+                    "Skipping regeneration: remaining budget %.2f s < min required %.2f s",
+                    remaining_budget,
+                    min_budget_for_regen,
+                )
+                if self._is_static_fallback_eligible(
+                    predicted_intent=predicted_intent,
+                    order_info=order_info,
+                    order_id=order_id,
+                    ordered_doc_ids=ordered_doc_ids,
+                    retrieved_docs_map=retrieved_docs_map,
+                ):
+                    return self._execute_static_fallback(
+                        message=message,
+                        ordered_doc_ids=ordered_doc_ids,
+                        retrieved_docs_map=retrieved_docs_map,
+                        tool_calls_count=tool_calls_count,
+                        retrieval_passes_count=retrieval_passes_count,
+                        regeneration_count=regeneration_count,
+                        t_start=t_start,
+                    )
+                return ResolutionResult(
+                    status="ESCALATED",
+                    route="human",
+                    queue="human-standard",
+                    reason="uncited_answer",
+                    degraded=False,
+                    message="To ensure complete accuracy, I've escalated your ticket to our support specialists.",
+                    tool_calls_count=tool_calls_count,
+                    retrieval_passes_count=retrieval_passes_count,
+                    regeneration_count=regeneration_count,
+                    latency_ms=self._elapsed_ms(t_start),
+                )
 
         # -----------------------------------------------------------------
         # Step 6: Non-Hallucination Fallback or Auto-Resolution

@@ -38,6 +38,7 @@ def test_agent_tuning_config_and_hill_climb_invariants():
     assert cfg.top_k == 5
     assert cfg.rerank_enabled is False
     assert cfg.citation_strictness == 0.70
+    assert cfg.static_fallback_min_score == 0.50
 
     # 1b. Verify system instruction retrieval for v4 and v3 vs legacy v1/v2
     sys_inst_v4 = get_tier2_system_instruction("v4")

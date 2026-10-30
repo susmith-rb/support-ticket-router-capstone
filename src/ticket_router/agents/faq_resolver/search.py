@@ -74,6 +74,7 @@ class RetrievedDocument:
     id: str
     title: str
     content: str
+    score: Optional[float] = None
     raw: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -161,10 +162,21 @@ def execute_faq_search(
             )
             content = struct.get("content") or snippet_text or title
 
+            raw_score = (
+                r.get("score")
+                or doc.get("score")
+                or r.get("relevance_score")
+                or doc.get("relevance_score")
+                or r.get("relevanceScore")
+                or doc.get("relevanceScore")
+            )
+            doc_score = float(raw_score) if raw_score is not None else None
+
             documents[d_id] = RetrievedDocument(
                 id=d_id,
                 title=title,
                 content=content,
+                score=doc_score,
                 raw=doc,
             )
 
@@ -175,6 +187,7 @@ def execute_faq_search(
                     id=d_id,
                     title=d_id,
                     content="",
+                    score=None,
                 )
 
         return SearchExecutionResult(

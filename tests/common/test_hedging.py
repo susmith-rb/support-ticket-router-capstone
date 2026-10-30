@@ -66,12 +66,12 @@ def _capture_spans(monkeypatch: pytest.MonkeyPatch):
     yield recorded
 
 
-# REQ-AGENT-025, REQ-AGENT-012
+# REQ-AGENT-025, REQ-AGENT-012, REQ-AGENT-029
 def test_resilience_hedge_and_timeout_constants():
-    """Verify REQ-AGENT-025 / REQ-AGENT-012 timeout and hedge constants."""
+    """Verify REQ-AGENT-025 / REQ-AGENT-012 / REQ-AGENT-029 timeout and hedge constants."""
     assert TIER2_HEDGE_AFTER_S == 3.5
     assert TIER2_DEADLINE_S == 9.0
-    assert ANSWER_HEDGE_AFTER_S == 7.0
+    assert ANSWER_HEDGE_AFTER_S == 4.0
     assert ANSWER_DEADLINE_S == 15.0
     assert TICKET_DB_MCP_TIMEOUT_S == 3.0
     # Superseded legacy constant remains exported for backward compatibility
@@ -481,11 +481,13 @@ def test_gemini_answer_client_hedging_and_faq_resolver_timeout_escalation(monkey
         customer_verified=False,
         predicted_intent="returns_refunds",
     )
-    assert res.status == "ESCALATED"
-    assert res.route == "human"
-    assert res.queue == "human-standard"
-    assert res.answer is None
-    assert res.citations == []
+    # REQ-AGENT-028: Grounded static fallback on generation timeout when doc present
+    assert res.status == "AUTO_RESOLVED"
+    assert res.route == "resolved"
     assert res.degraded is True
-    assert res.reason == "uncited_answer"
+    assert res.reason == "static_fallback"
+    assert res.answer is not None
+    assert "Returns allowed within 30 days." in res.answer
+    assert len(res.citations) == 1
+    assert res.citations[0]["doc_id"] == "d1"
     assert timeout_llm.calls == 1  # Does not waste another 15s regenerating after a hard timeout

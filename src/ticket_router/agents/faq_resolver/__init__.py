@@ -22,6 +22,10 @@ from ticket_router.agents.faq_resolver.mcp_client import (
     HttpOrderLookupClient,
     OrderLookupProtocol,
 )
+from ticket_router.agents.faq_resolver.passage_selector import (
+    build_static_fallback_payload,
+    select_static_passage,
+)
 from ticket_router.agents.faq_resolver.protocols import (
     Clock,
     ClockProtocol,
@@ -72,10 +76,12 @@ __all__ = [
     "VertexLayaReranker",
     "app",
     "build_production_search_kwargs",
+    "build_static_fallback_payload",
     "create_app",
     "execute_faq_search",
     "handle_a2a_request",
     "is_verbatim_citation",
     "norm",
     "root_agent",
+    "select_static_passage",
 ]

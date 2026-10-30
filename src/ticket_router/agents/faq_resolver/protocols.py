@@ -119,6 +119,8 @@ class LLMClientProtocol(Protocol):
         model_id: Optional[str] = None,
         system_instruction: Optional[str] = None,
         feedback: Optional[str] = None,
+        deadline_s: Optional[float] = None,
+        **kwargs: Any,
     ) -> Dict[str, Any]:
         """Synthesize answer with mandatory citations based strictly on context.
 

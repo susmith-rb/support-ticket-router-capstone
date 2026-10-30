@@ -15,12 +15,12 @@ from typing import Any, Callable, Optional, TypeVar
 
 T = TypeVar("T")
 
-# Latency budget constants per REQ-AGENT-012, REQ-AGENT-025, REQ-AGENT-027
+# Latency budget constants per REQ-AGENT-012, REQ-AGENT-025, REQ-AGENT-027, REQ-AGENT-029
 ROUTER_S1_TIMEOUT_S: float = 0.500  # HTTP call timeout. Model budget is 150 ms (server p95 59 ms); e2e :rawPredict p95 ~189 ms in-region
 TIER2_FLASH_TIMEOUT_S: float = 1.500  # Kept for backward compatibility; superseded by TIER2_HEDGE_AFTER_S / TIER2_DEADLINE_S (REQ-AGENT-025)
 TIER2_HEDGE_AFTER_S: float = 3.5
 TIER2_DEADLINE_S: float = 9.0
-ANSWER_HEDGE_AFTER_S: float = 7.0
+ANSWER_HEDGE_AFTER_S: float = 4.0  # REQ-AGENT-029: earlier answer hedge (was 7.0 per REQ-AGENT-025; p50 gen ~3s)
 ANSWER_DEADLINE_S: float = 15.0
 AGENT_SEARCH_TIMEOUT_S: float = 0.800  # 800 ms
 LAYA_RERANK_TIMEOUT_S: float = 0.600  # HTTP call timeout; measured in-region e2e rerank p95 ~200 ms

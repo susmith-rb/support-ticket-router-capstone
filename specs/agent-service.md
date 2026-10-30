@@ -344,3 +344,17 @@ src/ticket_router/
 - **Acceptance**: `tests/agents/test_triage_concurrency.py::test_triage_parallel_io_and_nonfatal_upsert`
 - **Status**: done
 - **Owner**: agent-service
+
+### REQ-AGENT-028: Grounded Static-Passage Fallback When Answer Generation Stalls
+- **Statement**: When FaqResolver's Gemini answer generation fails or times out (`ServiceTimeoutError` or any generation exception) and retrieval returned at least one citable FAQ article, FaqResolver MUST NOT escalate only because the LLM failed. It MUST return a deterministic **static grounded answer**: the best-ranked FAQ article title plus a short verbatim passage, about 1–3 sentences up to 600 characters. The passage is taken from the article text, choosing the sentences with the highest lexical overlap with the query. It returns with one citation (article id + exact quote), `status=AUTO_RESOLVED`, `degraded=True` and `reason="static_fallback"`. The static answer MUST still pass the verbatim citation validator, Model Armor egress and the out-of-scope/escalation invariants. If no article was retrieved, or the article's relevance is below the configured `static_fallback_min_score`, FaqResolver escalates as today. Order-specific questions (order lookup intents or `order_info` present) never take the static fallback; they escalate as today.
+- **Rationale**: Gemini latency spikes on 2026-10-30 (TICK-30984187) escalated answerable FAQs although retrieval succeeded in 0.2 s. This is the static-search baseline from the TDD review.
+- **Acceptance**: `tests/agents/test_faq_static_fallback.py::test_static_fallback_on_generation_timeout`
+- **Status**: done
+- **Owner**: agents
+
+### REQ-AGENT-029: Earlier Answer Hedge and Budget-Aware Citation Regeneration
+- **Statement**: The answer hedge MUST fire at `ANSWER_HEDGE_AFTER_S = 4.0` (was 7.0; p50 generation ≈ 3 s). The citation-repair regeneration MUST run only if the remaining FaqResolver budget, `FAQ_OVERALL_BUDGET_S − elapsed`, is at least `ANSWER_HEDGE_AFTER_S + 2 s`. When there isn't enough time, FaqResolver MUST skip regeneration and use the REQ-AGENT-028 static fallback when eligible, otherwise escalate. The regeneration call's deadline MUST be capped at `min(ANSWER_DEADLINE_S, remaining_budget − 1 s)`, so the whole FaqResolver turn finishes within `FAQ_OVERALL_BUDGET_S` and TriageRouter never hits its A2A cutoff, which produces the generic acknowledgement.
+- **Rationale**: Same incident. A regeneration started near the end of the budget pushed the turn past TriageRouter's 20 s A2A cutoff.
+- **Acceptance**: `tests/agents/test_faq_static_fallback.py::test_regeneration_respects_remaining_budget`
+- **Status**: done
+- **Owner**: agents

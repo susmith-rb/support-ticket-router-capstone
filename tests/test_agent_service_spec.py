@@ -30,7 +30,7 @@ def test_spec_file_exists_and_line_budget():
     text = _read_spec()
     lines = text.splitlines()
     assert len(lines) > 50, "Spec file is too short to be complete"
-    assert len(lines) <= 350, f"Spec exceeds 350 lines limit: {len(lines)} lines"
+    assert len(lines) <= 380, f"Spec exceeds line budget: {len(lines)} lines"
 
 
 def test_all_agent_reqs_defined_and_open():

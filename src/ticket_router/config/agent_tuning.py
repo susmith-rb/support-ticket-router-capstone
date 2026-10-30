@@ -118,6 +118,7 @@ class AgentTuningConfig:
     top_k: int = 5
     rerank_enabled: bool = False
     citation_strictness: float = 0.70
+    static_fallback_min_score: float = 0.50
 
 
 _ACTIVE_CONFIG: Optional[AgentTuningConfig] = None
@@ -220,6 +221,7 @@ def load_tuning_config(
         top_k=int(retr_data.get("top_k", 5)),
         rerank_enabled=bool(retr_data.get("rerank_enabled", False)),
         citation_strictness=float(retr_data.get("citation_strictness", 0.70)),
+        static_fallback_min_score=float(retr_data.get("static_fallback_min_score", 0.50)),
     )
 
 
