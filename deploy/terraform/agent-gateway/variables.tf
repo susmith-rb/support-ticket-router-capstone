@@ -27,12 +27,6 @@ variable "triage_agent_principal" {
   default     = "principal://agents.global.org-349636765856.system.id.goog/resources/aiplatform/projects/620485621180/locations/us-central1/reasoningEngines/2170218524805431296"
 }
 
-variable "faq_resolver_url" {
-  description = "Base HTTPS URL of the FaqResolver agent service on GKE Autopilot"
-  type        = string
-  default     = "https://faq.8-232-184-225.sslip.io"
-}
-
 variable "ticket_db_mcp_host" {
   description = "Hostname of the ticket-db-mcp Cloud Run service"
   type        = string

@@ -224,7 +224,6 @@ module "redaction_purge" {
   region                   = var.region
   human_queue_url          = var.human_queue_url
   human_queue_service_name = "human-queue"
-  labels                   = var.labels
 
   depends_on = [module.project_services, module.cloud_run_services]
 }

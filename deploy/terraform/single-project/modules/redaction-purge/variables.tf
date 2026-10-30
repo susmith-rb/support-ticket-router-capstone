@@ -29,8 +29,3 @@ variable "purge_audience" {
   default     = ""
 }
 
-variable "labels" {
-  description = "Resource labels applied to created resources"
-  type        = map(string)
-  default     = {}
-}
