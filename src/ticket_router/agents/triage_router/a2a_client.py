@@ -40,6 +40,7 @@ class A2AHandoffPayload:
     identity_issuer: Optional[str] = None
     traceparent: Optional[str] = None
     customer_context_token: Optional[str] = None
+    ticket_uuid: Optional[str] = None
 
 
 @runtime_checkable

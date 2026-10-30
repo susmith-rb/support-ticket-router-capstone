@@ -41,6 +41,10 @@ FAQ_RESOLVER_AGENT_CARD: Dict[str, Any] = {
                 "type": ["string", "null"],
                 "description": "KMS-signed ES256 Customer Context Token forwarded unchanged to order-lookup-mcp",
             },
+            "ticket_uuid": {
+                "type": ["string", "null"],
+                "description": "Canonical ticket UUID for Cloud SQL persistence and escalation",
+            },
         },
     },
     "output_schema": {
@@ -103,6 +107,8 @@ def handle_a2a_request(
     customer_context_token: Optional[str] = (
         raw_cct if isinstance(raw_cct, str) and raw_cct != "" else None
     )
+    raw_uuid = payload.get("ticket_uuid")
+    ticket_uuid: Optional[str] = str(raw_uuid) if raw_uuid is not None else None
 
     if not ticket_id or not message:
         return {
@@ -128,6 +134,7 @@ def handle_a2a_request(
         traceparent=traceparent,
         untrusted_customer_id=untrusted_customer_id,
         customer_context_token=customer_context_token,
+        ticket_uuid=ticket_uuid,
     )
 
     return resolution.to_dict()

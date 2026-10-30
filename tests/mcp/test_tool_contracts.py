@@ -485,3 +485,34 @@ def test_ticket_db_reidentify_pii_denied():
         == "forbidden_role_ticket_rw_cannot_access_redaction_maps_use_human_queue"
     )
     assert reid_resp.json()["unmasked_fields"] == {}
+
+
+# =============================================================================
+# REQ-STORE-009: Ticket-DB Save Redaction Map Unknown Ticket Returns 404
+# =============================================================================
+
+
+# REQ-STORE-009
+def test_ticket_db_save_redaction_map_unknown_ticket_404():
+    """Verify that ticket-db-mcp save_redaction_map returns 404 when foreign key fails (REQ-STORE-009)."""
+    fake_repo = FakeTicketRepo()
+    from unittest.mock import MagicMock
+    fake_repo.save_redaction_map = MagicMock(
+        side_effect=KeyError("foreign key violation: ticket_events_ticket_id_fkey")
+    )
+    app = create_ticket_app(repo=fake_repo)
+    client = TestClient(app)
+
+    # Calling save_redaction_map for non-existent ticket returns 404 ticket_not_found
+    resp = client.post(
+        "/tools/save_redaction_map",
+        json={
+            "ticket_id": "00000000-0000-0000-0000-000000000000",
+            "customer_id": "cust-unknown",
+            "envelope_b64": "ZW52ZWxvcGU=",
+            "key_id": "kms-envelope-v1",
+        },
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "ticket_not_found"
+

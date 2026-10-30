@@ -21,7 +21,7 @@ import uuid
 from typing import Any, Dict, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, FastAPI, Header, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 
 from ticket_router.mcp.ticket_db.schemas import (
     ClaimTicketRequest,
@@ -38,6 +38,7 @@ from ticket_router.mcp.ticket_db.schemas import (
     UpsertTicketResponse,
     get_tool_schemas,
 )
+from ticket_router.store.ids import canonical_ticket_uuid
 from ticket_router.store.interfaces import CustomerRepository, TicketRepository
 from ticket_router.store.models import RedactionMap, TicketCreate
 
@@ -121,10 +122,7 @@ async def upsert_ticket(
     logger.info("upsert_ticket called by caller=%s key=%s", caller, req.idempotency_key)
 
     # Derive deterministic UUID from idempotency_key
-    try:
-        det_ticket_uuid = UUID(req.idempotency_key)
-    except (ValueError, AttributeError):
-        det_ticket_uuid = uuid.uuid5(uuid.NAMESPACE_URL, f"idempotency:{req.idempotency_key}")
+    det_ticket_uuid = UUID(canonical_ticket_uuid(req.idempotency_key))
 
     # Check if ticket already exists (Idempotency invariant)
     existing = ticket_repo.get_ticket(det_ticket_uuid)
@@ -201,8 +199,8 @@ async def save_redaction_map(
 
     try:
         target_uuid = UUID(req.ticket_id)
-    except ValueError:
-        target_uuid = uuid.uuid5(uuid.NAMESPACE_URL, f"idempotency:{req.ticket_id}")
+    except (ValueError, AttributeError, TypeError):
+        target_uuid = UUID(canonical_ticket_uuid(req.ticket_id))
 
     redaction_map = RedactionMap(
         map_id=uuid.uuid4(),
@@ -211,7 +209,18 @@ async def save_redaction_map(
         encrypted_mappings=req.envelope_b64.encode("utf-8"),
         key_id=req.key_id,
     )
-    ticket_repo.save_redaction_map(redaction_map)
+    try:
+        ticket_repo.save_redaction_map(redaction_map)
+    except Exception as exc:
+        err_msg = str(exc).lower()
+        if (
+            "foreign key" in err_msg
+            or "23503" in err_msg
+            or "not found" in err_msg
+            or isinstance(exc, KeyError)
+        ):
+            raise HTTPException(status_code=404, detail="ticket_not_found") from exc
+        raise
     return SaveRedactionMapResponse(saved=True)
 
 

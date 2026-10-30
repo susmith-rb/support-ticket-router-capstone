@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from ticket_router.agents.triage_router.templates import render_calming_acknowledgement
+from ticket_router.store.ids import canonical_ticket_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ class HumanHandoff:
         channel: str,
         idempotency_key: Optional[str] = None,
         decision_payload: Optional[Dict[str, Any]] = None,
+        ticket_uuid: Optional[str] = None,
     ) -> bool:
         if self.ticket_db_client is None:
             return False
@@ -102,8 +104,9 @@ class HumanHandoff:
 
         # Priority 2: Use update_ticket_status if client is a direct TicketRepository
         if hasattr(self.ticket_db_client, "update_ticket_status"):
+            target_id = ticket_uuid or ticket_id
             self.ticket_db_client.update_ticket_status(
-                ticket_id=ticket_id,
+                ticket_id=target_id,
                 status="open",
                 resolution_notes=f"Escalated by {escalated_by}: {reason}",
             )
@@ -111,13 +114,20 @@ class HumanHandoff:
 
         return False
 
-    def _record_publish_failed(self, ticket_id: str, error: Optional[Exception]) -> None:
+    def _record_publish_failed(
+        self,
+        ticket_id: str,
+        error: Optional[Exception],
+        ticket_uuid: Optional[str] = None,
+    ) -> None:
+        target_db_id = ticket_uuid or ticket_id
         err_type = type(error).__name__ if error else "UnknownError"
         logger.warning(
             json.dumps(
                 {
                     "event": "publish_failed",
                     "ticket_id": ticket_id,
+                    "ticket_uuid": target_db_id,
                     "error_type": err_type,
                 },
                 separators=(",", ":"),
@@ -126,7 +136,7 @@ class HumanHandoff:
         if hasattr(self.ticket_db_client, "append_event"):
             try:
                 self.ticket_db_client.append_event(
-                    ticket_id=ticket_id,
+                    ticket_id=target_db_id,
                     event_type="publish_failed",
                     actor=self.escalated_by,
                     payload={"error_type": err_type},
@@ -135,7 +145,7 @@ class HumanHandoff:
                 pass
         elif hasattr(self.ticket_db_client, "events") and isinstance(self.ticket_db_client.events, list):
             self.ticket_db_client.events.append({
-                "ticket_id": ticket_id,
+                "ticket_id": target_db_id,
                 "event_type": "publish_failed",
                 "actor": self.escalated_by,
                 "payload": {"error_type": err_type},
@@ -148,6 +158,7 @@ class HumanHandoff:
         attributes: Dict[str, str],
         budget_s: float = 1.5,
         max_attempts: int = 3,
+        ticket_uuid: Optional[str] = None,
     ) -> tuple[bool, Optional[str]]:
         t0 = time.monotonic()
         data_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
@@ -174,7 +185,7 @@ class HumanHandoff:
                     sleep_time = min(0.05 * (2 ** attempt), remaining_after / 2)
                     time.sleep(sleep_time)
 
-        self._record_publish_failed(ticket_id, last_exc)
+        self._record_publish_failed(ticket_id, last_exc, ticket_uuid=ticket_uuid)
         return False, None
 
     def escalate(
@@ -193,6 +204,7 @@ class HumanHandoff:
         category: Optional[str] = None,
         idempotency_key: Optional[str] = None,
         decision_payload: Optional[Dict[str, Any]] = None,
+        ticket_uuid: Optional[str] = None,
         **kwargs: Any,
     ) -> HandoffResult:
         """Execute deterministic handoff: persist -> publish -> calming ack. Never raises."""
@@ -206,6 +218,12 @@ class HumanHandoff:
                 effective_priority = "standard"
         else:
             effective_priority = priority
+
+        effective_ticket_uuid = (
+            str(ticket_uuid)
+            if ticket_uuid is not None
+            else (canonical_ticket_uuid(idempotency_key) if idempotency_key else canonical_ticket_uuid(ticket_id))
+        )
 
         # Calming acknowledgement is rendered deterministically upfront
         calming_ack = render_calming_acknowledgement(
@@ -228,6 +246,7 @@ class HumanHandoff:
                 channel=channel,
                 idempotency_key=idempotency_key,
                 decision_payload=decision_payload,
+                ticket_uuid=effective_ticket_uuid,
             )
         except Exception as exc:
             logger.warning(
@@ -235,6 +254,7 @@ class HumanHandoff:
                     {
                         "event": "handoff_persistence_failed",
                         "ticket_id": ticket_id,
+                        "ticket_uuid": effective_ticket_uuid,
                         "error_type": type(exc).__name__,
                     },
                     separators=(",", ":"),
@@ -251,6 +271,7 @@ class HumanHandoff:
                 payload: Dict[str, Any] = {
                     "schema": "ticket.escalated/v1",
                     "ticket_id": ticket_id,
+                    "ticket_uuid": effective_ticket_uuid,
                     "queue": queue,
                     "priority": effective_priority,
                     "reason": reason,
@@ -268,6 +289,7 @@ class HumanHandoff:
                     ticket_id=ticket_id,
                     payload=payload,
                     attributes=attributes,
+                    ticket_uuid=ticket_uuid,
                 )
         except Exception as exc:
             logger.warning(
@@ -275,6 +297,7 @@ class HumanHandoff:
                     {
                         "event": "handoff_publish_error",
                         "ticket_id": ticket_id,
+                        "ticket_uuid": effective_ticket_uuid,
                         "error_type": type(exc).__name__,
                     },
                     separators=(",", ":"),

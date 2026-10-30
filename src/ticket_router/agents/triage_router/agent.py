@@ -69,6 +69,7 @@ from ticket_router.security.model_armor import (
     ModelArmorClient,
     ModelArmorClientProtocol,
 )
+from ticket_router.store.ids import canonical_ticket_uuid
 
 logger = logging.getLogger(__name__)
 _SIGNER_INIT_LOCK = threading.Lock()
@@ -532,6 +533,7 @@ class TriageRouterAgent:
         ticket_id: str,
         customer_id: str,
         mapping: Dict[str, str],
+        ticket_uuid: Optional[str] = None,
     ) -> None:
         """Seal and save KMS envelope-encrypted PII redaction map (REQ-STORE-009).
 
@@ -556,12 +558,16 @@ class TriageRouterAgent:
         try:
             sealer = self._redaction_sealer or RedactionSealer(kms_key_name=kms_key)
             envelope_b64, key_id = sealer.seal(ticket_id=ticket_id, mapping=mapping)
-            self.mcp_client.save_redaction_map(
-                ticket_id=ticket_id,
-                customer_id=customer_id,
-                envelope_b64=envelope_b64,
-                key_id=key_id,
-            )
+            target_uuid = ticket_uuid or ticket_id
+            kwargs: Dict[str, Any] = {
+                "ticket_id": target_uuid,
+                "customer_id": customer_id,
+                "envelope_b64": envelope_b64,
+                "key_id": key_id,
+            }
+            if ticket_id and ticket_id != target_uuid and hasattr(self.mcp_client, "redaction_maps"):
+                kwargs["alias_id"] = ticket_id
+            self.mcp_client.save_redaction_map(**kwargs)
         except Exception:
             logger.warning(
                 json.dumps(
@@ -591,6 +597,7 @@ class TriageRouterAgent:
         t_id = ticket_id or f"TICK-{session_id[:8]}"
         traceparent = generate_traceparent()
         idempotency_key = compute_idempotency_key(session_id, message_text)
+        canonical_uuid = canonical_ticket_uuid(idempotency_key)
 
         if customer_id is not None:
             logger.warning(
@@ -672,6 +679,7 @@ class TriageRouterAgent:
                 category = decision.details.get("category")
                 handoff_res = self.human_handoff.escalate(
                     ticket_id=t_id,
+                    ticket_uuid=canonical_uuid,
                     queue=decision.queue,
                     reason=decision.reason,
                     escalated_by="triage_router",
@@ -696,6 +704,7 @@ class TriageRouterAgent:
                 if handoff_res.persisted:
                     self._save_redaction_map_if_needed(
                         ticket_id=t_id,
+                        ticket_uuid=canonical_uuid,
                         customer_id=ticket_customer_id,
                         mapping=pii_mapping,
                     )
@@ -709,9 +718,15 @@ class TriageRouterAgent:
                     body_redacted=body_to_persist,
                     decision=_clean_decision_dict(decision),
                 )
+                ticket_uuid = (
+                    upsert_res.get("ticket_id")
+                    if isinstance(upsert_res, dict) and upsert_res.get("ticket_id")
+                    else canonical_uuid
+                )
                 if upsert_res is not None:
                     self._save_redaction_map_if_needed(
                         ticket_id=t_id,
+                        ticket_uuid=ticket_uuid,
                         customer_id=ticket_customer_id,
                         mapping=pii_mapping,
                     )
@@ -724,9 +739,15 @@ class TriageRouterAgent:
                     body_redacted=body_to_persist,
                     decision=_clean_decision_dict(decision),
                 )
+                ticket_uuid = (
+                    upsert_res.get("ticket_id")
+                    if isinstance(upsert_res, dict) and upsert_res.get("ticket_id")
+                    else canonical_uuid
+                )
                 if upsert_res is not None:
                     self._save_redaction_map_if_needed(
                         ticket_id=t_id,
+                        ticket_uuid=ticket_uuid,
                         customer_id=ticket_customer_id,
                         mapping=pii_mapping,
                     )
@@ -768,6 +789,7 @@ class TriageRouterAgent:
                             identity_issuer=identity_issuer,
                             traceparent=get_current_traceparent() or traceparent,
                             customer_context_token=cct,
+                            ticket_uuid=canonical_uuid,
                         )
                         try:
                             handoff_resp = self.a2a_client.handoff(payload)
@@ -785,6 +807,7 @@ class TriageRouterAgent:
                                     # Fallback when FaqResolver does not handle handoff directly
                                     handoff_res = self.human_handoff.escalate(
                                         ticket_id=t_id,
+                                        ticket_uuid=canonical_uuid,
                                         queue=str(handoff_resp.get("queue", "human-standard")),
                                         reason=str(handoff_resp.get("reason", "faq_escalated")),
                                         escalated_by="triage_router",
@@ -803,9 +826,16 @@ class TriageRouterAgent:
                     finally:
                         upsert_res = upsert_fut.result()
 
+                ticket_uuid = (
+                    upsert_res.get("ticket_id")
+                    if isinstance(upsert_res, dict) and upsert_res.get("ticket_id")
+                    else canonical_uuid
+                )
+
                 if upsert_res is not None:
                     self._save_redaction_map_if_needed(
                         ticket_id=t_id,
+                        ticket_uuid=ticket_uuid,
                         customer_id=ticket_customer_id,
                         mapping=pii_mapping,
                     )
@@ -822,6 +852,7 @@ class TriageRouterAgent:
                     # REQ-AGENT-030: Route degraded A2A failure through HumanHandoff
                     handoff_res = self.human_handoff.escalate(
                         ticket_id=t_id,
+                        ticket_uuid=ticket_uuid,
                         queue=decision.queue,
                         reason="a2a_handoff_failed",
                         escalated_by="triage_router",

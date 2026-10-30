@@ -10,12 +10,14 @@ from __future__ import annotations
 import base64
 import json
 from typing import Any, Dict, Optional
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
 
 from ticket_router.agents.human_queue.server import create_app
 from ticket_router.store.fake import FakeTicketRepo
+from ticket_router.store.models import TicketCreate
 
 
 def _encode_push_body(
@@ -68,13 +70,23 @@ def test_push_requires_valid_oidc_and_is_idempotent(monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("PUSH_INVOKER_EMAIL", expected_email)
 
     ticket_repo = FakeTicketRepo()
+    valid_uuid = "a1b2c3d4-e5f6-4a5b-8c9d-0123456789ab"
+    ticket_repo.create_ticket(
+        TicketCreate(
+            ticket_id=UUID(valid_uuid),
+            customer_id="cust-1001",
+            body_redacted="Inquiry",
+            assigned_queue="human-standard",
+        )
+    )
     verifier = _make_mock_verifier(valid_aud=expected_aud, valid_email=expected_email)
     app = create_app(ticket_repo=ticket_repo, token_verifier=verifier)
     client = TestClient(app)
 
     valid_payload = {
         "schema": "ticket.escalated/v1",
-        "ticket_id": "a1b2c3d4-e5f6-4a5b-8c9d-0123456789ab",
+        "ticket_id": "TICK-1001",
+        "ticket_uuid": valid_uuid,
         "queue": "human-standard",
         "priority": "standard",
         "reason": "customer_requested_human",
@@ -106,10 +118,11 @@ def test_push_requires_valid_oidc_and_is_idempotent(monkeypatch: pytest.MonkeyPa
     assert resp_valid.status_code == 200
     data = resp_valid.json()
     assert data["status"] == "queued"
-    assert data["ticket_id"] == "a1b2c3d4-e5f6-4a5b-8c9d-0123456789ab"
+    assert data["ticket_id"] == "TICK-1001"
+    assert data["ticket_uuid"] == valid_uuid
 
     # Verify queued_for_review event recorded in ticket repository
-    events = ticket_repo.list_events("a1b2c3d4-e5f6-4a5b-8c9d-0123456789ab")
+    events = ticket_repo.list_events(valid_uuid)
     queued_events = [ev for ev in events if ev.event_type == "queued_for_review"]
     assert len(queued_events) == 1
     assert queued_events[0].actor == "triage_router"
@@ -123,9 +136,78 @@ def test_push_requires_valid_oidc_and_is_idempotent(monkeypatch: pytest.MonkeyPa
         headers={"Authorization": "Bearer valid-oidc-token"},
     )
     assert resp_dup.status_code == 204
-    events_after_dup = ticket_repo.list_events("a1b2c3d4-e5f6-4a5b-8c9d-0123456789ab")
+    events_after_dup = ticket_repo.list_events(valid_uuid)
     queued_after_dup = [ev for ev in events_after_dup if ev.event_type == "queued_for_review"]
     assert len(queued_after_dup) == 1, "Duplicate push delivery must NOT record a second queued_for_review event"
+
+
+# REQ-AGENT-031
+def test_push_missing_ticket_returns_204_and_logs(monkeypatch: pytest.MonkeyPatch):
+    """Verify push handler returns 204 (not 500) and logs ticket_not_found when ticket row does not exist (REQ-AGENT-031)."""
+    expected_aud = "https://human-queue.run.app/pubsub/escalations"
+    expected_email = "sa-queue-push@test-project.iam.gserviceaccount.com"
+    monkeypatch.setenv("PUSH_AUDIENCE", expected_aud)
+    monkeypatch.setenv("PUSH_INVOKER_EMAIL", expected_email)
+
+    ticket_repo = FakeTicketRepo()  # Empty repo: ticket does not exist
+    verifier = _make_mock_verifier(valid_aud=expected_aud, valid_email=expected_email)
+    app = create_app(ticket_repo=ticket_repo, token_verifier=verifier)
+    client = TestClient(app)
+
+    missing_uuid = "00000000-0000-0000-0000-000000009999"
+    payload = {
+        "schema": "ticket.escalated/v1",
+        "ticket_id": "TICK-9999",
+        "ticket_uuid": missing_uuid,
+        "queue": "human-standard",
+        "priority": "standard",
+        "reason": "missing_row_test",
+        "escalated_by": "triage_router",
+        "degraded": False,
+        "ts": "2026-10-30T12:00:00Z",
+    }
+
+    resp = client.post(
+        "/pubsub/escalations",
+        json=_encode_push_body(payload),
+        headers={"Authorization": "Bearer valid-oidc-token"},
+    )
+    assert resp.status_code == 204
+    # Ticket must NOT be auto-created
+    assert ticket_repo.get_ticket(missing_uuid) is None
+
+
+# REQ-AGENT-031
+def test_push_legacy_message_without_ticket_uuid_returns_204(monkeypatch: pytest.MonkeyPatch):
+    """Verify push handler accepts legacy messages without ticket_uuid with 204 and warning (REQ-AGENT-031)."""
+    expected_aud = "https://human-queue.run.app/pubsub/escalations"
+    expected_email = "sa-queue-push@test-project.iam.gserviceaccount.com"
+    monkeypatch.setenv("PUSH_AUDIENCE", expected_aud)
+    monkeypatch.setenv("PUSH_INVOKER_EMAIL", expected_email)
+
+    ticket_repo = FakeTicketRepo()
+    verifier = _make_mock_verifier(valid_aud=expected_aud, valid_email=expected_email)
+    app = create_app(ticket_repo=ticket_repo, token_verifier=verifier)
+    client = TestClient(app)
+
+    legacy_payload = {
+        "schema": "ticket.escalated/v1",
+        "ticket_id": "TICK-LEGACY",
+        "queue": "human-standard",
+        "priority": "standard",
+        "reason": "legacy_test",
+        "escalated_by": "triage_router",
+        "degraded": False,
+        "ts": "2026-10-30T12:00:00Z",
+    }
+
+    resp = client.post(
+        "/pubsub/escalations",
+        json=_encode_push_body(legacy_payload),
+        headers={"Authorization": "Bearer valid-oidc-token"},
+    )
+    assert resp.status_code == 204
+
 
 
 def test_push_rejects_malformed_and_pii_payloads(monkeypatch: pytest.MonkeyPatch):

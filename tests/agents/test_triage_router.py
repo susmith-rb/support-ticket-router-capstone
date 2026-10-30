@@ -815,5 +815,168 @@ def test_triage_double_publish_guard_with_faq_handoff():
     mock_handoff2.escalate.assert_called_once()
 
 
+# =============================================================================
+# REQ-AGENT-030, REQ-AGENT-031, REQ-STORE-009: Canonical Ticket UUID Consistency
+# =============================================================================
+
+
+# REQ-AGENT-030, # REQ-AGENT-031, # REQ-STORE-009
+def test_triage_canonical_ticket_uuid_used_across_upsert_redaction_handoff_and_a2a():
+    """Verify that the exact same canonical UUID is passed to upsert_ticket,
+
+    save_redaction_map, human_handoff.escalate, and A2AHandoffPayload.
+    """
+    from ticket_router.store.ids import canonical_ticket_uuid
+
+    session_id = "sess-canonical-uuid-test"
+    message_text = "Need help with return for order #1234. Contact me at user@example.com."
+    idempotency_key = compute_idempotency_key(session_id, message_text)
+    expected_uuid = canonical_ticket_uuid(idempotency_key)
+
+    # 1. Test auto_rag / A2A branch with PII mapping
+    mock_s1 = MagicMock()
+    mock_s1.route.return_value = _make_prediction(
+        escalate=False,
+        escalate_prob=0.01,
+        intent="shipping",
+        intent_prob=0.95,
+        sentiment="neutral",
+    )
+    policy = TriagePolicy(s1_client=mock_s1)
+
+    mock_mcp = MagicMock()
+    mock_mcp.upsert_ticket.return_value = {
+        "ticket_id": expected_uuid,
+        "status": "open",
+        "deduplicated": False,
+    }
+    mock_mcp.save_redaction_map.return_value = {"saved": True}
+
+    mock_a2a = MagicMock()
+    mock_a2a.handoff.return_value = {
+        "status": "RESOLVED",
+        "response": "Here is your shipping info",
+    }
+
+    mock_handoff = MagicMock()
+    mock_sealer = MagicMock()
+    mock_sealer.seal.return_value = ("mock_env_b64", "kms-v1")
+
+    import dataclasses
+
+    # Inject mock decision with PII mapping directly via evaluate
+    original_evaluate = policy.evaluate
+
+    def mock_eval(*args, **kwargs):
+        dec = original_evaluate(*args, **kwargs)
+        return dataclasses.replace(dec, pii_mapping={"[EMAIL_1]": "user@example.com"})
+
+    policy.evaluate = mock_eval
+
+    agent = TriageRouterAgent(
+        policy=policy,
+        mcp_client=mock_mcp,
+        a2a_client=mock_a2a,
+        human_handoff=mock_handoff,
+        redaction_sealer=mock_sealer,
+    )
+
+    res = agent.triage(
+        session_id=session_id,
+        customer_id="cust-canonical-1",
+        message_text=message_text,
+        ticket_id="TICK-CANONICAL-1",
+    )
+    assert res.decision.decision == "auto_rag"
+
+    # MCP upsert called with idempotency key whose canonical UUID is expected_uuid
+    mock_mcp.upsert_ticket.assert_called_once()
+    assert canonical_ticket_uuid(mock_mcp.upsert_ticket.call_args.kwargs["idempotency_key"]) == expected_uuid
+
+    # Redaction map saved with expected_uuid (not TICK-CANONICAL-1)
+    mock_sealer.seal.assert_called_once_with(
+        ticket_id="TICK-CANONICAL-1",
+        mapping={"[EMAIL_1]": "user@example.com"},
+    )
+    mock_mcp.save_redaction_map.assert_called_once_with(
+        ticket_id=expected_uuid,
+        customer_id=f"anon:{session_id}",
+        envelope_b64="mock_env_b64",
+        key_id="kms-v1",
+        alias_id="TICK-CANONICAL-1",
+    )
+
+    # A2A handoff payload contains expected_uuid
+    mock_a2a.handoff.assert_called_once()
+    handoff_payload = mock_a2a.handoff.call_args[0][0]
+    assert handoff_payload.ticket_uuid == expected_uuid
+
+    # 2. Test escalate branch
+    mock_s1_esc = MagicMock()
+    mock_s1_esc.route.return_value = _make_prediction(
+        escalate=True,
+        escalate_prob=0.99,
+        intent="legal",
+        intent_prob=0.95,
+        sentiment="negative",
+    )
+    policy_esc = TriagePolicy(s1_client=mock_s1_esc)
+    orig_esc_eval = policy_esc.evaluate
+
+    def mock_esc_eval(*args, **kwargs):
+        dec = orig_esc_eval(*args, **kwargs)
+        return dataclasses.replace(dec, pii_mapping={"[EMAIL_1]": "user@example.com"})
+
+    policy_esc.evaluate = mock_esc_eval
+
+    mock_mcp_esc = MagicMock()
+    mock_mcp_esc.upsert_ticket.return_value = {
+        "ticket_id": expected_uuid,
+        "status": "open",
+        "deduplicated": False,
+    }
+    mock_handoff_esc = MagicMock()
+    mock_handoff_esc.escalate.return_value = MagicMock(
+        calming_ack="Calming ack",
+        persisted=True,
+        published=True,
+        message_id="msg-1",
+    )
+    mock_sealer_esc = MagicMock()
+    mock_sealer_esc.seal.return_value = ("mock_env_b64", "kms-v1")
+
+    agent_esc = TriageRouterAgent(
+        policy=policy_esc,
+        mcp_client=mock_mcp_esc,
+        human_handoff=mock_handoff_esc,
+        redaction_sealer=mock_sealer_esc,
+    )
+    res_esc = agent_esc.triage(
+        session_id=session_id,
+        customer_id="cust-canonical-1",
+        message_text=message_text,
+        ticket_id="TICK-CANONICAL-1",
+    )
+    assert res_esc.decision.decision == "escalate"
+
+    # HumanHandoff escalate called with ticket_uuid=expected_uuid
+    mock_handoff_esc.escalate.assert_called_once()
+    assert mock_handoff_esc.escalate.call_args.kwargs.get("ticket_uuid") == expected_uuid
+
+    # Redaction map saved with expected_uuid
+    mock_sealer_esc.seal.assert_called_once_with(
+        ticket_id="TICK-CANONICAL-1",
+        mapping={"[EMAIL_1]": "user@example.com"},
+    )
+    mock_mcp_esc.save_redaction_map.assert_called_once_with(
+        ticket_id=expected_uuid,
+        customer_id=f"anon:{session_id}",
+        envelope_b64="mock_env_b64",
+        key_id="kms-v1",
+        alias_id="TICK-CANONICAL-1",
+    )
+
+
+
 
 

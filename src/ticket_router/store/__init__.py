@@ -10,6 +10,7 @@ from ticket_router.store.fake import (
     FakeOrderRepo,
     FakeTicketRepo,
 )
+from ticket_router.store.ids import canonical_ticket_uuid
 from ticket_router.store.interfaces import (
     CustomerRepository,
     OrderRepository,
@@ -52,4 +53,5 @@ __all__ = [
     "TicketCreate",
     "TicketEvent",
     "TicketRepository",
+    "canonical_ticket_uuid",
 ]

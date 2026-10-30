@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import uuid
 from typing import Any, Callable, Dict, Optional, Protocol, Tuple, runtime_checkable
 
 import requests
@@ -17,6 +16,7 @@ from requests.adapters import HTTPAdapter
 from ticket_router.common.idtoken import get_id_token
 from ticket_router.common.observability import get_current_traceparent, start_span
 from ticket_router.common.resilience import TICKET_DB_MCP_TIMEOUT_S
+from ticket_router.store.ids import canonical_ticket_uuid
 
 
 def _create_pooled_session() -> requests.Session:
@@ -89,6 +89,7 @@ class InMemoryTicketDbMcpClient:
         self.by_idempotency_key: Dict[str, str] = {}  # idempotency_key -> ticket_id
         self.events: list[Dict[str, Any]] = []
         self.identities: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        self.redaction_maps: Dict[str, list[Dict[str, Any]]] = {}
 
     def register_identity(
         self,
@@ -120,8 +121,10 @@ class InMemoryTicketDbMcpClient:
         decision: Dict[str, Any],
     ) -> Dict[str, Any]:
         # Idempotency check: if key exists, return existing ticket
-        if idempotency_key in self.by_idempotency_key:
-            existing_id = self.by_idempotency_key[idempotency_key]
+        existing_id = self.by_idempotency_key.get(idempotency_key)
+        if existing_id is None and idempotency_key in self.tickets:
+            existing_id = idempotency_key
+        if existing_id is not None:
             ticket = self.tickets[existing_id]
             # Update decision / channel if changed
             ticket["decision"] = decision
@@ -131,7 +134,7 @@ class InMemoryTicketDbMcpClient:
                     ticket["assigned_queue"] = decision.get("queue")
             return {"ticket_id": existing_id, "status": ticket["status"], "deduplicated": True}
 
-        ticket_id = f"t_{uuid.uuid4().hex[:12]}"
+        ticket_id = canonical_ticket_uuid(idempotency_key)
         status = "OPEN" if decision.get("decision") == "escalate" else "RESOLVED_AUTO"
 
         record = {
@@ -154,16 +157,18 @@ class InMemoryTicketDbMcpClient:
         customer_id: str,
         envelope_b64: str,
         key_id: str = "kms-envelope-v1",
+        alias_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         if not hasattr(self, "redaction_maps"):
             self.redaction_maps = {}
-        if ticket_id not in self.redaction_maps:
-            self.redaction_maps[ticket_id] = []
-        self.redaction_maps[ticket_id].append({
+        entry = {
             "customer_id": customer_id,
             "envelope_b64": envelope_b64,
             "key_id": key_id,
-        })
+        }
+        self.redaction_maps.setdefault(ticket_id, []).append(entry)
+        if alias_id and alias_id != ticket_id:
+            self.redaction_maps.setdefault(alias_id, []).append(entry)
         return {"saved": True}
 
     def claim_ticket(self, ticket_id: str, agent_id: str) -> Dict[str, Any]:

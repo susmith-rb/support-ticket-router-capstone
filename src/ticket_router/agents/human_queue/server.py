@@ -20,7 +20,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ticket_router.agents.human_queue.agent import HumanQueueAgent
 from ticket_router.store.interfaces import TicketRepository
-from ticket_router.store.models import TicketCreate
 
 logger = logging.getLogger("ticket_router.agents.human_queue.server")
 
@@ -147,6 +146,8 @@ def validate_escalated_payload(data: Any) -> Dict[str, Any]:
         )
     if not data.get("ticket_id") or not isinstance(data["ticket_id"], str):
         raise ValueError("Missing or invalid 'ticket_id'")
+    if "ticket_uuid" in data and (not data["ticket_uuid"] or not isinstance(data["ticket_uuid"], str)):
+        raise ValueError("Invalid 'ticket_uuid' (must be non-empty string)")
     if not data.get("queue") or not isinstance(data["queue"], str):
         raise ValueError("Missing or invalid 'queue'")
     if not data.get("priority") or not isinstance(data["priority"], str):
@@ -277,39 +278,50 @@ async def handle_pubsub_escalation(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     ticket_id = payload["ticket_id"]
+    ticket_uuid_str = payload.get("ticket_uuid")
+
+    # Accept legacy messages without ticket_uuid by acking with 204 and warning (REQ-AGENT-031)
+    if not ticket_uuid_str:
+        logger.warning(
+            json.dumps(
+                {
+                    "event": "legacy_escalation_missing_ticket_uuid",
+                    "ticket_id": ticket_id,
+                },
+                separators=(",", ":"),
+            )
+        )
+        return Response(status_code=204)
+
     try:
-        norm_ticket_id: UUID | str = UUID(ticket_id)
+        target_uuid = UUID(ticket_uuid_str)
     except (ValueError, TypeError):
-        norm_ticket_id = uuid.uuid5(uuid.NAMESPACE_URL, f"idempotency:{ticket_id}")
+        target_uuid = uuid.uuid5(uuid.NAMESPACE_URL, f"idempotency:{ticket_uuid_str}")
+
+    # Check if ticket exists in repository; if not, return 204 and log ticket_not_found (REQ-AGENT-031)
+    ticket = ticket_repo.get_ticket(target_uuid)
+    if ticket is None:
+        logger.warning(
+            json.dumps(
+                {
+                    "event": "ticket_not_found",
+                    "ticket_id": ticket_id,
+                    "ticket_uuid": str(target_uuid),
+                },
+                separators=(",", ":"),
+            )
+        )
+        return Response(status_code=204)
 
     # Idempotency check: duplicate messages return 204 without a second event (REQ-AGENT-031)
-    existing_events = ticket_repo.list_events(norm_ticket_id)
+    existing_events = ticket_repo.list_events(target_uuid)
     for ev in existing_events:
         if ev.event_type == "queued_for_review":
             return Response(status_code=204)
 
-    # Ensure ticket exists in repository so event can be attached
-    if ticket_repo.get_ticket(norm_ticket_id) is None:
-        try:
-            ticket_repo.create_ticket(
-                TicketCreate(
-                    ticket_id=norm_ticket_id if isinstance(norm_ticket_id, UUID) else None,
-                    customer_id="anon:escalated",
-                    body_redacted="",
-                    assigned_queue=payload["queue"],
-                    decision={
-                        "decision": "escalate",
-                        "queue": payload["queue"],
-                        "reason": payload["reason"],
-                    },
-                )
-            )
-        except Exception:
-            pass
-
     # Record one idempotent queued_for_review event
     ticket_repo.append_event(
-        ticket_id=norm_ticket_id,
+        ticket_id=target_uuid,
         event_type="queued_for_review",
         actor=payload["escalated_by"],
         payload={
@@ -321,7 +333,7 @@ async def handle_pubsub_escalation(
         },
     )
     return Response(
-        content=json.dumps({"status": "queued", "ticket_id": ticket_id}),
+        content=json.dumps({"status": "queued", "ticket_id": ticket_id, "ticket_uuid": str(target_uuid)}),
         status_code=200,
         media_type="application/json",
     )

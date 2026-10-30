@@ -95,10 +95,11 @@ def test_event_payload_is_pii_free():
     published = publisher.published_messages[0]
     payload = json.loads(published["data"].decode("utf-8"))
 
-    # Strict schema validation: exactly {schema, ticket_id, queue, priority, reason, escalated_by, degraded, ts, traceparent}
+    # Strict schema validation: exactly {schema, ticket_id, ticket_uuid, queue, priority, reason, escalated_by, degraded, ts, traceparent}
     expected_keys = {
         "schema",
         "ticket_id",
+        "ticket_uuid",
         "queue",
         "priority",
         "reason",
@@ -110,6 +111,7 @@ def test_event_payload_is_pii_free():
     assert set(payload.keys()) == expected_keys
     assert payload["schema"] == "ticket.escalated/v1"
     assert payload["ticket_id"] == "TICK-202"
+    assert "ticket_uuid" in payload
     assert payload["queue"] == "human-standard"
     assert payload["priority"] == "standard"
     assert payload["reason"] == "uncited_answer"
@@ -220,3 +222,33 @@ def test_escalate_never_raises_on_catastrophic_failure():
     assert result.message_id is None
     assert "TICK-505" in result.calming_ack
     assert "15 minutes" in result.calming_ack
+
+
+# REQ-AGENT-030
+def test_escalate_includes_canonical_ticket_uuid_in_payload():
+    """Verify escalate() includes ticket_uuid in payload and uses it for persistence (REQ-AGENT-030)."""
+    mcp_client = InMemoryTicketDbMcpClient()
+    publisher = FakePublisher()
+    handoff = HumanHandoff(
+        ticket_db_client=mcp_client,
+        publisher=publisher,
+        escalated_by="triage_router",
+        topic="human-queue",
+    )
+
+    explicit_uuid = "12345678-1234-5678-1234-567812345678"
+    result = handoff.escalate(
+        ticket_id="TICK-555",
+        ticket_uuid=explicit_uuid,
+        queue="human-standard",
+        reason="test_uuid_propagation",
+        idempotency_key="sess-1:msg-hash-1",
+    )
+
+    assert result.published is True
+    assert len(publisher.published_messages) == 1
+    published = publisher.published_messages[0]
+    payload = json.loads(published["data"].decode("utf-8"))
+    assert payload["ticket_id"] == "TICK-555"
+    assert payload["ticket_uuid"] == explicit_uuid
+

@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import os
@@ -71,6 +72,10 @@ from ticket_router.security.model_armor import (
 )
 
 logger = logging.getLogger(__name__)
+
+_active_ticket_uuid: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "active_ticket_uuid", default=None
+)
 
 
 @dataclass
@@ -494,14 +499,17 @@ class FaqResolverAgent:
         customer_id: Optional[str] = None,
         session_id: Optional[str] = None,
         body_redacted: Optional[str] = None,
+        ticket_uuid: Optional[str] = None,
     ) -> ResolutionResult:
         """Execute shared HumanHandoff and return ESCALATED ResolutionResult (REQ-AGENT-030)."""
+        effective_uuid = ticket_uuid or _active_ticket_uuid.get()
         calming_ack: Optional[str] = None
         handoff_done = False
         if self.human_handoff is not None:
             try:
                 res = self.human_handoff.escalate(
                     ticket_id=ticket_id,
+                    ticket_uuid=effective_uuid,
                     queue=queue,
                     reason=reason,
                     escalated_by="faq_resolver",
@@ -692,34 +700,39 @@ class FaqResolverAgent:
         traceparent: Optional[str] = None,
         untrusted_customer_id: Optional[str] = None,
         customer_context_token: Optional[str] = None,
+        ticket_uuid: Optional[str] = None,
     ) -> ResolutionResult:
         """Execute bounded ReAct loop to resolve FAQ or order inquiry."""
         self._ensure_initialized()
 
-        with start_span(
-            "faq_resolver.resolve",
-            attributes={
-                "ticket_id": ticket_id,
-                "session_id": session_id,
-                "predicted_intent": predicted_intent or "",
-            },
-            traceparent=traceparent,
-        ) as resolve_span:
-            res = self._resolve_impl(
-                ticket_id=ticket_id,
-                session_id=session_id,
-                message=message,
-                customer_id=customer_id,
-                customer_verified=customer_verified,
-                identity_issuer=identity_issuer,
-                predicted_intent=predicted_intent,
-                memory_summary=memory_summary,
-                untrusted_customer_id=untrusted_customer_id,
-                customer_context_token=customer_context_token,
+        token = _active_ticket_uuid.set(ticket_uuid)
+        try:
+            with start_span(
+                "faq_resolver.resolve",
+                attributes={
+                    "ticket_id": ticket_id,
+                    "session_id": session_id,
+                    "predicted_intent": predicted_intent or "",
+                },
                 traceparent=traceparent,
-            )
-            resolve_span.set_attribute("status", res.status)
-            return res
+            ) as resolve_span:
+                res = self._resolve_impl(
+                    ticket_id=ticket_id,
+                    session_id=session_id,
+                    message=message,
+                    customer_id=customer_id,
+                    customer_verified=customer_verified,
+                    identity_issuer=identity_issuer,
+                    predicted_intent=predicted_intent,
+                    memory_summary=memory_summary,
+                    untrusted_customer_id=untrusted_customer_id,
+                    customer_context_token=customer_context_token,
+                    traceparent=traceparent,
+                )
+                resolve_span.set_attribute("status", res.status)
+                return res
+        finally:
+            _active_ticket_uuid.reset(token)
 
     def _resolve_impl(
         self,
