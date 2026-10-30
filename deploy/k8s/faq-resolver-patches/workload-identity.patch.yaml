@@ -1,0 +1,18 @@
+# deploy/k8s/faq-resolver-patches/workload-identity.patch.yaml
+# REQ-AUTH-008: inverse of agent-identity.patch.yaml. CD applies it whenever GKE Agent Identity is
+# not opted in (_FAQ_AGENT_IDENTITY != "1"), so FaqResolver returns to Workload Identity even if a
+# previous rollout patched it (`kubectl apply` of the base manifest does not remove patched keys).
+# Strategic-merge `null` deletes the annotation keys; env entries merge by name.
+spec:
+  template:
+    metadata:
+      annotations:
+        iam.gke.io/identity: null
+        iam.gke.io/inject-podcertificates: null
+        iam.gke.io/spiffe-identity-type: null
+    spec:
+      containers:
+      - name: faq-resolver
+        env:
+        - name: FAQ_AGENT_IDENTITY
+          value: "0"

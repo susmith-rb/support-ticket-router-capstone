@@ -190,6 +190,20 @@ resource "google_project_iam_member" "faq_agent_inference_custom_role" {
   member  = var.faq_agent_principal
 }
 
+# REQ-AUTH-008 (transitional): with the agent-identity pod patch, the GKE metadata
+# server still honours the ksa-faq -> sa-faq annotation and impersonates sa-faq as
+# the SPIFFE principal. Without this grant every Google API call 403s
+# (iam.serviceAccounts.getAccessToken). workloadIdentityUser = get/getAccessToken/getOpenIdToken only.
+# TODO(REQ-AUTH-008): drop once ksa-faq no
+# longer carries iam.gke.io/gcp-service-account and the direct principal grants
+# are verified end to end.
+resource "google_service_account_iam_member" "faq_agent_wi_user_on_sa_faq" {
+  count              = var.faq_agent_principal != "" ? 1 : 0
+  service_account_id = google_service_account.sa_faq.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = var.faq_agent_principal
+}
+
 # -----------------------------------------------------------------------------
 # 5. Agent Search (Discovery Engine) Viewer for FaqResolverAgent
 # -----------------------------------------------------------------------------

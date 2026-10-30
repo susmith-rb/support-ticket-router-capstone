@@ -88,6 +88,16 @@ def test_faq_deployment_requests_spiffe_agent_identity() -> None:
     cd_yaml = (REPO_ROOT / "cicd" / "cloudbuild-deploy.yaml").read_text(encoding="utf-8")
     assert "faq-resolver-patches/agent-identity.patch.yaml" in cd_yaml
     assert 'MIN_NODE="v1.37.0-gke.3503000"' in cd_yaml
+    # Opt-in switch (default off) plus an active revert to Workload Identity.
+    assert "_FAQ_AGENT_IDENTITY: '0'" in cd_yaml
+    assert '"${_FAQ_AGENT_IDENTITY}" = "1"' in cd_yaml
+    assert "faq-resolver-patches/workload-identity.patch.yaml" in cd_yaml
+    revert = yaml.safe_load((K8S_AGENT_IDENTITY_PATCH.parent / "workload-identity.patch.yaml").read_text(encoding="utf-8"))
+    revert_annotations = revert["spec"]["template"]["metadata"]["annotations"]
+    for key in patch_annotations:
+        assert key in revert_annotations and revert_annotations[key] is None
+    revert_env = {e["name"]: e["value"] for e in revert["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert revert_env.get("FAQ_AGENT_IDENTITY") == "0"
 
     spec = template.get("spec", {})
     assert spec.get("serviceAccountName") == "ksa-faq"

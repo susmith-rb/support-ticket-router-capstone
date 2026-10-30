@@ -24,6 +24,7 @@ substitutions:
   _FAQ_DOMAIN: 'faq.8-232-184-225.sslip.io'
   _FORCE_AGENT_ENGINE: 'false'
   _TRIAGE_AGENT_GATEWAY: ''
+  _FAQ_AGENT_IDENTITY: '0'
 
 steps:
   # ===========================================================================
@@ -225,15 +226,18 @@ steps:
           sed -i "s|DOMAIN_PLACEHOLDER|${_FAQ_DOMAIN}|g" /workspace/k8s-render/ingress.yaml /workspace/k8s-render/managed-cert.yaml
           if grep -rn "DOMAIN_PLACEHOLDER" /workspace/k8s-render/; then echo "unrendered placeholder"; false; fi
           kubectl apply -f /workspace/k8s-render/
-          # REQ-AUTH-008: enable SPIFFE agent identity only when every node supports it
-          # (>= 1.37.0-gke.3503000; older kubelets cannot mount ClusterTrustBundle volumes).
+          # REQ-AUTH-008: SPIFFE agent identity is opt-in (_FAQ_AGENT_IDENTITY=1) and additionally
+          # requires every node >= 1.37.0-gke.3503000 (older kubelets cannot mount ClusterTrustBundle
+          # volumes). Otherwise CD actively reverts to Workload Identity, because `kubectl apply` of the
+          # base manifest does not remove keys added by an earlier patch.
           MIN_NODE="v1.37.0-gke.3503000"
           OLDEST_NODE=$$(kubectl get nodes -o jsonpath='{range .items[*]}{.status.nodeInfo.kubeletVersion}{"\n"}{end}' | sort -V | head -1)
-          if [ -n "$${OLDEST_NODE}" ] && [ "$$(printf '%s\n%s\n' "$${MIN_NODE}" "$${OLDEST_NODE}" | sort -V | head -1)" = "$${MIN_NODE}" ]; then
-            echo "Nodes >= $${MIN_NODE} (oldest $${OLDEST_NODE}): applying agent-identity patch"
+          if [ "${_FAQ_AGENT_IDENTITY}" = "1" ] && [ -n "$${OLDEST_NODE}" ] && [ "$$(printf '%s\n%s\n' "$${MIN_NODE}" "$${OLDEST_NODE}" | sort -V | head -1)" = "$${MIN_NODE}" ]; then
+            echo "Agent identity opted in and nodes >= $${MIN_NODE} (oldest $${OLDEST_NODE}): applying agent-identity patch"
             kubectl -n faq-resolver patch deployment faq-resolver --type strategic --patch-file deploy/k8s/faq-resolver-patches/agent-identity.patch.yaml
           else
-            echo "Oldest node $${OLDEST_NODE} < $${MIN_NODE}: FaqResolver stays on Workload Identity for this rollout"
+            echo "FaqResolver on Workload Identity (_FAQ_AGENT_IDENTITY=${_FAQ_AGENT_IDENTITY}, oldest node $${OLDEST_NODE})"
+            kubectl -n faq-resolver patch deployment faq-resolver --type strategic --patch-file deploy/k8s/faq-resolver-patches/workload-identity.patch.yaml
           fi
           kubectl rollout status deployment/faq-resolver -n faq-resolver --timeout=300s
 
