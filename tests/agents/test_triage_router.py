@@ -663,9 +663,13 @@ def test_invoke_tier2_gemini_json_parsing_and_invoker_wiring(monkeypatch):
                 text='{"escalate": false, "escalate_prob": 0.08, "sentiment": "neutral", "urgency": "normal", "intent": "shipping_policy", "intent_prob": 0.94}'
             )
 
-    fake_google = SimpleNamespace(genai=SimpleNamespace(Client=FakeGenaiClient))
-    monkeypatch.setitem(sys.modules, "google", fake_google)
-    monkeypatch.setitem(sys.modules, "google.genai", fake_google.genai)
+    # Patch only google.genai: replacing the whole `google` package leaks into later tests
+    # (google.auth imported inside the patch window binds to the fake parent package).
+    import google
+
+    fake_genai = SimpleNamespace(Client=FakeGenaiClient)
+    monkeypatch.setitem(sys.modules, "google.genai", fake_genai)
+    monkeypatch.setattr(google, "genai", fake_genai, raising=False)
 
     # 1. JSON with escalate=false must NOT be treated as escalate=True
     pred_no_esc = invoke_tier2_gemini(
