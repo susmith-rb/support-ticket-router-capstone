@@ -78,11 +78,21 @@ class PubSubRestPublisher:
             or os.environ.get("PROJECT_ID", "")
         )
         self.topic = topic or os.environ.get("HUMAN_QUEUE_TOPIC", DEFAULT_HUMAN_QUEUE_TOPIC)
-        if session is not None:
-            self.session = session
-            self.is_mtls = bool(getattr(session, "is_mtls", False))
-        else:
-            self.session, self.is_mtls = create_google_session()
+        # The Google session is created lazily on first publish so agent construction never
+        # touches ADC / the metadata server (hermetic tests, cold starts, and session errors
+        # stay inside HumanHandoff's never-raise publish path).
+        self._session: Optional[Any] = session
+        self.is_mtls = bool(getattr(session, "is_mtls", False)) if session is not None else False
+
+    @property
+    def session(self) -> Any:
+        if self._session is None:
+            self._session, self.is_mtls = create_google_session()
+        return self._session
+
+    @session.setter
+    def session(self, value: Any) -> None:
+        self._session = value
 
     def publish(
         self,
@@ -95,6 +105,7 @@ class PubSubRestPublisher:
         target_topic = topic or self.topic
         if not self.project:
             raise ValueError("project must be specified or set via GOOGLE_CLOUD_PROJECT")
+        session = self.session  # resolves mTLS before the URL is rewritten
         raw_url = f"https://pubsub.googleapis.com/v1/projects/{self.project}/topics/{target_topic}:publish"
         url = to_mtls_url(raw_url, self.is_mtls)
 
@@ -106,7 +117,7 @@ class PubSubRestPublisher:
             msg_obj["orderingKey"] = ordering_key
 
         body = {"messages": [msg_obj]}
-        resp = self.session.post(url, json=body, timeout=timeout)
+        resp = session.post(url, json=body, timeout=timeout)
         resp.raise_for_status()
         resp_data = resp.json()
         message_ids = resp_data.get("messageIds", [])
