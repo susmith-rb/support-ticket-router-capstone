@@ -234,7 +234,8 @@ def test_format_effective_identity_principal():
 # REQ-AUTH-004
 def test_deploy_agent_identity_creates_staging_engine_via_client_api(capsys):
     """Verify --identity-type agent creates separate staging engine with AGENT_IDENTITY, no SA, and impersonation env."""
-    import vertexai
+    # CI runs the [dev] extras without the Vertex SDK; these tests run where it is installed.
+    vertexai = pytest.importorskip("vertexai")
 
     fake_resource = "projects/620485621180/locations/us-central1/reasoningEngines/555000111"
     raw_spiffe = (
@@ -294,7 +295,8 @@ def test_deploy_agent_identity_creates_staging_engine_via_client_api(capsys):
 # REQ-AUTH-004
 def test_deploy_agent_identity_updates_existing_engine_and_fetches_effective_identity(capsys):
     """Verify --identity-type agent updates target --resource-name and falls back to get() for effective_identity."""
-    import vertexai
+    # CI runs the [dev] extras without the Vertex SDK; these tests run where it is installed.
+    vertexai = pytest.importorskip("vertexai")
 
     target = "projects/620485621180/locations/us-central1/reasoningEngines/888000222"
     expected_principal = (
