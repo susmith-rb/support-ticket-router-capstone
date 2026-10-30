@@ -108,6 +108,10 @@ def test_impersonate_sa_mints_via_iamcredentials_and_skips_metadata(monkeypatch:
     fake_http = _FakeHttpLayer([_FakeHttpResponse(200, {"token": minted_jwt})])
     monkeypatch.setattr(requests, "get", fake_http.get)
     monkeypatch.setattr(requests, "post", fake_http.post)
+    monkeypatch.setattr(
+        "ticket_router.common.google_http.create_google_session",
+        lambda: (fake_http, False),
+    )
 
     tok = get_id_token(audience, clock=clock)
     assert tok == minted_jwt

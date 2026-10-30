@@ -17,6 +17,37 @@ from typing import Any, Callable, Dict, Optional, Tuple
 _ID_TOKEN_CACHE: Dict[Tuple[str, str], Tuple[str, float]] = {}
 _CACHE_LOCK = threading.Lock()
 
+_IAM_SESSION_LOCK = threading.Lock()
+_IAM_CACHED_SESSION: Optional[Any] = None
+_IAM_CACHED_IS_MTLS: bool = False
+
+
+def _get_iam_session() -> tuple[Any, bool]:
+    """Get or create cached session for IAM Credentials generateIdToken.
+
+    # REQ-AUTH-006: Reuses a module-level pooled session guarded by a lock,
+    # capturing (sess, is_mtls) inside the lock so a concurrent _reset_iam_session()
+    # cannot yield (None, False).
+    """
+    global _IAM_CACHED_SESSION, _IAM_CACHED_IS_MTLS
+    with _IAM_SESSION_LOCK:
+        if _IAM_CACHED_SESSION is None:
+            from ticket_router.common.google_http import create_google_session
+
+            sess, is_mtls = create_google_session()
+            _IAM_CACHED_IS_MTLS = bool(is_mtls)
+            _IAM_CACHED_SESSION = sess
+        result = (_IAM_CACHED_SESSION, _IAM_CACHED_IS_MTLS)
+    return result
+
+
+def _reset_iam_session() -> None:
+    """Reset cached IAM session (used on exceptions and in tests)."""
+    global _IAM_CACHED_SESSION, _IAM_CACHED_IS_MTLS
+    with _IAM_SESSION_LOCK:
+        _IAM_CACHED_SESSION = None
+        _IAM_CACHED_IS_MTLS = False
+
 
 def _extract_jwt_exp(token: str) -> Optional[float]:
     """Extract exp claim from JWT token payload without cryptographic verification."""
@@ -38,9 +69,10 @@ def _extract_jwt_exp(token: str) -> Optional[float]:
 
 
 def clear_id_token_cache() -> None:
-    """Clear all in-memory cached ID tokens."""
+    """Clear all in-memory cached ID tokens and reset cached IAM session."""
     with _CACHE_LOCK:
         _ID_TOKEN_CACHE.clear()
+    _reset_iam_session()
 
 
 _METADATA_SA = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts"
@@ -55,37 +87,79 @@ def _generate_id_token_via_iamcredentials(
 
     # REQ-AUTH-004: Mints ID tokens through iamcredentials.googleapis.com using
     # the caller's ADC access token without long-lived keys or metadata ID tokens.
+    # REQ-AUTH-006: Uses create_google_session() and to_mtls_url for mTLS transport.
+    # Reuses a module-level pooled session, reset on exception.
     """
-    import requests
+    from google.auth.transport.requests import AuthorizedSession
 
     from ticket_router.common import auth
+    from ticket_router.common.google_http import to_mtls_url
 
-    url = (
+    used_cached = False
+    if session is not None:
+        sess = session
+        is_mtls = bool(getattr(session, "is_mtls", False))
+        headers = {"Authorization": f"Bearer {auth.get_access_token()}"}
+    else:
+        try:
+            sess, is_mtls = _get_iam_session()
+            used_cached = True
+        except Exception:
+            _reset_iam_session()
+            raise
+
+        if isinstance(sess, AuthorizedSession):
+            headers = None
+        else:
+            headers = {"Authorization": f"Bearer {auth.get_access_token()}"}
+
+    url = to_mtls_url(
         f"https://iamcredentials.googleapis.com/v1/projects/-/"
-        f"serviceAccounts/{sa_email}:generateIdToken"
+        f"serviceAccounts/{sa_email}:generateIdToken",
+        is_mtls,
     )
-    post_fn = session.post if session is not None else requests.post
-    resp = post_fn(
-        url,
-        json={"audience": audience, "includeEmail": True},
-        headers={"Authorization": f"Bearer {auth.get_access_token()}"},
-        timeout=10,
-    )
-    resp.raise_for_status()
+    post_kwargs: dict[str, Any] = {
+        "json": {"audience": audience, "includeEmail": True},
+        "timeout": 10,
+    }
+    if headers is not None:
+        post_kwargs["headers"] = headers
+
+    try:
+        resp = sess.post(url, **post_kwargs)
+        resp.raise_for_status()
+    except Exception:
+        if used_cached:
+            _reset_iam_session()
+        raise
     return str(resp.json()["token"])
 
 
-def _fetch_id_token_with_fallback(req: Any, audience: str, fetch: Callable[[Any, str], str]) -> str:
-    """fetch_id_token, falling back to IAM Credentials generateIdToken.
+def _fetch_id_token_with_fallback(
+    req: Any,
+    audience: str,
+    fetch: Callable[..., str],
+    session: Optional[Any] = None,
+) -> str:
+    """fetch_id_token requesting UNBOUND tokens, falling back to IAM Credentials.
 
     Cloud Build's metadata server refuses ID tokens for user-specified build SAs
     (404 "please provide a user-specified service account" for `default`, and 404
     for the explicit email too). The fallback mints the token through
     iamcredentials.googleapis.com using the SA's own access token; the SA needs
     roles/iam.serviceAccountTokenCreator on itself (granted in Terraform for sa-cd-deployer).
+
+    # REQ-AUTH-006: Under Agent Engine agent identity, requests unbound ID tokens
+    # (bind_id_token=False) because target services (Cloud Run, FaqResolver) run on
+    # plain TLS. Falls back to fetch without bind_id_token on older google-auth.
     """
     try:
-        return fetch(req, audience)
+        try:
+            return fetch(req, audience, bind_id_token=False)
+        except TypeError as exc:
+            if "bind_id_token" in str(exc):
+                return fetch(req, audience)
+            raise
     except Exception as exc:  # google.auth.exceptions.DefaultCredentialsError / TransportError
         if "user-specified service account" not in str(exc):
             raise
@@ -94,7 +168,7 @@ def _fetch_id_token_with_fallback(req: Any, audience: str, fetch: Callable[[Any,
     email = requests.get(
         f"{_METADATA_SA}/default/email", headers={"Metadata-Flavor": "Google"}, timeout=5
     ).text.strip()
-    return _generate_id_token_via_iamcredentials(email, audience)
+    return _generate_id_token_via_iamcredentials(email, audience, session=session)
 
 
 def get_id_token(
@@ -132,7 +206,7 @@ def get_id_token(
         from google.oauth2 import id_token as google_id_token
 
         req = request if request is not None else GoogleAuthRequest()
-        token = _fetch_id_token_with_fallback(req, audience, google_id_token.fetch_id_token)
+        token = _fetch_id_token_with_fallback(req, audience, google_id_token.fetch_id_token, session=session)
 
     exp = _extract_jwt_exp(token)
     if exp is not None:

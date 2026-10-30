@@ -1,6 +1,7 @@
 """Observability: Distributed Tracing and PII-Free Structured Logging.
 
 # REQ-AGENT-014: Observability: Distributed Tracing & PII-Free Structured Logging
+# REQ-AUTH-006: mTLS-Aware Google API Transports (certificate-bound agent identity tokens)
 """
 
 from __future__ import annotations
@@ -184,13 +185,50 @@ def reset_tracing_for_tests() -> None:
             _TRACER = None
 
 
+def _create_cloud_trace_exporter(
+    project_id: Optional[str] = None,
+    client_options: Optional[Any] = None,
+) -> Any:
+    """Build a CloudTraceSpanExporter backed by a GAPIC mTLS-aware TraceServiceClient (REQ-AUTH-006).
+
+    CloudTraceSpanExporter's default _create_default_client() calls grpc_helpers.create_channel
+    directly against 'cloudtrace.googleapis.com:443' with ssl_credentials=None, bypassing GAPIC
+    mTLS negotiation and failing with 401 UNAUTHENTICATED under certificate-bound agent identity.
+    Using TraceServiceClient with a transport callable lets GAPIC resolve 'cloudtrace.mtls.googleapis.com'
+    and the workload SSL certificate when present (plain 'cloudtrace.googleapis.com' on SA runtimes)
+    while preserving the exporter's gRPC channel _OPTIONS.
+    """
+    import opentelemetry.exporter.cloud_trace as cloud_trace_mod  # type: ignore[import-untyped]
+    from google.cloud.trace_v2 import TraceServiceClient  # type: ignore[import-untyped]
+    from google.cloud.trace_v2.services.trace_service.transports.grpc import (  # type: ignore[import-untyped]
+        TraceServiceGrpcTransport,
+    )
+
+    exporter_cls = cloud_trace_mod.CloudTraceSpanExporter
+    exporter_options = tuple(getattr(cloud_trace_mod, "_OPTIONS", ()) or ())
+
+    def _channel_factory(host: str, **channel_kwargs: Any) -> Any:
+        if exporter_options:
+            channel_kwargs["options"] = list(exporter_options)
+        return TraceServiceGrpcTransport.create_channel(host, **channel_kwargs)
+
+    def _transport_factory(**transport_kwargs: Any) -> Any:
+        return TraceServiceGrpcTransport(channel=_channel_factory, **transport_kwargs)
+
+    trace_client = TraceServiceClient(
+        transport=_transport_factory,
+        client_options=client_options,
+    )
+    return exporter_cls(project_id=project_id, client=trace_client)
+
+
 def configure_tracing(
     service_name: str = "ticket_router",
     project_id: Optional[str] = None,
     exporter: Optional[Any] = None,
     force: bool = False,
 ) -> bool:
-    """Configure OpenTelemetry tracing with Cloud Trace export (REQ-AGENT-014).
+    """Configure OpenTelemetry tracing with Cloud Trace export (REQ-AGENT-014, REQ-AUTH-006).
 
     Lazily imports opentelemetry-sdk and opentelemetry-exporter-gcp-trace.
     Hermetically no-ops when exporter is absent, offline, or disabled.
@@ -226,7 +264,7 @@ def configure_tracing(
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
         if exporter is None:
-            from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
+            import opentelemetry.exporter.cloud_trace  # noqa: F401  # type: ignore[import-untyped]
     except (ImportError, Exception) as exc:
         logging.getLogger("ticket_router.common.observability").warning(
             "Tracing dependencies unavailable: %s", exc
@@ -239,7 +277,7 @@ def configure_tracing(
             processor: Any = SimpleSpanProcessor(span_exporter)
         else:
             eff_project = project_id or os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("PROJECT_ID") or None
-            span_exporter = CloudTraceSpanExporter(project_id=eff_project)
+            span_exporter = _create_cloud_trace_exporter(project_id=eff_project)
             processor = BatchSpanProcessor(span_exporter)
 
         current_provider = trace.get_tracer_provider()

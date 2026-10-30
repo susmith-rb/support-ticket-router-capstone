@@ -16,6 +16,7 @@ Provides typed ingress and egress sanitization via Google Cloud Model Armor:
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Protocol, runtime_checkable
@@ -328,24 +329,51 @@ class ModelArmorClient(ModelArmorClientProtocol):
         )
         self.token_provider = token_provider or get_access_token
         self.logger = logger or StructuredJsonLogger(name="model_armor_client")
+        self._lock = threading.Lock()
 
-        if session is not None:
-            self._session = session
-        else:
+        self._injected_session = session is not None
+        self._injected_token_provider = token_provider is not None
+        self._custom_auth = self._injected_session or self._injected_token_provider
+
+        if self._injected_session:
+            self._session: Optional[requests.Session] = session
+            self._is_mtls: bool = bool(getattr(session, "is_mtls", False))
+        elif self._injected_token_provider:
             self._session = requests.Session()
             adapter = HTTPAdapter(
                 pool_connections=10, pool_maxsize=20, max_retries=0
             )
             self._session.mount("https://", adapter)
             self._session.mount("http://", adapter)
+            self._is_mtls = False
+        else:
+            self._session = None
+            self._is_mtls = False
 
     @property
     def template_name(self) -> str:
         return self.template
 
+    def _get_session(self) -> requests.Session:
+        if self._session is None:
+            with self._lock:
+                if self._session is None:
+                    from ticket_router.common.google_http import (
+                        create_google_session,
+                        to_mtls_url,
+                    )
+
+                    # Bounded auth refresh attempts (max 1) for latency predictability
+                    sess, is_mtls = create_google_session(max_refresh_attempts=1)
+                    # Publish _is_mtls and endpoint rewrite before _session to avoid race conditions
+                    self._is_mtls = is_mtls
+                    self.endpoint_base_url = to_mtls_url(self.endpoint_base_url, is_mtls)
+                    self._session = sess
+        return self._session
+
     @property
     def session(self) -> requests.Session:
-        return self._session
+        return self._get_session()
 
     def _call_api(
         self,
@@ -355,16 +383,27 @@ class ModelArmorClient(ModelArmorClientProtocol):
     ) -> ModelArmorVerdict:
         """Execute Model Armor REST RPC within circuit breaker and timeout guards."""
         budget_s = self.timeout_s if timeout_s is None else timeout_s
-        url = f"{self.endpoint_base_url}/{self.template}:{rpc_name}"
         start_t = time.monotonic()
 
         def _do_post() -> requests.Response:
-            token = self.token_provider()
-            headers = {
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-            }
-            return self._session.post(
+            session = self._get_session()
+            from ticket_router.common.google_http import to_mtls_url
+
+            is_mtls = bool(getattr(session, "is_mtls", self._is_mtls))
+            effective_base_url = to_mtls_url(self.endpoint_base_url, is_mtls)
+            url = f"{effective_base_url}/{self.template}:{rpc_name}"
+
+            if self._custom_auth:
+                token = self.token_provider()
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                }
+            else:
+                headers = {
+                    "Content-Type": "application/json",
+                }
+            return session.post(
                 url,
                 json=request_body,
                 headers=headers,

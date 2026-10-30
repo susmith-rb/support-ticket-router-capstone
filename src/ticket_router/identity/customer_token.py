@@ -67,6 +67,7 @@ class KmsSigner:
     def __init__(self, key_version_name: str, session: Any = None) -> None:
         self.kid: str = key_version_name
         self._session = session
+        self._is_mtls: bool = bool(getattr(session, "is_mtls", False))
         self._lock = threading.Lock()
 
     def __getstate__(self) -> Dict[str, Any]:
@@ -75,26 +76,32 @@ class KmsSigner:
     def __setstate__(self, state: Dict[str, Any]) -> None:
         self.kid = state["kid"]
         self._session = None
+        self._is_mtls = False
         self._lock = threading.Lock()
 
     def _get_session(self) -> Any:
         if self._session is None:
             with self._lock:
                 if self._session is None:
-                    import google.auth
-                    from google.auth.transport.requests import AuthorizedSession
+                    from ticket_router.common.google_http import create_google_session
 
-                    credentials, _ = google.auth.default(
-                        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                    # Bounded auth refresh attempts (max 1) for predictable latency in signing
+                    self._session, self._is_mtls = create_google_session(
+                        max_refresh_attempts=1
                     )
-                    self._session = AuthorizedSession(credentials)
         return self._session
 
     def sign(self, message: bytes) -> bytes:
         digest = hashlib.sha256(message).digest()
         digest_b64 = base64.b64encode(digest).decode("ascii")
-        url = f"https://cloudkms.googleapis.com/v1/{self.kid}:asymmetricSign"
+        from ticket_router.common.google_http import to_mtls_url
+
         session = self._get_session()
+        is_mtls = bool(getattr(session, "is_mtls", self._is_mtls))
+        url = to_mtls_url(
+            f"https://cloudkms.googleapis.com/v1/{self.kid}:asymmetricSign",
+            is_mtls,
+        )
         resp = session.post(
             url,
             json={"digest": {"sha256": digest_b64}},
@@ -219,6 +226,7 @@ class KmsPublicKeyResolver:
 
     def __init__(self, session: Any = None, cache_ttl_s: int = 3600) -> None:
         self._session = session
+        self._is_mtls: bool = bool(getattr(session, "is_mtls", False))
         self.cache_ttl_s = cache_ttl_s
         self._cache: OrderedDict[str, Tuple[ec.EllipticCurvePublicKey, float]] = OrderedDict()
         self._negative_cache: OrderedDict[str, float] = OrderedDict()
@@ -230,6 +238,7 @@ class KmsPublicKeyResolver:
     def __setstate__(self, state: Dict[str, Any]) -> None:
         self.cache_ttl_s = state.get("cache_ttl_s", 3600)
         self._session = None
+        self._is_mtls = False
         self._cache = OrderedDict()
         self._negative_cache = OrderedDict()
         self._lock = threading.Lock()
@@ -238,13 +247,12 @@ class KmsPublicKeyResolver:
         if self._session is None:
             with self._lock:
                 if self._session is None:
-                    import google.auth
-                    from google.auth.transport.requests import AuthorizedSession
+                    from ticket_router.common.google_http import create_google_session
 
-                    credentials, _ = google.auth.default(
-                        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                    # Bounded auth refresh attempts (max 1) for predictable latency in signing
+                    self._session, self._is_mtls = create_google_session(
+                        max_refresh_attempts=1
                     )
-                    self._session = AuthorizedSession(credentials)
         return self._session
 
     def _record_negative_cache(self, kid: str) -> None:
@@ -272,7 +280,10 @@ class KmsPublicKeyResolver:
                 del self._cache[kid]
 
         session = self._get_session()
-        url = f"https://cloudkms.googleapis.com/v1/{kid}/publicKey"
+        is_mtls = bool(getattr(session, "is_mtls", self._is_mtls))
+        from ticket_router.common.google_http import to_mtls_url
+
+        url = to_mtls_url(f"https://cloudkms.googleapis.com/v1/{kid}/publicKey", is_mtls)
         try:
             resp = session.get(url, timeout=2.0)
             if resp.status_code != 200:

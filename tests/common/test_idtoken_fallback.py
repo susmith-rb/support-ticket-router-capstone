@@ -2,6 +2,8 @@
 
 # REQ-AGENT-006
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from ticket_router.common import idtoken
@@ -21,6 +23,8 @@ def test_falls_back_to_iamcredentials_generate_id_token(monkeypatch):
 
     from ticket_router.common import auth
 
+    idtoken.clear_id_token_cache()
+
     def refused(req, audience):
         raise RuntimeError("Status: 404 Response: b'please provide a user-specified service account\\n'")
 
@@ -36,9 +40,15 @@ def test_falls_back_to_iamcredentials_generate_id_token(monkeypatch):
             return {"token": "tok.en.jwt"}
 
     def fake_post(url, json=None, headers=None, timeout=None):
-        posted.update(url=url, body=json, auth=headers["Authorization"])
+        posted.update(url=url, body=json, auth=(headers or {}).get("Authorization"))
         return _Json()
 
+    fake_session = MagicMock()
+    fake_session.post = fake_post
+    monkeypatch.setattr(
+        "ticket_router.common.google_http.create_google_session",
+        lambda *args, **kwargs: (fake_session, False),
+    )
     monkeypatch.setattr(requests, "get", lambda *a, **k: _Resp("sa-cd-deployer@p.iam.gserviceaccount.com\n"))
     monkeypatch.setattr(requests, "post", fake_post)
     monkeypatch.setattr(auth, "get_access_token", lambda scopes=None: "access-tok")

@@ -1,13 +1,17 @@
 """Tests for distributed tracing and PII-free structured logging.
 
 # REQ-AGENT-014: Observability: Distributed Tracing & PII-Free Structured Logging
+# REQ-AUTH-006: mTLS-Aware Google API Transports (certificate-bound agent identity tokens)
 """
 
 import json
 import logging
 import os
+import sys
+import types
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from ticket_router.agents.faq_resolver.mcp_client import (
@@ -22,6 +26,7 @@ from ticket_router.agents.triage_router.mcp_client import (
 )
 from ticket_router.common.observability import (
     StructuredJsonLogger,
+    _create_cloud_trace_exporter,
     configure_tracing,
     flush_traces,
     generate_traceparent,
@@ -333,3 +338,159 @@ def test_traceparent_with_all_digit_span_id_is_not_flagged_as_card() -> None:
     }
     assert is_pii_clean(record)
     assert not is_pii_clean({"note": "4111 1111 1111 1111"})
+
+
+def test_cloud_trace_exporter_factory_mtls_and_plain_hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
+    """REQ-AUTH-006: _create_cloud_trace_exporter resolves mTLS vs plain endpoint and preserves _OPTIONS."""
+    channel_calls: list[tuple[str, dict]] = []
+    active_cert_source = {"fn": None}
+
+    expected_options = [
+        ("grpc.max_send_message_length", -1),
+        ("grpc.max_receive_message_length", -1),
+        ("grpc.primary_user_agent", "opentelemetry-python/test gcp-trace-exporter/test"),
+    ]
+
+    class FakeTraceServiceGrpcTransport:
+        @classmethod
+        def create_channel(cls, host: str, **kwargs):
+            channel_calls.append((host, kwargs))
+            return MagicMock(name="grpc_channel")
+
+        def __init__(self, *, host: str, channel=None, client_cert_source_for_mtls=None, **kwargs):
+            self._host = host
+            self._ssl_channel_credentials = (
+                "mock_mtls_ssl_creds" if client_cert_source_for_mtls is not None else None
+            )
+            assert callable(channel)
+            self._grpc_channel = channel(
+                self._host,
+                credentials=kwargs.get("credentials"),
+                ssl_credentials=self._ssl_channel_credentials,
+                options=[
+                    ("grpc.max_send_message_length", -1),
+                    ("grpc.max_receive_message_length", -1),
+                ],
+            )
+
+    class FakeTraceServiceClient:
+        DEFAULT_ENDPOINT = "cloudtrace.googleapis.com"
+        DEFAULT_MTLS_ENDPOINT = "cloudtrace.mtls.googleapis.com"
+
+        def __init__(self, *, transport=None, client_options=None):
+            assert callable(transport)
+            cert_fn = getattr(client_options, "client_cert_source", None) or active_cert_source["fn"]
+            self.api_endpoint = (
+                self.DEFAULT_MTLS_ENDPOINT if cert_fn is not None else self.DEFAULT_ENDPOINT
+            )
+            self.transport = transport(
+                host=self.api_endpoint,
+                credentials="fake-adc-creds",
+                client_cert_source_for_mtls=cert_fn,
+            )
+
+    class FakeCloudTraceSpanExporter:
+        def __init__(self, project_id=None, client=None):
+            self.project_id = project_id
+            self.client = client
+
+    otel_pkg = sys.modules.get("opentelemetry") or types.ModuleType("opentelemetry")
+    exporter_pkg = types.ModuleType("opentelemetry.exporter")
+    cloud_trace_mod = types.ModuleType("opentelemetry.exporter.cloud_trace")
+    cloud_trace_mod._OPTIONS = expected_options  # type: ignore[attr-defined]
+    cloud_trace_mod.CloudTraceSpanExporter = FakeCloudTraceSpanExporter  # type: ignore[attr-defined]
+
+    google_cloud_mod = sys.modules.get("google.cloud") or types.ModuleType("google.cloud")
+    trace_v2_mod = types.ModuleType("google.cloud.trace_v2")
+    trace_v2_mod.TraceServiceClient = FakeTraceServiceClient  # type: ignore[attr-defined]
+    services_mod = types.ModuleType("google.cloud.trace_v2.services")
+    ts_mod = types.ModuleType("google.cloud.trace_v2.services.trace_service")
+    transports_mod = types.ModuleType("google.cloud.trace_v2.services.trace_service.transports")
+    grpc_mod = types.ModuleType("google.cloud.trace_v2.services.trace_service.transports.grpc")
+    grpc_mod.TraceServiceGrpcTransport = FakeTraceServiceGrpcTransport  # type: ignore[attr-defined]
+
+    monkeypatch.setitem(sys.modules, "opentelemetry", otel_pkg)
+    monkeypatch.setitem(sys.modules, "opentelemetry.exporter", exporter_pkg)
+    monkeypatch.setitem(sys.modules, "opentelemetry.exporter.cloud_trace", cloud_trace_mod)
+    monkeypatch.setitem(sys.modules, "google.cloud", google_cloud_mod)
+    monkeypatch.setitem(sys.modules, "google.cloud.trace_v2", trace_v2_mod)
+    monkeypatch.setitem(sys.modules, "google.cloud.trace_v2.services", services_mod)
+    monkeypatch.setitem(sys.modules, "google.cloud.trace_v2.services.trace_service", ts_mod)
+    monkeypatch.setitem(
+        sys.modules, "google.cloud.trace_v2.services.trace_service.transports", transports_mod
+    )
+    monkeypatch.setitem(
+        sys.modules, "google.cloud.trace_v2.services.trace_service.transports.grpc", grpc_mod
+    )
+
+    # 1. Workload certificate present -> cloudtrace.mtls.googleapis.com + SSL creds + _OPTIONS
+    active_cert_source["fn"] = lambda: (b"cert", b"key")
+    mtls_exp = _create_cloud_trace_exporter(project_id="proj-mtls")
+    assert mtls_exp.project_id == "proj-mtls"
+    assert mtls_exp.client.api_endpoint == "cloudtrace.mtls.googleapis.com"
+    assert len(channel_calls) == 1
+    mtls_host, mtls_kw = channel_calls[-1]
+    assert mtls_host == "cloudtrace.mtls.googleapis.com"
+    assert mtls_kw["ssl_credentials"] == "mock_mtls_ssl_creds"
+    assert mtls_kw["options"] == expected_options
+
+    # 2. SA runtime (no workload certificate) -> plain cloudtrace.googleapis.com + ssl_credentials=None
+    active_cert_source["fn"] = None
+    plain_exp = _create_cloud_trace_exporter(project_id="proj-sa")
+    assert plain_exp.project_id == "proj-sa"
+    assert plain_exp.client.api_endpoint == "cloudtrace.googleapis.com"
+    assert len(channel_calls) == 2
+    plain_host, plain_kw = channel_calls[-1]
+    assert plain_host == "cloudtrace.googleapis.com"
+    assert plain_kw["ssl_credentials"] is None
+    assert plain_kw["options"] == expected_options
+
+
+def test_cloud_trace_exporter_real_gapic_mtls_negotiation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """REQ-AUTH-006: Verify against real CloudTraceSpanExporter + GAPIC TraceServiceClient when installed."""
+    cloud_trace_mod = pytest.importorskip("opentelemetry.exporter.cloud_trace")
+    pytest.importorskip("google.cloud.trace_v2")
+    import google.auth.credentials
+    import grpc
+    from google.api_core.client_options import ClientOptions
+    from google.cloud.trace_v2.services.trace_service import client as trace_client_mod
+    from google.cloud.trace_v2.services.trace_service.transports.grpc import (
+        TraceServiceGrpcTransport,
+    )
+
+    channel_calls: list[tuple[str, dict]] = []
+
+    def fake_create_channel(host: str, **kwargs):
+        channel_calls.append((host, kwargs))
+        return MagicMock(spec=grpc.Channel)
+
+    monkeypatch.setattr(TraceServiceGrpcTransport, "create_channel", staticmethod(fake_create_channel))
+    monkeypatch.setattr(
+        grpc,
+        "ssl_channel_credentials",
+        lambda certificate_chain=None, private_key=None: ("ssl_creds", certificate_chain, private_key),
+    )
+    fake_creds = MagicMock(spec=google.auth.credentials.Credentials)
+    fake_creds.universe_domain = "googleapis.com"
+    monkeypatch.setattr("google.auth.default", lambda *a, **kw: (fake_creds, "test-proj"))
+
+    # Case 1: mTLS workload cert present
+    monkeypatch.setenv("GOOGLE_API_USE_CLIENT_CERTIFICATE", "true")
+    monkeypatch.setenv("GOOGLE_API_USE_MTLS_ENDPOINT", "auto")
+    exp_mtls = _create_cloud_trace_exporter(
+        project_id="test-proj",
+        client_options=ClientOptions(client_cert_source=lambda: (b"CERT_PEM", b"KEY_PEM")),
+    )
+    assert exp_mtls.project_id == "test-proj"
+    assert channel_calls[-1][0].split(":")[0] == "cloudtrace.mtls.googleapis.com"
+    assert channel_calls[-1][1]["ssl_credentials"] == ("ssl_creds", b"CERT_PEM", b"KEY_PEM")
+    assert channel_calls[-1][1]["options"] == list(cloud_trace_mod._OPTIONS)
+
+    # Case 2: SA runtime (no client cert source)
+    monkeypatch.setenv("GOOGLE_API_USE_CLIENT_CERTIFICATE", "false")
+    monkeypatch.setattr(trace_client_mod.mtls, "has_default_client_cert_source", lambda: False)
+    exp_plain = _create_cloud_trace_exporter(project_id="test-proj")
+    assert exp_plain.project_id == "test-proj"
+    assert channel_calls[-1][0].split(":")[0] == "cloudtrace.googleapis.com"
+    assert channel_calls[-1][1]["ssl_credentials"] is None
+    assert channel_calls[-1][1]["options"] == list(cloud_trace_mod._OPTIONS)
