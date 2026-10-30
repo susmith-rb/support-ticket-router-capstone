@@ -178,14 +178,14 @@ module "agents_iam" {
 }
 
 module "kms_identity" {
-  source           = "./modules/kms-identity"
-  project_id       = var.project_id
-  region           = var.region
-  signer_members   = compact(["serviceAccount:${module.agents_iam.sa_triage_email}", var.triage_agent_principal])
-  verifier_members = ["serviceAccount:${module.cloud_sql.sa_order_mcp_email}"]
+  source                      = "./modules/kms-identity"
+  project_id                  = var.project_id
+  region                      = var.region
+  signer_members              = compact(["serviceAccount:${module.agents_iam.sa_triage_email}", var.triage_agent_principal])
+  verifier_members            = ["serviceAccount:${module.cloud_sql.sa_order_mcp_email}"]
   redaction_encrypter_members = compact(["serviceAccount:${module.agents_iam.sa_triage_email}", var.triage_agent_principal])
   redaction_decrypter_members = ["serviceAccount:${module.cloud_sql.sa_queue_email}"]
-  labels           = var.labels
+  labels                      = var.labels
 
   depends_on = [module.project_services, module.agents_iam, module.cloud_sql]
 }

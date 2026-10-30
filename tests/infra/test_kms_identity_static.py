@@ -1,3 +1,4 @@
+
 """Static analysis and verification for Customer Context Token (CCT) KMS Infrastructure.
 
 # REQ-AUTH-002: Signed Customer Context Token (minting at TriageRouter)
@@ -6,6 +7,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -122,7 +124,7 @@ def test_root_wiring_and_cloudkms_service():
 
     # kms_identity module declared and wired
     assert 'module "kms_identity"' in root_main
-    assert 'source           = "./modules/kms-identity"' in root_main or 'source = "./modules/kms-identity"' in root_main
+    assert re.search(r'source\s*=\s*"\./modules/kms-identity"', root_main)
     assert "module.agents_iam.sa_triage_email" in root_main
     assert "module.cloud_sql.sa_order_mcp_email" in root_main
 

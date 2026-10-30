@@ -1,3 +1,4 @@
+
 """Static analysis and architectural verification for Agent Gateway egress governance.
 
 Fulfills REQ-AUTH-007:
@@ -11,6 +12,16 @@ Fulfills REQ-AUTH-007:
 """
 
 from __future__ import annotations
+
+import re
+
+
+def _has(hcl: str, snippet: str) -> bool:
+    """Whitespace-insensitive containment check (terraform fmt re-aligns `=`)."""
+    def norm(s):
+        return re.sub(r"\s+", " ", s)
+    return norm(snippet) in norm(hcl)
+
 
 import json
 from pathlib import Path
@@ -77,7 +88,7 @@ def test_gateway_root_defines_registry_authz_and_uap():
 
     # 2. Agent Gateway resource tr-egress
     assert 'resource "google_network_services_agent_gateway" "tr_egress"' in main_hcl
-    assert 'name     = "tr-egress"' in main_hcl
+    assert _has(main_hcl, 'name     = "tr-egress"')
     # `protocols` is deprecated in provider 7.x and must not be set on the gateway.
     assert "protocols =" not in main_hcl
     assert 'governed_access_path = "AGENT_TO_ANYWHERE"' in main_hcl
@@ -85,22 +96,22 @@ def test_gateway_root_defines_registry_authz_and_uap():
 
     # 3. IAP Authz Extension: fail_open = false, DRY_RUN support, V2 policy
     assert 'resource "google_network_services_authz_extension" "iap_authz"' in main_hcl
-    assert 'service      = "iap.googleapis.com"' in main_hcl
-    assert "fail_open    = false" in main_hcl or "fail_open = false" in main_hcl
+    assert _has(main_hcl, 'service      = "iap.googleapis.com"')
+    assert _has(main_hcl, "fail_open = false")
     assert 'iapPolicyVersion = "V2"' in main_hcl
     assert 'iamEnforcementMode = "DRY_RUN"' in main_hcl
 
     # 4. Authz Policy targeting gateway with CUSTOM / REQUEST_AUTHZ
     assert 'resource "google_network_security_authz_policy" "tr_authz_policy"' in main_hcl
-    assert 'policy_profile = "REQUEST_AUTHZ"' in main_hcl
-    assert 'action         = "CUSTOM"' in main_hcl
+    assert _has(main_hcl, 'policy_profile = "REQUEST_AUTHZ"')
+    assert _has(main_hcl, 'action         = "CUSTOM"')
     assert "google_network_services_agent_gateway.tr_egress.id" in main_hcl
     assert "google_network_services_authz_extension.iap_authz.id" in main_hcl
 
     # 5. Agent Registry resources: FaqResolver and core-gapi
     assert 'resource "google_agent_registry_service" "faq_resolver"' in main_hcl
     assert 'resource "google_agent_registry_service" "core_gapi"' in main_hcl
-    assert 'type    = "A2A_AGENT_CARD"' in main_hcl
+    assert _has(main_hcl, 'type    = "A2A_AGENT_CARD"')
 
     # 6. UAP (IAM v3 Access Policy) and Project Binding
     assert 'resource "google_iam_project_access_policy" "triage_egress"' in main_hcl

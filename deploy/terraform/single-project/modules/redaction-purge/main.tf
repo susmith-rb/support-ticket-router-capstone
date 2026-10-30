@@ -3,7 +3,7 @@
 # Implements REQ-STORE-010: Redaction Map 30-Day TTL Purge.
 
 locals {
-  endpoint_url = "${trimsuffix(var.human_queue_url, "/")}/internal/purge-expired-redaction-maps"
+  endpoint_url  = "${trimsuffix(var.human_queue_url, "/")}/internal/purge-expired-redaction-maps"
   oidc_audience = var.purge_audience != "" ? var.purge_audience : local.endpoint_url
 }
 

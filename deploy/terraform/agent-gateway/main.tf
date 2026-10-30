@@ -32,10 +32,10 @@ locals {
 }
 
 resource "google_project_service" "services" {
-  for_each                   = toset(local.required_services)
-  project                    = var.project_id
-  service                    = each.value
-  disable_on_destroy         = false
+  for_each           = toset(local.required_services)
+  project            = var.project_id
+  service            = each.value
+  disable_on_destroy = false
 }
 
 # -----------------------------------------------------------------------------
@@ -64,18 +64,18 @@ resource "google_network_services_agent_gateway" "tr_egress" {
 # IAP Authz Extension & Authz Policy
 # -----------------------------------------------------------------------------
 resource "google_network_services_authz_extension" "iap_authz" {
-  provider     = google-beta
-  name         = "tr-iap-authz-extension"
-  location     = var.region
-  service      = "iap.googleapis.com"
-  timeout      = "1s"
-  fail_open    = false
+  provider  = google-beta
+  name      = "tr-iap-authz-extension"
+  location  = var.region
+  service   = "iap.googleapis.com"
+  timeout   = "1s"
+  fail_open = false
 
   # When var.enforcement_mode == "ENFORCE", iamEnforcementMode is omitted.
   # In DRY_RUN, iamEnforcementMode="DRY_RUN" logs policy decisions without blocking.
   metadata = var.enforcement_mode == "ENFORCE" ? {
     iapPolicyVersion = "V2"
-  } : {
+    } : {
     iapPolicyVersion   = "V2"
     iamEnforcementMode = "DRY_RUN"
   }
