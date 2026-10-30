@@ -143,7 +143,7 @@ def run_smoke_checks(
         results.append(SmokeCheck("ticket-db-mcp idempotent upsert dedup", False, 0, str(exc), latency))
 
     # 4. get_order with only a caller-asserted X-Customer-ID (no verified identity token)
-    #    must fail closed: 403 unverified_customer (REQ-IDENT-*). Verified-owner lookups are
+    #    must fail closed: 403 unverified_customer, or invalid_customer_context in CCT require mode (REQ-IDENT-*, REQ-AUTH-003). Verified-owner lookups are
     #    covered end-to-end by scripts/e2e_identity_check.py.
     ol_session: Optional[requests.Session] = None
     t0 = time.perf_counter()
@@ -157,8 +157,11 @@ def run_smoke_checks(
             timeout=timeout_s,
         )
         latency = (time.perf_counter() - t0) * 1000
-        passed = resp_own.status_code == 403 and "unverified_customer" in resp_own.text
-        details = "HTTP 403 unverified_customer (asserted id refused)" if passed else f"Expected 403 unverified_customer, got {resp_own.status_code}: {resp_own.text[:100]}"
+        # CCT_MODE=accept answers unverified_customer; CCT_MODE=require (REQ-AUTH-003) answers
+        # invalid_customer_context because a signed customer context token is mandatory.
+        refused = "unverified_customer" in resp_own.text or "invalid_customer_context" in resp_own.text
+        passed = resp_own.status_code == 403 and refused
+        details = "HTTP 403 (asserted id refused)" if passed else f"Expected 403 unverified_customer/invalid_customer_context, got {resp_own.status_code}: {resp_own.text[:100]}"
         results.append(SmokeCheck("order-lookup-mcp asserted-id own order refused", passed, resp_own.status_code, details, latency))
     except Exception as exc:
         latency = (time.perf_counter() - t0) * 1000
