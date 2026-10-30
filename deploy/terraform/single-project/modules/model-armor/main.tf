@@ -1,3 +1,52 @@
+data "google_project" "project" {
+  project_id = var.project_id
+}
+
+# REQ-MA-001: Cloud DLP Inspect Template for Support Router PII detection
+resource "google_data_loss_prevention_inspect_template" "support_router_inspect" {
+  parent       = "projects/${var.project_id}/locations/${var.region}"
+  template_id  = "support-router-inspect"
+  display_name = "Support Router PII Inspection Template"
+  description  = "Cloud SDP inspect template for PII detection in support ticket prompts"
+
+  inspect_config {
+    min_likelihood = "LIKELY"
+    include_quote  = false
+
+    info_types {
+      name = "EMAIL_ADDRESS"
+    }
+    info_types {
+      name = "PHONE_NUMBER"
+    }
+    info_types {
+      name = "US_SOCIAL_SECURITY_NUMBER"
+    }
+    info_types {
+      name = "CREDIT_CARD_NUMBER"
+    }
+    info_types {
+      name = "STREET_ADDRESS"
+    }
+    info_types {
+      name = "IBAN_CODE"
+    }
+  }
+}
+
+# REQ-MA-001: Grant Model Armor service agent DLP access to inspect template
+resource "google_project_iam_member" "model_armor_dlp_user" {
+  project = var.project_id
+  role    = "roles/dlp.user"
+  member  = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-modelarmor.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "model_armor_dlp_reader" {
+  project = var.project_id
+  role    = "roles/dlp.reader"
+  member  = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-modelarmor.iam.gserviceaccount.com"
+}
+
 resource "google_model_armor_template" "support_router_lean" {
   location    = var.region
   template_id = var.template_id
@@ -34,8 +83,8 @@ resource "google_model_armor_template" "support_router_lean" {
     }
 
     sdp_settings {
-      basic_config {
-        filter_enforcement = "ENABLED"
+      advanced_config {
+        inspect_template = google_data_loss_prevention_inspect_template.support_router_inspect.id
       }
     }
   }
@@ -47,6 +96,12 @@ resource "google_model_armor_template" "support_router_lean" {
     log_template_operations            = false
     ignore_partial_invocation_failures = false
   }
+
+  depends_on = [
+    google_data_loss_prevention_inspect_template.support_router_inspect,
+    google_project_iam_member.model_armor_dlp_user,
+    google_project_iam_member.model_armor_dlp_reader,
+  ]
 }
 
 resource "google_project_iam_member" "model_armor_user_triage" {

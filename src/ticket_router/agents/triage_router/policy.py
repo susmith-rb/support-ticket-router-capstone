@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
@@ -21,6 +22,8 @@ from ticket_router.security.model_armor import (
     ModelArmorVerdict,
 )
 from ticket_router.security.pii_tokens import tokenize_pii
+
+logger = logging.getLogger(__name__)
 
 
 class QueuePriority(str, Enum):
@@ -415,6 +418,56 @@ class TriagePolicy:
         except Exception as exc:
             return None, f"endpoint_error: {exc}"
 
+    def _run_model_armor(
+        self, text: str
+    ) -> Tuple[Optional[ModelArmorVerdict], Optional[str], Optional[str], Dict[str, str]]:
+        """Execute Model Armor sanitization and PII tokenization safely.
+
+        Never raises: on client failure returns a degraded verdict (fail-safe gate).
+        Returns:
+            (ma_verdict, sanitized_text, tokenized_text, pii_mapping)
+        """
+        if self.model_armor_client is None:
+            return None, None, None, {}
+
+        try:
+            ma_verdict = self.model_armor_client.sanitize_user_prompt(text)
+        except Exception as exc:
+            # Fail safe: surface a degraded verdict so the REQ-MA-005 degraded gate
+            # still applies (never silently skip Model Armor on the non-tier0 path).
+            logger.warning("Model Armor prompt sanitization failed: %s", exc)
+            degraded = ModelArmorVerdict(
+                is_clean=False,
+                blocked=False,
+                action="DEGRADE",
+                degraded=True,
+                reason=f"Model Armor call failed ({type(exc).__name__})",
+                latency_ms=0.0,
+            )
+            return degraded, None, None, {}
+
+        sanitized_text: Optional[str] = None
+        tokenized_text: Optional[str] = None
+        pii_mapping: Dict[str, str] = {}
+
+        if ma_verdict is not None:
+            try:
+                findings = _extract_sdp_findings(ma_verdict)
+                if findings:
+                    tok_text, tok_map = tokenize_pii(text, findings)
+                    if tok_map or tok_text != text:
+                        tokenized_text = tok_text
+                        pii_mapping = tok_map
+                        sanitized_text = tokenized_text
+                    elif ma_verdict.sanitized_text:
+                        sanitized_text = ma_verdict.sanitized_text
+                elif ma_verdict.sanitized_text:
+                    sanitized_text = ma_verdict.sanitized_text
+            except Exception as exc:
+                logger.warning("PII tokenization failed on Model Armor findings: %s", exc)
+
+        return ma_verdict, sanitized_text, tokenized_text, pii_mapping
+
     def evaluate(
         self,
         text: str,
@@ -436,6 +489,13 @@ class TriagePolicy:
                 urgency=tier0.urgency,
             )
             details_t0: Dict[str, Any] = {"category": tier0.category}
+            tokenized_text: Optional[str] = None
+            pii_mapping: Dict[str, str] = {}
+            if self.model_armor_client is not None:
+                _, sanitized_text, tokenized_text, pii_mapping = self._run_model_armor(text)
+                if sanitized_text:
+                    details_t0["sanitized_text"] = sanitized_text
+
             return RouterDecision(
                 ticket_id=t_id,
                 session_id=session_id,
@@ -449,6 +509,8 @@ class TriagePolicy:
                 reason=tier0.reason or "tier0_rule_match",
                 degraded=False,
                 details=details_t0,
+                tokenized_text=tokenized_text,
+                pii_mapping=pii_mapping,
             )
 
         if tier0.matched and not tier0.escalate and tier0.category in ("greeting", "pleasantry"):
@@ -470,15 +532,18 @@ class TriagePolicy:
         ma_verdict: Optional[ModelArmorVerdict] = None
         s1_pred: Optional[RouterPrediction] = None
         s1_error: Optional[str] = None
+        sanitized_text: Optional[str] = None
+        tokenized_text: Optional[str] = None
+        pii_mapping: Dict[str, str] = {}
 
         # ---------------------------------------------------------------------
         # Tier 1 & Model Armor: Concurrent Execution (REQ-MA-003, REQ-MA-005)
         # ---------------------------------------------------------------------
         if self.model_armor_client is not None:
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                ma_future = executor.submit(self.model_armor_client.sanitize_user_prompt, text)
+                ma_future = executor.submit(self._run_model_armor, text)
                 s1_future = executor.submit(self._call_s1, text)
-                ma_verdict = ma_future.result()
+                ma_verdict, sanitized_text, tokenized_text, pii_mapping = ma_future.result()
                 s1_pred, s1_error = s1_future.result()
         else:
             s1_pred, s1_error = self._call_s1(text)
@@ -487,22 +552,8 @@ class TriagePolicy:
         # Model Armor Security Gate (Pre-LLM / Pre-A2A) (REQ-MA-003)
         # ---------------------------------------------------------------------
         ma_details: Dict[str, Any] = {}
-        sanitized_text: Optional[str] = None
-        tokenized_text: Optional[str] = None
-        pii_mapping: Dict[str, str] = {}
         if ma_verdict is not None:
             ma_details = ma_verdict.to_summary_dict()
-            findings = _extract_sdp_findings(ma_verdict)
-            if findings:
-                tok_text, tok_map = tokenize_pii(text, findings)
-                if tok_map or tok_text != text:
-                    tokenized_text = tok_text
-                    pii_mapping = tok_map
-                    sanitized_text = tokenized_text
-                elif ma_verdict.sanitized_text:
-                    sanitized_text = ma_verdict.sanitized_text
-            elif ma_verdict.sanitized_text:
-                sanitized_text = ma_verdict.sanitized_text
 
             # 1. Prompt Injection, Jailbreak, or Malicious URI -> Hard Security Escalation
             # NEVER forwarded to neural LLM tiers or FaqResolverAgent.

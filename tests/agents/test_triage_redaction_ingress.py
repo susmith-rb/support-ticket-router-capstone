@@ -12,7 +12,11 @@ from typing import Any, Dict, List, Optional
 
 from ticket_router.agents.triage_router.agent import TriageRouterAgent
 from ticket_router.agents.triage_router.mcp_client import InMemoryTicketDbMcpClient
-from ticket_router.agents.triage_router.policy import RouterThresholds, TriagePolicy
+from ticket_router.agents.triage_router.policy import (
+    RouterThresholds,
+    TriagePolicy,
+    VerifiedFacts,
+)
 from ticket_router.handoff.human_handoff import HumanHandoff
 from ticket_router.handoff.publisher import FakePublisher
 from ticket_router.models.router_s1_client import RouterPrediction
@@ -326,3 +330,112 @@ def test_triage_redaction_escalation_path(monkeypatch):
         aad=ticket_id.encode("utf-8"),
     )
     assert json.loads(decrypted.decode("utf-8")) == {"[EMAIL_ADDRESS_1]": email}
+
+
+# REQ-STORE-009
+def test_triage_redaction_tier0_urgent_policy_tokenizes_pii():
+    """Verify Tier 0 urgent escalation runs Model Armor and returns tokenized PII."""
+    email = "jane.verify@example.com"
+    user_msg = f"URGENT: I need to speak to a human representative. Reach me at {email}."
+    fake_ma = FakeModelArmorWithSdp(targets=[email])
+    policy = TriagePolicy(
+        thresholds=RouterThresholds(),
+        model_armor_client=fake_ma,
+    )
+    decision = policy.evaluate(
+        text=user_msg,
+        session_id="session-t0-urgent",
+        customer_id="cust-1001",
+        verified_facts=VerifiedFacts(),
+    )
+    assert decision.tier == "tier0_rules"
+    assert decision.escalate is True
+    assert decision.decision == "escalate"
+    assert decision.tokenized_text is not None
+    assert "[EMAIL_ADDRESS_1]" in decision.tokenized_text
+    assert email not in decision.tokenized_text
+    assert decision.pii_mapping == {"[EMAIL_ADDRESS_1]": email}
+    assert decision.details.get("sanitized_text") is not None
+
+
+# REQ-STORE-009
+def test_triage_redaction_tier0_urgent_agent_persists_redacted_body_and_envelope(monkeypatch):
+    """Verify agent persists tokenized body without raw email and saves KMS redaction map for Tier 0."""
+    key_name = "projects/test/locations/us-central1/keyRings/test/cryptoKeys/redaction-map-wrapper"
+    monkeypatch.setenv("REDACTION_KMS_KEY", key_name)
+
+    kms_session = MockKmsSession()
+    cipher = EnvelopeCipher(kms_key_name=key_name, session=kms_session)
+    sealer = RedactionSealer(cipher=cipher)
+
+    email = "jane.verify@example.com"
+    user_msg = f"URGENT: Please have a representative call me. Reach me at {email}."
+
+    fake_ma = FakeModelArmorWithSdp(targets=[email])
+    policy = TriagePolicy(
+        thresholds=RouterThresholds(),
+        model_armor_client=fake_ma,
+    )
+    mcp_client = InMemoryTicketDbMcpClient()
+    handoff = HumanHandoff(ticket_db_client=mcp_client, publisher=FakePublisher())
+
+    agent = TriageRouterAgent(
+        policy=policy,
+        mcp_client=mcp_client,
+        human_handoff=handoff,
+        redaction_sealer=sealer,
+        lazy_init=False,
+    )
+
+    ticket_id = "test-ticket-t0-urgent-agent"
+    resp = agent.triage(
+        session_id="session-t0-urgent",
+        ticket_id=ticket_id,
+        message_text=user_msg,
+    )
+
+    assert resp is not None
+    assert len(mcp_client.tickets) > 0
+    ticket_row = list(mcp_client.tickets.values())[0]
+
+    # In-memory MCP client persisted body has no raw email and contains [EMAIL_ADDRESS_1]
+    assert "[EMAIL_ADDRESS_1]" in ticket_row["body_redacted"]
+    assert email not in ticket_row["body_redacted"]
+
+    # Redaction map is saved when REDACTION_KMS_KEY + fake sealer are configured
+    assert ticket_id in mcp_client.redaction_maps
+    stored_maps = mcp_client.redaction_maps[ticket_id]
+    assert len(stored_maps) == 1
+    stored_map = stored_maps[0]
+
+    decrypted_bytes = cipher.decrypt(
+        stored_map["envelope_b64"].encode("ascii"),
+        aad=ticket_id.encode("utf-8"),
+    )
+    decrypted_map = json.loads(decrypted_bytes.decode("utf-8"))
+    assert decrypted_map == {"[EMAIL_ADDRESS_1]": email}
+
+
+# REQ-STORE-009
+def test_triage_redaction_tier0_urgent_model_armor_raising_still_escalates():
+    """Verify Model Armor raising on the tier0 path still returns the escalate decision."""
+    class RaisingModelArmor:
+        def sanitize_user_prompt(self, text: str) -> ModelArmorVerdict:
+            raise RuntimeError("Simulated Model Armor service error")
+
+    user_msg = "URGENT: I need to speak to a human representative. Reach me at jane.verify@example.com."
+    policy = TriagePolicy(
+        thresholds=RouterThresholds(),
+        model_armor_client=RaisingModelArmor(),
+    )
+    decision = policy.evaluate(
+        text=user_msg,
+        session_id="session-t0-raising",
+        customer_id="cust-1001",
+        verified_facts=VerifiedFacts(),
+    )
+    assert decision.tier == "tier0_rules"
+    assert decision.decision == "escalate"
+    assert decision.escalate is True
+    assert decision.tokenized_text is None
+    assert decision.pii_mapping == {}

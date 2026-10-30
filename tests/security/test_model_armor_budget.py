@@ -83,9 +83,9 @@ def test_latency_budget_and_short_circuit():
     assert dec_t0.tier == "tier0_rules"
     assert dec_t0.escalate is True
     assert elapsed_tier0_ms < 10.0  # In-memory regex evaluation in < 1 ms
-    # Critical invariant: Neither router-s1 nor Model Armor is called on Tier 0 match
+    # Invariant: router-s1 is short-circuited; Model Armor runs for PII tokenization (REQ-STORE-009)
     mock_s1.route.assert_not_called()
-    assert len(ma_fake_uncalled.prompt_calls) == 0
+    assert len(ma_fake_uncalled.prompt_calls) == 1
 
     # 3. Degraded Telemetry Invariant on Timeout/Outage
     ma_outage = FakeModelArmorClient(fail_with_timeout=True)

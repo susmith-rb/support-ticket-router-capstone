@@ -36,7 +36,8 @@ module "project_services" {
     "modelarmor.googleapis.com",
     "cloudtrace.googleapis.com",
     "telemetry.googleapis.com",
-    "cloudkms.googleapis.com"
+    "cloudkms.googleapis.com",
+    "dlp.googleapis.com"
   ]
 }
 

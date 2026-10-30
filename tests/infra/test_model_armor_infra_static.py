@@ -3,6 +3,7 @@
 # REQ-MA-001: Declarative Terraform Infrastructure, Template & Least-Privilege IAM
 """
 
+import re
 from pathlib import Path
 
 import yaml
@@ -48,10 +49,11 @@ def test_model_armor_template_and_iam():
     for cat in ["SEXUALLY_EXPLICIT", "HATE_SPEECH", "HARASSMENT", "DANGEROUS"]:
         assert f'filter_type      = "{cat}"' in main_tf
 
-    # 6. Basic SDP settings
+    # 6. Advanced SDP settings with inspect template
     assert "sdp_settings" in main_tf
-    assert "basic_config" in main_tf
-    assert 'filter_enforcement = "ENABLED"' in main_tf
+    assert "advanced_config" in main_tf
+    assert "inspect_template" in main_tf
+    assert "google_data_loss_prevention_inspect_template" in main_tf
 
     # 7. Least-privilege IAM grants (roles/modelarmor.user for triage and faq)
     assert 'resource "google_project_iam_member" "model_armor_user_triage"' in main_tf
@@ -63,6 +65,7 @@ def test_model_armor_template_and_iam():
     # 8. Outputs
     assert 'output "template_id"' in outputs_tf
     assert 'output "template_name"' in outputs_tf
+    assert 'output "inspect_template_id"' in outputs_tf
 
     # 9. Root Terraform wiring
     root_main_content = ROOT_MAIN.read_text(encoding="utf-8")
@@ -76,6 +79,55 @@ def test_model_armor_template_and_iam():
     root_outputs_content = ROOT_OUTPUTS.read_text(encoding="utf-8")
     assert "model_armor_template_id" in root_outputs_content
     assert "model_armor_template_name" in root_outputs_content
+
+
+def test_model_armor_advanced_sdp_and_inspect_template():
+    """Verify Model Armor advanced SDP inspect template, info types, and service agent IAM."""
+    main_tf = (MOD_DIR / "main.tf").read_text(encoding="utf-8")
+    outputs_tf = (MOD_DIR / "outputs.tf").read_text(encoding="utf-8")
+
+    # 1. Cloud DLP inspect template declaration & parent
+    assert 'resource "google_data_loss_prevention_inspect_template" "support_router_inspect"' in main_tf
+    assert re.search(r'parent\s*=\s*"projects/\$\{var\.project_id\}/locations/\$\{var\.region\}"', main_tf)
+
+    # 2. Inspect config attributes (whitespace-tolerant)
+    assert re.search(r'min_likelihood\s*=\s*"LIKELY"', main_tf)
+    assert re.search(r'include_quote\s*=\s*false', main_tf)
+
+    # 3. Required info types (EMAIL_ADDRESS, PHONE_NUMBER, US_SOCIAL_SECURITY_NUMBER, CREDIT_CARD_NUMBER, STREET_ADDRESS, IBAN_CODE)
+    required_info_types = [
+        "EMAIL_ADDRESS",
+        "PHONE_NUMBER",
+        "US_SOCIAL_SECURITY_NUMBER",
+        "CREDIT_CARD_NUMBER",
+        "STREET_ADDRESS",
+        "IBAN_CODE",
+    ]
+    for it in required_info_types:
+        assert re.search(rf'name\s*=\s*"{it}"', main_tf), f"Missing info type: {it}"
+
+    # 4. Advanced config wiring in google_model_armor_template
+    assert re.search(
+        r'advanced_config\s*\{\s*inspect_template\s*=\s*google_data_loss_prevention_inspect_template\.support_router_inspect\.id',
+        main_tf,
+    )
+
+    # 5. Model Armor service agent DLP IAM grants
+    assert "roles/dlp.user" in main_tf
+    assert "roles/dlp.reader" in main_tf
+    assert re.search(
+        r'serviceAccount:service-\$\{data\.google_project\.project\.number\}@gcp-sa-modelarmor\.iam\.gserviceaccount\.com',
+        main_tf,
+    )
+
+    # 6. Depends-on dependency ordering
+    assert "depends_on" in main_tf
+    assert "google_data_loss_prevention_inspect_template.support_router_inspect" in main_tf
+    assert "google_project_iam_member.model_armor_dlp_user" in main_tf
+    assert "google_project_iam_member.model_armor_dlp_reader" in main_tf
+
+    # 7. Outputs
+    assert "inspect_template_id" in outputs_tf
 
 
 def test_deploy_contracts_model_armor_configuration():
