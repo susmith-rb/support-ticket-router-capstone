@@ -23,10 +23,9 @@ spec:
         app: faq-resolver
         app.kubernetes.io/name: faq-resolver
         app.kubernetes.io/part-of: support-ticket-router
-      annotations:
-        iam.gke.io/identity: "spiffe://agents.global.org-349636765856.system.id.goog/*"
-        iam.gke.io/inject-podcertificates: "true"
-        iam.gke.io/spiffe-identity-type: "agent-identity"
+      # REQ-AUTH-008: SPIFFE agent-identity pod annotations live in ../faq-resolver-patches/agent-identity.patch.yaml.
+      # They need GKE nodes >= 1.37.0-gke.3503000 (ClusterTrustBundle projection); on older
+      # nodes the pod never starts ("ClusterTrustBundle projection is not supported").
     spec:
       serviceAccountName: ksa-faq
       containers:
@@ -76,7 +75,7 @@ spec:
         - name: REQUIRE_REAL_DEPS
           value: "1"
         - name: FAQ_AGENT_IDENTITY
-          value: "1"
+          value: "0"
         # Discovery Engine SearchClient uses urllib.request without mTLS support;
         # runtime bound tokens disabled so google-auth requests unbound tokens.
         - name: GOOGLE_API_ENABLE_RUNTIME_BOUND_TOKEN

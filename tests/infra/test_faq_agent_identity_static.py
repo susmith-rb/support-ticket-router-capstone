@@ -30,6 +30,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 K8S_DEPLOYMENT = REPO_ROOT / "deploy" / "k8s" / "faq-resolver" / "deployment.yaml"
+K8S_AGENT_IDENTITY_PATCH = REPO_ROOT / "deploy" / "k8s" / "faq-resolver-patches" / "agent-identity.patch.yaml"
 TF_DIR = REPO_ROOT / "deploy" / "terraform" / "single-project"
 MOD_DIR = TF_DIR / "modules"
 
@@ -73,9 +74,20 @@ def test_faq_deployment_requests_spiffe_agent_identity() -> None:
     pod_meta = template.get("metadata", {})
     pod_annotations = pod_meta.get("annotations", {})
 
-    assert pod_annotations.get("iam.gke.io/identity") == "spiffe://agents.global.org-349636765856.system.id.goog/*"
-    assert pod_annotations.get("iam.gke.io/inject-podcertificates") == "true"
-    assert pod_annotations.get("iam.gke.io/spiffe-identity-type") == "agent-identity"
+    # The SPIFFE pod annotations are applied by CD as a strategic-merge patch only when every
+    # node supports ClusterTrustBundle projection (>= 1.37.0-gke.3503000); the base manifest
+    # must stay runnable on older nodes.
+    assert "iam.gke.io/inject-podcertificates" not in pod_annotations
+    patch = yaml.safe_load(K8S_AGENT_IDENTITY_PATCH.read_text(encoding="utf-8"))
+    patch_annotations = patch["spec"]["template"]["metadata"]["annotations"]
+    assert patch_annotations.get("iam.gke.io/identity") == "spiffe://agents.global.org-349636765856.system.id.goog/*"
+    assert patch_annotations.get("iam.gke.io/inject-podcertificates") == "true"
+    assert patch_annotations.get("iam.gke.io/spiffe-identity-type") == "agent-identity"
+    patch_env = {e["name"]: e["value"] for e in patch["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert patch_env.get("FAQ_AGENT_IDENTITY") == "1"
+    cd_yaml = (REPO_ROOT / "cicd" / "cloudbuild-deploy.yaml").read_text(encoding="utf-8")
+    assert "faq-resolver-patches/agent-identity.patch.yaml" in cd_yaml
+    assert 'MIN_NODE="v1.37.0-gke.3503000"' in cd_yaml
 
     spec = template.get("spec", {})
     assert spec.get("serviceAccountName") == "ksa-faq"
@@ -85,7 +97,7 @@ def test_faq_deployment_requests_spiffe_agent_identity() -> None:
     faq_c = next((c for c in containers if c.get("name") == "faq-resolver"), containers[0])
     env_vars = {item["name"]: item.get("value") for item in faq_c.get("env", []) if "name" in item}
 
-    assert env_vars.get("FAQ_AGENT_IDENTITY") == "1"
+    assert env_vars.get("FAQ_AGENT_IDENTITY") == "0"  # switched to "1" by the patch
     assert env_vars.get("GOOGLE_API_ENABLE_RUNTIME_BOUND_TOKEN") == "false"
 
 

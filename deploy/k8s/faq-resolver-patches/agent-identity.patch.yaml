@@ -1,0 +1,18 @@
+# deploy/k8s/faq-resolver-patches/agent-identity.patch.yaml
+# Kept outside deploy/k8s/faq-resolver/ because CD runs `kubectl apply -f` on that directory.
+# REQ-AUTH-008: GKE Agent Identity (SPIFFE) for FaqResolver. Strategic-merge patch, applied by
+# CD only when every node in support-agents runs >= 1.37.0-gke.3503000:
+#   kubectl -n faq-resolver patch deployment faq-resolver --type strategic --patch-file agent-identity.patch.yaml
+spec:
+  template:
+    metadata:
+      annotations:
+        iam.gke.io/identity: "spiffe://agents.global.org-349636765856.system.id.goog/*"
+        iam.gke.io/inject-podcertificates: "true"
+        iam.gke.io/spiffe-identity-type: "agent-identity"
+    spec:
+      containers:
+      - name: faq-resolver
+        env:
+        - name: FAQ_AGENT_IDENTITY
+          value: "1"
