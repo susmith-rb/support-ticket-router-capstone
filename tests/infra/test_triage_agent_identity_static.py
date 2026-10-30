@@ -216,13 +216,18 @@ def test_triage_agent_principal_least_privilege_boundaries() -> None:
     assert "roles/iam.serviceAccountTokenCreator" not in iam_main
     assert "roles/aiplatform.user" not in iam_main
 
-    # Discovery Engine viewer belongs solely to sa-faq
+    # Discovery Engine viewer belongs solely to FaqResolver (sa-faq + its SPIFFE principal, REQ-AUTH-008)
     faq_de_block = _extract_block(
         iam_main,
         r'resource\s+"google_project_iam_member"\s+"faq_discovery_engine_viewer"',
     )
     assert "triage_agent_principal" not in faq_de_block
-    assert iam_main.count("roles/discoveryengine.viewer") == 1
+    faq_agent_de_block = _extract_block(
+        iam_main,
+        r'resource\s+"google_project_iam_member"\s+"faq_agent_discovery_engine_viewer"',
+    )
+    assert "var.faq_agent_principal" in faq_agent_de_block
+    assert iam_main.count("roles/discoveryengine.viewer") == 2
 
 
 # REQ-AUTH-004

@@ -95,6 +95,23 @@ class ResolveCustomerResponse(BaseModel):
     linked: bool = Field(..., description="True if identity is mapped to a customer account")
 
 
+class SaveRedactionMapRequest(BaseModel):
+    """Input payload for save_redaction_map tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ticket_id: str = Field(..., description="Target ticket identifier")
+    customer_id: str = Field(..., description="Customer identifier")
+    envelope_b64: str = Field(..., description="Base64-encoded KMS envelope")
+    key_id: str = Field(default="kms-envelope-v1", description="Identifier of the key or envelope")
+
+
+class SaveRedactionMapResponse(BaseModel):
+    """Output payload for save_redaction_map tool."""
+
+    saved: bool = Field(default=True, description="True if redaction map saved successfully")
+
+
 def get_tool_schemas() -> Dict[str, Any]:
     """Return JSON schemas for ticket-db-mcp tools per REQ-AGENT-010."""
     return {
@@ -103,6 +120,12 @@ def get_tool_schemas() -> Dict[str, Any]:
             "description": "Upsert support ticket idempotently using session_id:message_hash.",
             "parameters": UpsertTicketRequest.model_json_schema(),
             "returns": UpsertTicketResponse.model_json_schema(),
+        },
+        "save_redaction_map": {
+            "name": "save_redaction_map",
+            "description": "Store KMS envelope-encrypted PII redaction map (REQ-STORE-009).",
+            "parameters": SaveRedactionMapRequest.model_json_schema(),
+            "returns": SaveRedactionMapResponse.model_json_schema(),
         },
         "claim_ticket": {
             "name": "claim_ticket",

@@ -99,6 +99,7 @@ module "cloudbuild" {
   enable_cd_trigger           = var.enable_cd_trigger
   cd_approvers                = var.cd_approvers
   triage_resource_name        = var.triage_resource_name
+  triage_agent_gateway        = var.triage_agent_gateway
 
   depends_on = [module.project_services]
 }
@@ -126,9 +127,10 @@ resource "google_storage_bucket_iam_member" "discovery_engine_corpus_reader" {
 # -----------------------------------------------------------------------------
 
 module "pubsub" {
-  source     = "./modules/pubsub"
-  project_id = var.project_id
-  labels     = var.labels
+  source        = "./modules/pubsub"
+  project_id    = var.project_id
+  push_endpoint = "${var.human_queue_url}/pubsub/escalations"
+  labels        = var.labels
 
   depends_on = [module.project_services]
 }
@@ -170,6 +172,7 @@ module "agents_iam" {
   corpus_bucket_name               = data.google_storage_bucket.corpus_bucket.name
   enable_re_service_agent_bindings = var.enable_re_service_agent_bindings
   triage_agent_principal           = var.triage_agent_principal
+  faq_agent_principal              = var.faq_agent_principal
 
   depends_on = [module.project_services, module.pubsub, module.cloud_sql, module.router_endpoint]
 }
@@ -180,9 +183,11 @@ module "kms_identity" {
   region           = var.region
   signer_members   = compact(["serviceAccount:${module.agents_iam.sa_triage_email}", var.triage_agent_principal])
   verifier_members = ["serviceAccount:${module.cloud_sql.sa_order_mcp_email}"]
+  redaction_encrypter_members = compact(["serviceAccount:${module.agents_iam.sa_triage_email}", var.triage_agent_principal])
+  redaction_decrypter_members = ["serviceAccount:${module.cloud_sql.sa_queue_email}"]
   labels           = var.labels
 
-  depends_on = [module.project_services]
+  depends_on = [module.project_services, module.agents_iam, module.cloud_sql]
 }
 
 module "cloud_run_services" {
@@ -201,9 +206,27 @@ module "cloud_run_services" {
   max_instance_count        = var.cloud_run_max_instances
   cct_key_prefix            = module.kms_identity.key_prefix
   cct_mode                  = var.cct_mode
+  push_audience             = "${var.human_queue_url}/pubsub/escalations"
+  sa_queue_push_email       = module.pubsub.sa_queue_push_email
+  faq_agent_principal       = var.faq_agent_principal
+  allowed_caller_spiffe_ids = var.allowed_caller_spiffe_ids
+  redaction_kms_key         = module.kms_identity.redaction_map_wrapper_key_id
+  purge_audience            = "${var.human_queue_url}/internal/purge-expired-redaction-maps"
+  purge_invoker_email       = "sa-redaction-purge@${var.project_id}.iam.gserviceaccount.com"
   labels                    = var.labels
 
   depends_on = [module.project_services, module.cloud_sql, module.agents_iam, module.kms_identity]
+}
+
+module "redaction_purge" {
+  source                   = "./modules/redaction-purge"
+  project_id               = var.project_id
+  region                   = var.region
+  human_queue_url          = var.human_queue_url
+  human_queue_service_name = "human-queue"
+  labels                   = var.labels
+
+  depends_on = [module.project_services, module.cloud_run_services]
 }
 
 module "identity" {
@@ -224,6 +247,7 @@ module "model_armor" {
   labels          = var.labels
 
   triage_agent_principal = var.triage_agent_principal
+  faq_agent_principal    = var.faq_agent_principal
 
   depends_on = [module.project_services, module.agents_iam]
 }

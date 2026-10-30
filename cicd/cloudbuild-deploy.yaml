@@ -23,6 +23,7 @@ substitutions:
   _GKE_CLUSTER: 'support-agents'
   _FAQ_DOMAIN: 'faq.8-232-184-225.sslip.io'
   _FORCE_AGENT_ENGINE: 'false'
+  _TRIAGE_AGENT_GATEWAY: ''
 
 steps:
   # ===========================================================================
@@ -249,8 +250,14 @@ steps:
           exit 0
         elif [ "$${RC}" -eq 0 ]; then
           # REQ-AUTH-004: production TriageRouter runs under its SPIFFE agent identity.
+          # REQ-AUTH-007: optional Agent Gateway egress governance.
+          GW_FLAG=()
+          if [ -n "${_TRIAGE_AGENT_GATEWAY}" ]; then
+            GW_FLAG=(--agent-gateway "${_TRIAGE_AGENT_GATEWAY}")
+          fi
           $${PY} scripts/deploy_agents/deploy_triage_agent_runtime.py --identity-type agent \
-            --resource-name "${_TRIAGE_RESOURCE}" --project "${PROJECT_ID}" --region "${_REGION}"
+            --resource-name "${_TRIAGE_RESOURCE}" --project "${PROJECT_ID}" --region "${_REGION}" \
+            "$${GW_FLAG[@]}"
           $${PY} scripts/deploy_agents/ae_fingerprint.py record \
             --bucket "${_CORPUS_BUCKET}" --sha "${SHORT_SHA}"
         else

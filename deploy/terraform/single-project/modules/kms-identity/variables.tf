@@ -21,6 +21,18 @@ variable "verifier_members" {
   default     = []
 }
 
+variable "redaction_encrypter_members" {
+  description = "List of IAM members granted roles/cloudkms.cryptoKeyEncrypter on the redaction map wrapper key"
+  type        = list(string)
+  default     = []
+}
+
+variable "redaction_decrypter_members" {
+  description = "List of IAM members granted roles/cloudkms.cryptoKeyDecrypter on the redaction map wrapper key"
+  type        = list(string)
+  default     = []
+}
+
 variable "labels" {
   description = "Resource labels applied to KMS resources"
   type        = map(string)

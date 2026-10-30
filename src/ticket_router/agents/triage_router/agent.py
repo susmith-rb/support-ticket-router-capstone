@@ -55,6 +55,8 @@ from ticket_router.common.observability import (
 from ticket_router.common.resilience import TIER2_DEADLINE_S, TIER2_HEDGE_AFTER_S
 from ticket_router.common.settings import Settings
 from ticket_router.config.models import model_id, model_location, model_thinking_level
+from ticket_router.handoff.human_handoff import HumanHandoff
+from ticket_router.handoff.publisher import FakePublisher, PubSubRestPublisher
 from ticket_router.identity import resolve_identity
 from ticket_router.identity.customer_token import (
     KmsSigner,
@@ -62,6 +64,7 @@ from ticket_router.identity.customer_token import (
     mint_customer_context_token,
 )
 from ticket_router.models.router_s1_client import RouterPrediction, RouterS1Client
+from ticket_router.security.envelope import RedactionSealer
 from ticket_router.security.model_armor import (
     ModelArmorClient,
     ModelArmorClientProtocol,
@@ -331,11 +334,15 @@ class TriageRouterAgent:
         cct_signer: Optional[Signer] = None,
         signer: Optional[Signer] = None,
         settings: Optional[Settings] = None,
+        human_handoff: Optional[HumanHandoff] = None,
+        redaction_sealer: Optional[RedactionSealer] = None,
     ) -> None:
         self._policy = policy
         self._mcp_client = mcp_client
         self._a2a_client = a2a_client
         self._model_armor_client = model_armor_client
+        self._human_handoff = human_handoff
+        self._redaction_sealer = redaction_sealer
         self.logger = logger or StructuredJsonLogger(name="triage_router")
         self.lazy_init = lazy_init
         self._injected_signer: Optional[Signer] = cct_signer if cct_signer is not None else signer
@@ -347,7 +354,7 @@ class TriageRouterAgent:
 
     def _ensure_initialized(self) -> None:
         """Initialize dependencies; validates environment settings when require_real_deps is True."""
-        if not self.lazy_init and self._policy is not None and self._mcp_client is not None and self._a2a_client is not None:
+        if not self.lazy_init and self._policy is not None and self._mcp_client is not None and self._a2a_client is not None and self._human_handoff is not None:
             return
 
         settings = Settings.from_env()
@@ -394,6 +401,20 @@ class TriageRouterAgent:
                 self._mcp_client = InMemoryTicketDbMcpClient()
             if self._a2a_client is None:
                 self._a2a_client = InMemoryA2AClient()
+
+        if self._human_handoff is None:
+            if settings.require_real_deps:
+                pub = PubSubRestPublisher(
+                    project=settings.project or os.environ.get("GOOGLE_CLOUD_PROJECT"),
+                    topic=os.environ.get("HUMAN_QUEUE_TOPIC", "human-queue"),
+                )
+            else:
+                pub = FakePublisher()
+            self._human_handoff = HumanHandoff(
+                ticket_db_client=self._mcp_client,
+                publisher=pub,
+                escalated_by="triage_router",
+            )
         self.lazy_init = False
 
     @property
@@ -413,6 +434,12 @@ class TriageRouterAgent:
         self._ensure_initialized()
         assert self._a2a_client is not None
         return self._a2a_client
+
+    @property
+    def human_handoff(self) -> HumanHandoff:
+        self._ensure_initialized()
+        assert self._human_handoff is not None
+        return self._human_handoff
 
     def _mint_cct_if_verified(
         self,
@@ -499,6 +526,53 @@ class TriageRouterAgent:
         )
         return None
 
+    def _save_redaction_map_if_needed(
+        self,
+        *,
+        ticket_id: str,
+        customer_id: str,
+        mapping: Dict[str, str],
+    ) -> None:
+        """Seal and save KMS envelope-encrypted PII redaction map (REQ-STORE-009).
+
+        Never raises; failures log redaction_map_failed with ticket_id only.
+        """
+        if not mapping:
+            return
+
+        kms_key = os.environ.get("REDACTION_KMS_KEY", "").strip()
+        if not kms_key and self._redaction_sealer is None:
+            logger.warning(
+                json.dumps(
+                    {
+                        "event": "redaction_map_failed",
+                        "ticket_id": ticket_id,
+                    },
+                    separators=(",", ":"),
+                )
+            )
+            return
+
+        try:
+            sealer = self._redaction_sealer or RedactionSealer(kms_key_name=kms_key)
+            envelope_b64, key_id = sealer.seal(ticket_id=ticket_id, mapping=mapping)
+            self.mcp_client.save_redaction_map(
+                ticket_id=ticket_id,
+                customer_id=customer_id,
+                envelope_b64=envelope_b64,
+                key_id=key_id,
+            )
+        except Exception:
+            logger.warning(
+                json.dumps(
+                    {
+                        "event": "redaction_map_failed",
+                        "ticket_id": ticket_id,
+                    },
+                    separators=(",", ":"),
+                )
+            )
+
     def triage(
         self,
         session_id: str,
@@ -575,62 +649,94 @@ class TriageRouterAgent:
                 identity_reason=identity_reason,
             )
 
-            # Determine body_redacted (use Model Armor de-identified text if present)
+            # Determine body_redacted (use reversible tokenized text if present, else sanitized_text)
             body_to_persist = message_text
-            if decision.details.get("sanitized_text"):
+            if decision.tokenized_text:
+                body_to_persist = decision.tokenized_text
+            elif decision.details.get("sanitized_text"):
                 body_to_persist = decision.details["sanitized_text"]
+            pii_mapping = decision.pii_mapping or {}
+
+            def _clean_decision_dict(dec: RouterDecision) -> Dict[str, Any]:
+                d = asdict(dec)
+                d.pop("pii_mapping", None)
+                d.pop("tokenized_text", None)
+                return d
 
             calming_ack: Optional[str] = None
             handoff_resp: Optional[Dict[str, Any]] = None
 
             # 2. Branch: Escalation path vs. Auto-RAG path
             if decision.decision == "escalate":
+                # REQ-AGENT-030: Shared HumanHandoff workflow (persist -> publish -> calming ack)
+                category = decision.details.get("category")
+                handoff_res = self.human_handoff.escalate(
+                    ticket_id=t_id,
+                    queue=decision.queue,
+                    reason=decision.reason,
+                    escalated_by="triage_router",
+                    degraded=decision.degraded,
+                    traceparent=traceparent,
+                    customer_id=ticket_customer_id,
+                    session_id=session_id,
+                    body_redacted=body_to_persist,
+                    channel=channel,
+                    category=category,
+                    idempotency_key=idempotency_key,
+                    decision_payload=_clean_decision_dict(decision),
+                )
                 if decision.reason == "model_armor_security_trigger":
                     calming_ack = (
                         f"Thank you for contacting support. We have logged ticket #{t_id} and our "
                         "support team is reviewing your inquiry. A representative will follow up with you shortly."
                     )
                 else:
-                    calming_ack = render_calming_acknowledgement(
-                        queue=decision.queue,
-                        ticket_id=t_id,
-                        category=decision.details.get("category"),
-                    )
+                    calming_ack = handoff_res.calming_ack
 
-                self._safe_upsert(
-                    ticket_id=t_id,
-                    idempotency_key=idempotency_key,
-                    customer_id=ticket_customer_id,
-                    channel=channel,
-                    body_redacted=body_to_persist,
-                    decision=asdict(decision),
-                )
+                if handoff_res.persisted:
+                    self._save_redaction_map_if_needed(
+                        ticket_id=t_id,
+                        customer_id=ticket_customer_id,
+                        mapping=pii_mapping,
+                    )
             elif decision.decision == "reject_oos":
                 calming_ack = render_out_of_scope_refusal(ticket_id=t_id)
-                self._safe_upsert(
+                upsert_res = self._safe_upsert(
                     ticket_id=t_id,
                     idempotency_key=idempotency_key,
                     customer_id=ticket_customer_id,
                     channel=channel,
                     body_redacted=body_to_persist,
-                    decision=asdict(decision),
+                    decision=_clean_decision_dict(decision),
                 )
+                if upsert_res is not None:
+                    self._save_redaction_map_if_needed(
+                        ticket_id=t_id,
+                        customer_id=ticket_customer_id,
+                        mapping=pii_mapping,
+                    )
             elif decision.details.get("category") in ("greeting", "pleasantry"):
-                self._safe_upsert(
+                upsert_res = self._safe_upsert(
                     ticket_id=t_id,
                     idempotency_key=idempotency_key,
                     customer_id=ticket_customer_id,
                     channel=channel,
                     body_redacted=body_to_persist,
-                    decision=asdict(decision),
+                    decision=_clean_decision_dict(decision),
                 )
+                if upsert_res is not None:
+                    self._save_redaction_map_if_needed(
+                        ticket_id=t_id,
+                        customer_id=ticket_customer_id,
+                        mapping=pii_mapping,
+                    )
                 handoff_resp = {
                     "status": "AUTO_RESOLVED",
                     "route": "resolved",
                     "answer": render_conversational_reply(decision.details.get("category")),
                 }
             else:
-                decision_snapshot = asdict(decision)
+                decision_snapshot = _clean_decision_dict(decision)
                 upsert_ctx = contextvars.copy_context()
                 a2a_failed_exc: Optional[Exception] = None
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as upsert_pool:
@@ -666,17 +772,43 @@ class TriageRouterAgent:
                         try:
                             handoff_resp = self.a2a_client.handoff(payload)
                             if isinstance(handoff_resp, dict) and handoff_resp.get("status") == "ESCALATED":
-                                calming_ack = str(
-                                    handoff_resp.get("calming_ack")
-                                    or render_calming_acknowledgement(
-                                        queue=str(handoff_resp.get("queue", "human-standard")),
-                                        ticket_id=t_id,
+                                if handoff_resp.get("handoff_done"):
+                                    # REQ-AGENT-030: FaqResolver completed HumanHandoff; do not publish again
+                                    calming_ack = str(
+                                        handoff_resp.get("calming_ack")
+                                        or render_calming_acknowledgement(
+                                            queue=str(handoff_resp.get("queue", "human-standard")),
+                                            ticket_id=t_id,
+                                        )
                                     )
-                                )
+                                else:
+                                    # Fallback when FaqResolver does not handle handoff directly
+                                    handoff_res = self.human_handoff.escalate(
+                                        ticket_id=t_id,
+                                        queue=str(handoff_resp.get("queue", "human-standard")),
+                                        reason=str(handoff_resp.get("reason", "faq_escalated")),
+                                        escalated_by="triage_router",
+                                        degraded=bool(handoff_resp.get("degraded", False)),
+                                        traceparent=traceparent,
+                                        customer_id=ticket_customer_id,
+                                        session_id=session_id,
+                                        body_redacted=body_to_persist,
+                                        channel=channel,
+                                        idempotency_key=idempotency_key,
+                                        decision_payload=_clean_decision_dict(decision),
+                                    )
+                                    calming_ack = handoff_res.calming_ack
                         except Exception as exc:
                             a2a_failed_exc = exc
                     finally:
-                        upsert_fut.result()
+                        upsert_res = upsert_fut.result()
+
+                if upsert_res is not None:
+                    self._save_redaction_map_if_needed(
+                        ticket_id=t_id,
+                        customer_id=ticket_customer_id,
+                        mapping=pii_mapping,
+                    )
 
                 if a2a_failed_exc is not None:
                     decision = replace(
@@ -687,24 +819,29 @@ class TriageRouterAgent:
                         degraded=True,
                         details={**decision.details, "a2a_error": type(a2a_failed_exc).__name__},
                     )
-                    calming_ack = render_calming_acknowledgement(
-                        queue=decision.queue,
+                    # REQ-AGENT-030: Route degraded A2A failure through HumanHandoff
+                    handoff_res = self.human_handoff.escalate(
                         ticket_id=t_id,
+                        queue=decision.queue,
+                        reason="a2a_handoff_failed",
+                        escalated_by="triage_router",
+                        degraded=True,
+                        traceparent=traceparent,
+                        customer_id=ticket_customer_id,
+                        session_id=session_id,
+                        body_redacted=body_to_persist,
+                        channel=channel,
+                        idempotency_key=idempotency_key,
+                        decision_payload=_clean_decision_dict(decision),
                     )
+                    calming_ack = handoff_res.calming_ack
                     handoff_resp = {
                         "status": "ESCALATED",
                         "queue": decision.queue,
                         "reason": "a2a_handoff_failed",
                         "calming_ack": calming_ack,
+                        "handoff_done": True,
                     }
-                    self._safe_upsert(
-                        ticket_id=t_id,
-                        idempotency_key=f"{idempotency_key}:a2a_degraded",
-                        customer_id=ticket_customer_id,
-                        channel=channel,
-                        body_redacted=body_to_persist,
-                        decision=asdict(decision),
-                    )
 
             elapsed_ms = (time.monotonic() - start_time) * 1000.0
 

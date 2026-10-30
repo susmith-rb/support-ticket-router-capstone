@@ -70,3 +70,9 @@ variable "triage_agent_principal" {
   default     = ""
 }
 
+variable "faq_agent_principal" {
+  description = "SPIFFE IAM principal (principal://...) for FaqResolver GKE Agent Identity (REQ-AUTH-008)"
+  type        = string
+  default     = ""
+}
+

@@ -49,6 +49,16 @@ class TicketDbMcpClientProtocol(Protocol):
         """Upsert ticket state idempotently. Returns {ticket_id, status}."""
         ...
 
+    def save_redaction_map(
+        self,
+        ticket_id: str,
+        customer_id: str,
+        envelope_b64: str,
+        key_id: str = "kms-envelope-v1",
+    ) -> Dict[str, Any]:
+        """Store KMS envelope-encrypted redaction map. Returns {saved: True}."""
+        ...
+
     def claim_ticket(self, ticket_id: str, agent_id: str) -> Dict[str, Any]:
         """Claim ticket for human operator review. Returns {success}."""
         ...
@@ -115,6 +125,10 @@ class InMemoryTicketDbMcpClient:
             ticket = self.tickets[existing_id]
             # Update decision / channel if changed
             ticket["decision"] = decision
+            if decision.get("decision") == "escalate":
+                ticket["status"] = "OPEN"
+                if decision.get("queue"):
+                    ticket["assigned_queue"] = decision.get("queue")
             return {"ticket_id": existing_id, "status": ticket["status"], "deduplicated": True}
 
         ticket_id = f"t_{uuid.uuid4().hex[:12]}"
@@ -133,6 +147,24 @@ class InMemoryTicketDbMcpClient:
         self.tickets[ticket_id] = record
         self.by_idempotency_key[idempotency_key] = ticket_id
         return {"ticket_id": ticket_id, "status": status, "deduplicated": False}
+
+    def save_redaction_map(
+        self,
+        ticket_id: str,
+        customer_id: str,
+        envelope_b64: str,
+        key_id: str = "kms-envelope-v1",
+    ) -> Dict[str, Any]:
+        if not hasattr(self, "redaction_maps"):
+            self.redaction_maps = {}
+        if ticket_id not in self.redaction_maps:
+            self.redaction_maps[ticket_id] = []
+        self.redaction_maps[ticket_id].append({
+            "customer_id": customer_id,
+            "envelope_b64": envelope_b64,
+            "key_id": key_id,
+        })
+        return {"saved": True}
 
     def claim_ticket(self, ticket_id: str, agent_id: str) -> Dict[str, Any]:
         if ticket_id not in self.tickets:
@@ -224,6 +256,23 @@ class HttpTicketDbMcpClient:
                 "channel": channel,
                 "body_redacted": body_redacted,
                 "decision": decision,
+            },
+        )
+
+    def save_redaction_map(
+        self,
+        ticket_id: str,
+        customer_id: str,
+        envelope_b64: str,
+        key_id: str = "kms-envelope-v1",
+    ) -> Dict[str, Any]:
+        return self._post_tool(
+            "save_redaction_map",
+            {
+                "ticket_id": ticket_id,
+                "customer_id": customer_id,
+                "envelope_b64": envelope_b64,
+                "key_id": key_id,
             },
         )
 

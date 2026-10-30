@@ -171,6 +171,35 @@ def _fetch_id_token_with_fallback(
     return _generate_id_token_via_iamcredentials(email, audience, session=session)
 
 
+def is_faq_agent_identity() -> bool:
+    """Return True if running under FaqResolver GKE Agent Identity (REQ-AUTH-008)."""
+    return (
+        os.environ.get("FAQ_AGENT_IDENTITY") == "1"
+        or os.path.exists("/var/run/secrets/workload-spiffe-credentials")
+    )
+
+
+def fetch_unbound_agent_identity_token(
+    audience: str,
+    request: Optional[Any] = None,
+) -> str:
+    """Fetch an unbound Google OIDC ID token for agent identity (REQ-AUTH-008, REQ-AUTH-009).
+
+    Calls google.oauth2.id_token.fetch_id_token(req, audience, bind_id_token=False).
+    Degrades gracefully if bind_id_token kwarg is not supported.
+    """
+    from google.auth.transport.requests import Request as GoogleAuthRequest
+    from google.oauth2 import id_token as google_id_token
+
+    req = request if request is not None else GoogleAuthRequest()
+    try:
+        return google_id_token.fetch_id_token(req, audience, bind_id_token=False)
+    except TypeError as exc:
+        if "bind_id_token" in str(exc):
+            return google_id_token.fetch_id_token(req, audience)
+        raise
+
+
 def get_id_token(
     audience: str,
     request: Optional[Any] = None,
@@ -184,10 +213,12 @@ def get_id_token(
     Works natively on GKE Workload Identity and Vertex AI Agent Engine metadata.
     When ID_TOKEN_IMPERSONATE_SA is set (non-empty), mints via IAM Credentials
     generateIdToken using ADC access token and skips metadata fetch (# REQ-AUTH-004).
+    When running under GKE Agent Identity, fetches an unbound ID token (# REQ-AUTH-008/009).
     """
     now = clock() if clock is not None else time.time()
     impersonate_sa = os.environ.get("ID_TOKEN_IMPERSONATE_SA", "").strip()
-    cache_key = (impersonate_sa, audience)
+    agent_id_mode = is_faq_agent_identity()
+    cache_key = (impersonate_sa, "agent_identity" if agent_id_mode else "metadata", audience)
 
     with _CACHE_LOCK:
         if not force_refresh and cache_key in _ID_TOKEN_CACHE:
@@ -201,6 +232,8 @@ def get_id_token(
             audience,
             session=session,
         )
+    elif agent_id_mode:
+        token = fetch_unbound_agent_identity_token(audience, request=request)
     else:
         from google.auth.transport.requests import Request as GoogleAuthRequest
         from google.oauth2 import id_token as google_id_token

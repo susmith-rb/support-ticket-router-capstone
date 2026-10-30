@@ -80,8 +80,16 @@ class TicketRepository(ABC):
         """Fetch redaction map for a ticket (held by queue_rw role)."""
 
     @abstractmethod
+    def get_redaction_maps(self, ticket_id: UUID | str) -> List[RedactionMap]:
+        """Fetch all redaction maps for a ticket, newest first (held by queue_rw role)."""
+
+    @abstractmethod
     def save_redaction_map(self, redaction_map: RedactionMap) -> RedactionMap:
         """Store or insert customer PII redaction map with 30-day TTL."""
+
+    @abstractmethod
+    def purge_expired_redaction_maps(self) -> int:
+        """Purge expired redaction maps (expires_at < now). Returns count of deleted maps."""
 
 
 class OrderRepository(ABC):

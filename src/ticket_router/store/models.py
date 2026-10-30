@@ -83,7 +83,7 @@ class RedactionMap:
     ticket_id: UUID
     customer_id: str
     encrypted_mappings: bytes
-    key_id: str = "secret-manager-v1"
+    key_id: str = "kms-envelope-v1"
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: Optional[datetime] = None
 

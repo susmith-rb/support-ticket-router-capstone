@@ -81,6 +81,12 @@ variable "cd_approvers" {
   default     = ["user:susmith@gcp.altostrat.com"]
 }
 
+variable "triage_agent_gateway" {
+  description = "Agent Gateway resource bound to the TriageRouter engine by CD (REQ-AUTH-007). Empty = no gateway."
+  type        = string
+  default     = ""
+}
+
 variable "triage_resource_name" {
   description = "Resource name of the TriageRouter Agent Engine instance for deployment update"
   type        = string

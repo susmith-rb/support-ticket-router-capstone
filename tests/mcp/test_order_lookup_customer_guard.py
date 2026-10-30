@@ -45,11 +45,6 @@ def test_order_lookup_verified_customer_success():
     assert data["order_id"] == "ORD-1001"
     assert data["status"] == "PROCESSING"
 
-    # Also test /get_order
-    resp_http = client.post("/get_order", json={"order_id": "ORD-1001"}, headers=headers)
-    assert resp_http.status_code == 200
-    assert resp_http.json()["order_id"] == "ORD-1001"
-
 
 # REQ-IDENT-004, REQ-IDENT-005
 def test_order_lookup_unverified_customer_rejected():
@@ -75,15 +70,6 @@ def test_order_lookup_unverified_customer_rejected():
     assert resp_false.status_code == 403
     assert resp_false.json()["detail"] == "unverified_customer"
 
-    # Also test /get_order
-    resp_http = client.post(
-        "/get_order",
-        json={"order_id": "ORD-1001"},
-        headers={"X-Customer-ID": "cust_1001", "X-Customer-Verified": "false"},
-    )
-    assert resp_http.status_code == 403
-    assert resp_http.json()["detail"] == "unverified_customer"
-
 
 # REQ-IDENT-004, REQ-IDENT-005
 def test_order_lookup_anonymous_customer_rejected():
@@ -98,10 +84,6 @@ def test_order_lookup_anonymous_customer_rejected():
     resp = client.post("/tools/get_order", json={"order_id": "ORD-1001"}, headers=headers)
     assert resp.status_code == 403
     assert resp.json()["detail"] == "unverified_customer"
-
-    resp_http = client.post("/get_order", json={"order_id": "ORD-1001"}, headers=headers)
-    assert resp_http.status_code == 403
-    assert resp_http.json()["detail"] == "unverified_customer"
 
 
 # REQ-IDENT-005, REQ-AGENT-010, # REQ-AUTH-003
@@ -122,18 +104,9 @@ def test_order_lookup_bola_body_guard():
     assert resp.status_code == 400
     assert "BOLA/IDOR violation" in resp.json()["detail"]
 
-    # Also test /get_order
-    resp_get = client.post(
-        "/get_order",
-        json={"order_id": "ORD-1001", "customer_id": "cust_1001"},
-        headers=headers,
-    )
-    assert resp_get.status_code == 400
-    assert "BOLA/IDOR violation" in resp_get.json()["detail"]
-
-    # Also test /list_orders
+    # Also test /tools/list_orders
     resp_list = client.post(
-        "/list_orders",
+        "/tools/list_orders",
         json={"limit": 5, "customer_id": "cust_1001"},
         headers=headers,
     )

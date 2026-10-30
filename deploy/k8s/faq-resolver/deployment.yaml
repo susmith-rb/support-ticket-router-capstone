@@ -8,6 +8,10 @@ metadata:
     app.kubernetes.io/name: faq-resolver
     app.kubernetes.io/part-of: support-ticket-router
     cost_center: support-ticket-router
+    registry.gke.io/functional-type: "AGENT"
+  annotations:
+    a2a-protocol.org/agent-card: |
+      card: {endpoint: /.well-known/agent-card.json, protocol: HTTP, port: 8080}
 spec:
   replicas: 1
   selector:
@@ -19,6 +23,10 @@ spec:
         app: faq-resolver
         app.kubernetes.io/name: faq-resolver
         app.kubernetes.io/part-of: support-ticket-router
+      annotations:
+        iam.gke.io/identity: "spiffe://agents.global.org-349636765856.system.id.goog/*"
+        iam.gke.io/inject-podcertificates: "true"
+        iam.gke.io/spiffe-identity-type: "agent-identity"
     spec:
       serviceAccountName: ksa-faq
       containers:
@@ -49,6 +57,8 @@ spec:
           value: "https://ticket-db-mcp-34mwh7k34a-uc.a.run.app"
         - name: HUMAN_QUEUE_URL
           value: "https://human-queue-34mwh7k34a-uc.a.run.app"
+        - name: HUMAN_QUEUE_TOPIC
+          value: "human-queue"
         - name: FAQ_RESOLVER_URL
           value: "https://faq.sslip.io"
         - name: FAQ_RESOLVER_AUDIENCE
@@ -65,6 +75,12 @@ spec:
           value: "NO_CONTENT"
         - name: REQUIRE_REAL_DEPS
           value: "1"
+        - name: FAQ_AGENT_IDENTITY
+          value: "1"
+        # Discovery Engine SearchClient uses urllib.request without mTLS support;
+        # runtime bound tokens disabled so google-auth requests unbound tokens.
+        - name: GOOGLE_API_ENABLE_RUNTIME_BOUND_TOKEN
+          value: "false"
         - name: PORT
           value: "8080"
         resources:

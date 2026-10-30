@@ -32,12 +32,14 @@ from ticket_router.mcp.ticket_db.schemas import (
     ResolveCustomerResponse,
     ResolveTicketRequest,
     ResolveTicketResponse,
+    SaveRedactionMapRequest,
+    SaveRedactionMapResponse,
     UpsertTicketRequest,
     UpsertTicketResponse,
     get_tool_schemas,
 )
 from ticket_router.store.interfaces import CustomerRepository, TicketRepository
-from ticket_router.store.models import TicketCreate
+from ticket_router.store.models import RedactionMap, TicketCreate
 
 logger = logging.getLogger("ticket_router.mcp.ticket_db")
 
@@ -119,14 +121,35 @@ async def upsert_ticket(
     logger.info("upsert_ticket called by caller=%s key=%s", caller, req.idempotency_key)
 
     # Derive deterministic UUID from idempotency_key
-    det_ticket_uuid = uuid.uuid5(uuid.NAMESPACE_URL, f"idempotency:{req.idempotency_key}")
+    try:
+        det_ticket_uuid = UUID(req.idempotency_key)
+    except (ValueError, AttributeError):
+        det_ticket_uuid = uuid.uuid5(uuid.NAMESPACE_URL, f"idempotency:{req.idempotency_key}")
 
     # Check if ticket already exists (Idempotency invariant)
     existing = ticket_repo.get_ticket(det_ticket_uuid)
     if existing is not None:
+        dec = req.decision or {}
+        raw_queue = dec.get("queue")
+        assigned_queue = None if raw_queue in (None, "", "none") else raw_queue
+        # If escalating an existing ticket, update status and queue
+        if dec.get("decision") == "escalate":
+            if hasattr(ticket_repo, "update_ticket_status"):
+                ticket_repo.update_ticket_status(
+                    existing.ticket_id,
+                    status="open",
+                    resolution_notes=f"Escalated by {dec.get('escalated_by', 'router')}: {dec.get('reason', 'escalate')}",
+                )
+            if hasattr(ticket_repo, "append_event"):
+                ticket_repo.append_event(
+                    existing.ticket_id,
+                    event_type="escalated",
+                    actor=str(dec.get("escalated_by", "router")),
+                    payload={"queue": assigned_queue, "reason": dec.get("reason")},
+                )
         return UpsertTicketResponse(
             ticket_id=str(existing.ticket_id),
-            status=existing.status,
+            status="open" if dec.get("decision") == "escalate" else existing.status,
             deduplicated=True,
         )
 
@@ -165,6 +188,33 @@ async def upsert_ticket(
     )
 
 
+@router.post("/tools/save_redaction_map", response_model=SaveRedactionMapResponse)
+@router.post("/save_redaction_map", response_model=SaveRedactionMapResponse)
+async def save_redaction_map(
+    req: SaveRedactionMapRequest,
+    authorization: Optional[str] = Header(None),
+    x_serverless_authorization: Optional[str] = Header(None),
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+) -> SaveRedactionMapResponse:
+    caller = _extract_caller_identity(authorization, x_serverless_authorization)
+    logger.info("save_redaction_map called by caller=%s ticket=%s customer=%s", caller, req.ticket_id, req.customer_id)
+
+    try:
+        target_uuid = UUID(req.ticket_id)
+    except ValueError:
+        target_uuid = uuid.uuid5(uuid.NAMESPACE_URL, f"idempotency:{req.ticket_id}")
+
+    redaction_map = RedactionMap(
+        map_id=uuid.uuid4(),
+        ticket_id=target_uuid,
+        customer_id=req.customer_id,
+        encrypted_mappings=req.envelope_b64.encode("utf-8"),
+        key_id=req.key_id,
+    )
+    ticket_repo.save_redaction_map(redaction_map)
+    return SaveRedactionMapResponse(saved=True)
+
+
 @router.post("/tools/claim_ticket", response_model=ClaimTicketResponse)
 @router.post("/claim_ticket", response_model=ClaimTicketResponse)
 async def claim_ticket(
@@ -178,8 +228,8 @@ async def claim_ticket(
 
     try:
         target_uuid = UUID(req.ticket_id)
-    except ValueError:
-        return ClaimTicketResponse(success=False, error="not_found")
+    except (ValueError, AttributeError):
+        target_uuid = uuid.uuid5(uuid.NAMESPACE_URL, f"idempotency:{req.ticket_id}")
 
     ticket = ticket_repo.get_ticket(target_uuid)
     if ticket is None:
@@ -211,8 +261,8 @@ async def resolve_ticket(
 
     try:
         target_uuid = UUID(req.ticket_id)
-    except ValueError:
-        return ResolveTicketResponse(status="not_found")
+    except (ValueError, AttributeError):
+        target_uuid = uuid.uuid5(uuid.NAMESPACE_URL, f"idempotency:{req.ticket_id}")
 
     ticket = ticket_repo.get_ticket(target_uuid)
     if ticket is None:
@@ -289,8 +339,11 @@ def create_app(
     repo: Optional[TicketRepository] = None,
     redaction_store: Optional[Dict[str, Dict[str, Any]]] = None,
     customer_repo: Optional[CustomerRepository] = None,
+    ticket_repo: Optional[TicketRepository] = None,
 ) -> FastAPI:
     """Create and configure FastAPI application for ticket-db-mcp."""
+    if repo is None and ticket_repo is not None:
+        repo = ticket_repo
     if repo is None:
         allow_fake = os.getenv("ALLOW_FAKE_REPOS", "").lower() in ("1", "true")
         if allow_fake:

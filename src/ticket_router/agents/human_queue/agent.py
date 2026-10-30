@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -50,11 +51,21 @@ class HumanQueueAgent:
         self,
         ticket_repo: Optional[TicketRepository] = None,
         mcp_client: Optional[TicketDbMcpClientProtocol] = None,
-        redaction_store: Optional[Dict[str, Dict[str, Any]]] = None,
+        envelope_cipher: Optional[Any] = None,
+        **kwargs: Any,
     ) -> None:
         self.repo: TicketRepository = ticket_repo if ticket_repo is not None else FakeTicketRepo()
         self.mcp_client: Optional[TicketDbMcpClientProtocol] = mcp_client
-        self.pii_store: Dict[str, Dict[str, Any]] = redaction_store if redaction_store is not None else {}
+        if envelope_cipher is not None:
+            self.cipher = envelope_cipher
+        else:
+            kms_key = os.environ.get("REDACTION_KMS_KEY")
+            if kms_key:
+                from ticket_router.security.envelope import EnvelopeCipher
+
+                self.cipher = EnvelopeCipher(kms_key)
+            else:
+                self.cipher = None
 
     def list_open_queue(
         self,
@@ -194,22 +205,48 @@ class HumanQueueAgent:
                 f"Operator '{operator_id}' is not authorized to unmask PII on ticket '{ticket_id}' (ticket claimed by '{ticket.assigned_to}')."
             )
 
-        # Retrieve unmasked customer attributes from repo redaction_map
+        # Retrieve unmasked customer attributes from repo redaction_maps (REQ-STORE-009)
         unmasked: Dict[str, Any] = {}
-        redaction_map = self.repo.get_redaction_map(target_uuid)
-        if redaction_map is not None:
-            try:
-                unmasked = json.loads(redaction_map.encrypted_mappings.decode("utf-8"))
-            except Exception:
-                unmasked = {"raw": redaction_map.encrypted_mappings.decode("utf-8", errors="replace")}
-        elif str(target_uuid) in self.pii_store:
-            unmasked = self.pii_store[str(target_uuid)]
-        else:
-            unmasked = {
-                "email": f"{ticket.customer_id}@example.com",
-                "phone": "+15551234567",
-                "customer_name": f"Customer {ticket.customer_id}",
-            }
+        maps: List[Any] = []
+        if hasattr(self.repo, "get_redaction_maps"):
+            maps = self.repo.get_redaction_maps(target_uuid)
+        elif hasattr(self.repo, "get_redaction_map"):
+            single_map = self.repo.get_redaction_map(target_uuid)
+            if single_map is not None:
+                maps = [single_map]
+
+        if maps:
+            for rmap in reversed(maps):
+                raw_data = rmap.encrypted_mappings
+                if self.cipher is not None:
+                    try:
+                        decrypted = self.cipher.decrypt(
+                            raw_data, aad=str(target_uuid).encode("utf-8")
+                        )
+                        parsed = json.loads(decrypted.decode("utf-8"))
+                        if isinstance(parsed, dict):
+                            unmasked.update(parsed)
+                    except Exception as err:
+                        logger.warning(
+                            "Failed to decrypt redaction map %s for ticket %s: %s",
+                            getattr(rmap, "map_id", "unknown"),
+                            str(ticket_id),
+                            err,
+                        )
+                else:
+                    try:
+                        parsed = json.loads(
+                            raw_data.decode("utf-8")
+                            if isinstance(raw_data, (bytes, memoryview))
+                            else str(raw_data)
+                        )
+                        if isinstance(parsed, dict):
+                            unmasked.update(parsed)
+                    except Exception:
+                        logger.warning(
+                            "No cipher configured and redaction map not valid JSON for ticket %s",
+                            str(ticket_id),
+                        )
 
         # Record immutable audit event (REQ-AGENT-009)
         record_pii_reidentification_event(

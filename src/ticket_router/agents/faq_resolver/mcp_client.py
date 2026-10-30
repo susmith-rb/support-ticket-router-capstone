@@ -18,12 +18,24 @@ import requests
 from requests.adapters import HTTPAdapter
 
 from ticket_router.agents.faq_resolver.protocols import OrderLookupProtocol
-from ticket_router.common.idtoken import get_id_token
+from ticket_router.common.idtoken import (
+    fetch_unbound_agent_identity_token,
+    get_id_token,
+    is_faq_agent_identity,
+)
 from ticket_router.common.observability import get_current_traceparent, start_span
 from ticket_router.common.resilience import (
     ORDER_LOOKUP_MCP_TIMEOUT_S,
     CircuitBreaker,
 )
+
+__all__ = [
+    "BolaViolationError",
+    "FakeOrderLookupClient",
+    "HttpOrderLookupClient",
+    "fetch_unbound_agent_identity_token",
+    "is_faq_agent_identity",
+]
 
 
 def _create_pooled_session() -> requests.Session:

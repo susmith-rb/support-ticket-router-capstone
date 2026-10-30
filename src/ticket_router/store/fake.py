@@ -7,6 +7,7 @@ without live Cloud SQL PostgreSQL dependencies.
 from __future__ import annotations
 
 import threading
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
@@ -36,12 +37,15 @@ class FakeTicketRepo(TicketRepository):
         self._lock = threading.Lock()
         self._tickets: Dict[UUID, Ticket] = {}
         self._events: Dict[UUID, List[TicketEvent]] = {}
-        self._redaction_maps: Dict[UUID, RedactionMap] = {}
+        self._redaction_maps: Dict[UUID, List[RedactionMap]] = {}
 
     def _normalize_uuid(self, ticket_id: UUID | str) -> UUID:
-        if isinstance(ticket_id, str):
+        if isinstance(ticket_id, UUID):
+            return ticket_id
+        try:
             return UUID(ticket_id)
-        return ticket_id
+        except (ValueError, AttributeError):
+            return uuid.uuid5(uuid.NAMESPACE_URL, f"idempotency:{ticket_id}")
 
     def create_ticket(self, ticket_create: TicketCreate) -> Ticket:
         """Create ticket idempotently.
@@ -188,14 +192,40 @@ class FakeTicketRepo(TicketRepository):
             return ticket
 
     def get_redaction_map(self, ticket_id: UUID | str) -> Optional[RedactionMap]:
+        maps = self.get_redaction_maps(ticket_id)
+        return maps[0] if maps else None
+
+    def get_redaction_maps(self, ticket_id: UUID | str) -> List[RedactionMap]:
         t_id = self._normalize_uuid(ticket_id)
         with self._lock:
-            return self._redaction_maps.get(t_id)
+            maps = list(self._redaction_maps.get(t_id, []))
+            maps.sort(key=lambda m: m.created_at, reverse=True)
+            return maps
 
     def save_redaction_map(self, redaction_map: RedactionMap) -> RedactionMap:
         with self._lock:
-            self._redaction_maps[redaction_map.ticket_id] = redaction_map
+            t_id = self._normalize_uuid(redaction_map.ticket_id)
+            if t_id not in self._redaction_maps:
+                self._redaction_maps[t_id] = []
+            self._redaction_maps[t_id].append(redaction_map)
             return redaction_map
+
+    def purge_expired_redaction_maps(self) -> int:
+        now = datetime.now(timezone.utc)
+        deleted_count = 0
+        with self._lock:
+            for t_id, maps in list(self._redaction_maps.items()):
+                active_maps = []
+                for m in maps:
+                    if m.expires_at and m.expires_at < now:
+                        deleted_count += 1
+                    else:
+                        active_maps.append(m)
+                if active_maps:
+                    self._redaction_maps[t_id] = active_maps
+                else:
+                    self._redaction_maps.pop(t_id, None)
+        return deleted_count
 
 
 class FakeOrderRepo(OrderRepository):

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Callable, Dict, Optional
 
 from ticket_router.agents.faq_resolver.a2a import (
@@ -17,6 +18,7 @@ from ticket_router.agents.faq_resolver.a2a import (
 )
 from ticket_router.agents.faq_resolver.agent import (
     FaqResolverAgent,
+    create_faq_resolver_agent,
     root_agent,
 )
 from ticket_router.common.settings import Settings
@@ -31,6 +33,48 @@ except ImportError:
 
 
 router = APIRouter() if _FASTAPI_AVAILABLE else None
+
+
+def get_well_known_agent_card() -> Dict[str, Any]:
+    """Return static A2A agent card for FaqResolver (REQ-AUTH-008)."""
+    base_url = os.environ.get(
+        "FAQ_RESOLVER_PUBLIC_URL", "https://faq.8-232-184-225.sslip.io"
+    ).rstrip("/")
+    return {
+        "name": "FaqResolver",
+        "description": "Bounded ReAct FAQ and order status resolution agent with mandatory grounded citations.",
+        "version": "1.0.0",
+        "url": base_url,
+        "interface": "/resolve",
+        "protocol": "HTTP",
+        "supportedInterfaces": [
+            {
+                "url": f"{base_url}/resolve",
+                "protocolBinding": "JSONRPC",
+            },
+            {
+                "url": f"{base_url}/resolve",
+                "protocolBinding": "HTTP",
+            },
+        ],
+        "capabilities": {
+            "streaming": False,
+        },
+        "defaultInputModes": ["application/json"],
+        "defaultOutputModes": ["application/json"],
+        "skills": [
+            {
+                "id": "faq-resolution",
+                "name": "FAQ Resolution",
+                "description": "Resolves factual product and support inquiries using grounded knowledge base retrieval.",
+            },
+            {
+                "id": "order-lookup",
+                "name": "Order Status Lookup",
+                "description": "Retrieves order status, line items, and delivery estimates using verified customer context.",
+            },
+        ],
+    }
 
 
 def get_active_agent(request: Request) -> FaqResolverAgent:
@@ -122,6 +166,10 @@ if _FASTAPI_AVAILABLE:
     async def get_agent_card() -> Dict[str, Any]:
         return FAQ_RESOLVER_AGENT_CARD
 
+    @router.get("/.well-known/agent-card.json")
+    async def get_well_known_agent_card_endpoint() -> Dict[str, Any]:
+        return get_well_known_agent_card()
+
     @router.post("/a2a")
     @router.post("/resolve")
     @router.post("/a2a/handoff")
@@ -146,7 +194,12 @@ def create_fastapi_app(
 ) -> Any:
     """Build and return a FastAPI application for GKE Autopilot container serving."""
     resolved_settings = settings or Settings.from_env()
-    resolved_agent = agent if agent is not None else root_agent
+    if agent is not None:
+        resolved_agent = agent
+    elif resolved_settings.require_real_deps:
+        resolved_agent = create_faq_resolver_agent(resolved_settings)
+    else:
+        resolved_agent = root_agent
 
     application = FastAPI(
         title="FaqResolverAgent Service",
@@ -169,6 +222,14 @@ class AsgiFallbackApp:
     ) -> None:
         self.settings = settings or Settings.from_env()
         self.agent = agent if agent is not None else root_agent
+
+    async def __call__(
+        self,
+        scope: Dict[str, Any],
+        receive: Callable[[], Any],
+        send: Callable[[Dict[str, Any]], Any],
+    ) -> None:
+        await self.handle_request(scope, receive, send)
 
     async def handle_request(
         self,
@@ -200,8 +261,13 @@ class AsgiFallbackApp:
             await send({"type": "http.response.body", "body": body})
             return
 
-        if path == "/card" and method == "GET":
-            body = json.dumps(FAQ_RESOLVER_AGENT_CARD).encode("utf-8")
+        if path in ("/card", "/.well-known/agent-card.json") and method == "GET":
+            card_payload = (
+                get_well_known_agent_card()
+                if path == "/.well-known/agent-card.json"
+                else FAQ_RESOLVER_AGENT_CARD
+            )
+            body = json.dumps(card_payload).encode("utf-8")
             await send({
                 "type": "http.response.start",
                 "status": 200,

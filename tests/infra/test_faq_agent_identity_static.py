@@ -1,0 +1,174 @@
+"""Static verification of GKE Agent Identity and Terraform grants for FaqResolver.
+
+# REQ-AUTH-008: GKE Agent Identity for FaqResolver (Standard Cluster)
+Verifies:
+1. GKE Deployment (deploy/k8s/faq-resolver/deployment.yaml):
+   - Metadata label registry.gke.io/functional-type: "AGENT"
+   - Metadata annotation a2a-protocol.org/agent-card endpoint /.well-known/agent-card.json
+   - Pod template annotations:
+     - iam.gke.io/identity: "spiffe://agents.global.org-349636765856.system.id.goog/*"
+     - iam.gke.io/inject-podcertificates: "true"
+     - iam.gke.io/spiffe-identity-type: "agent-identity"
+   - spec.serviceAccountName: ksa-faq
+   - Container env:
+     - FAQ_AGENT_IDENTITY == "1"
+     - GOOGLE_API_ENABLE_RUNTIME_BOUND_TOKEN == "false"
+2. Terraform module variables and resource grants for faq_agent_principal:
+   - agents-iam: router predictionUser (standard + dedicated), ticketRouterAgentInference custom role,
+     discoveryengine.viewer, pubsub.publisher, cloudtrace.agent
+   - model-armor: modelarmor.user
+   - cloud-run-services: run.invoker on order-lookup-mcp, ALLOWED_CALLER_SPIFFE_IDS env var,
+     and variables for redaction_kms_key, purge_audience, purge_invoker_email
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import yaml
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+K8S_DEPLOYMENT = REPO_ROOT / "deploy" / "k8s" / "faq-resolver" / "deployment.yaml"
+TF_DIR = REPO_ROOT / "deploy" / "terraform" / "single-project"
+MOD_DIR = TF_DIR / "modules"
+
+
+def _extract_block(text: str, header_regex: str) -> str:
+    """Extract a balanced-brace HCL block matching header_regex."""
+    match = re.search(header_regex + r"\s*\{", text)
+    assert match is not None, f"Missing HCL block matching: {header_regex}"
+    start = match.end()
+    depth = 1
+    idx = start
+    while idx < len(text) and depth > 0:
+        if text[idx] == "{":
+            depth += 1
+        elif text[idx] == "}":
+            depth -= 1
+        idx += 1
+    assert depth == 0, f"Unbalanced braces in block: {header_regex}"
+    return text[start : idx - 1]
+
+
+# REQ-AUTH-008
+def test_faq_deployment_requests_spiffe_agent_identity() -> None:
+    """Verify FaqResolver GKE Deployment requests GKE Agent Identity and declares A2A agent card."""
+    assert K8S_DEPLOYMENT.is_file(), f"Missing deployment manifest: {K8S_DEPLOYMENT}"
+    raw_yaml = K8S_DEPLOYMENT.read_text(encoding="utf-8")
+    doc = yaml.safe_load(raw_yaml)
+
+    assert doc.get("kind") == "Deployment"
+    meta = doc.get("metadata", {})
+    labels = meta.get("labels", {})
+    assert labels.get("registry.gke.io/functional-type") == "AGENT"
+
+    annotations = meta.get("annotations", {})
+    agent_card_annot = annotations.get("a2a-protocol.org/agent-card", "")
+    assert "/.well-known/agent-card.json" in agent_card_annot
+    assert "HTTP" in agent_card_annot
+    assert "8080" in agent_card_annot
+
+    template = doc.get("spec", {}).get("template", {})
+    pod_meta = template.get("metadata", {})
+    pod_annotations = pod_meta.get("annotations", {})
+
+    assert pod_annotations.get("iam.gke.io/identity") == "spiffe://agents.global.org-349636765856.system.id.goog/*"
+    assert pod_annotations.get("iam.gke.io/inject-podcertificates") == "true"
+    assert pod_annotations.get("iam.gke.io/spiffe-identity-type") == "agent-identity"
+
+    spec = template.get("spec", {})
+    assert spec.get("serviceAccountName") == "ksa-faq"
+
+    containers = spec.get("containers", [])
+    assert len(containers) >= 1
+    faq_c = next((c for c in containers if c.get("name") == "faq-resolver"), containers[0])
+    env_vars = {item["name"]: item.get("value") for item in faq_c.get("env", []) if "name" in item}
+
+    assert env_vars.get("FAQ_AGENT_IDENTITY") == "1"
+    assert env_vars.get("GOOGLE_API_ENABLE_RUNTIME_BOUND_TOKEN") == "false"
+
+
+# REQ-AUTH-008
+def test_faq_agent_principal_terraform_variables_declared() -> None:
+    """Verify faq_agent_principal is declared in owning modules with default empty string."""
+    for mod_name in ("agents-iam", "model-armor", "cloud-run-services"):
+        vars_tf = (MOD_DIR / mod_name / "variables.tf").read_text(encoding="utf-8")
+        block = _extract_block(vars_tf, r'variable\s+"faq_agent_principal"')
+        assert re.search(r"type\s*=\s*string\b", block)
+        assert re.search(r'default\s*=\s*""', block)
+
+
+# REQ-AUTH-008
+def test_agents_iam_module_faq_agent_principal_grants() -> None:
+    """Verify agents-iam module grants required permissions to faq_agent_principal."""
+    main_tf = (MOD_DIR / "agents-iam" / "main.tf").read_text(encoding="utf-8")
+
+    # 1. Prediction user on router_endpoint_id
+    assert 'resource "google_vertex_ai_endpoint_iam_member" "faq_agent_prediction_user"' in main_tf
+    pred_block = _extract_block(main_tf, r'resource\s+"google_vertex_ai_endpoint_iam_member"\s+"faq_agent_prediction_user"')
+    assert "roles/aiplatform.predictionUser" in pred_block
+    assert "var.faq_agent_principal" in pred_block
+
+    # 2. Prediction user on dedicated_router_endpoint_id
+    assert 'resource "google_vertex_ai_endpoint_iam_member" "faq_agent_dedicated_prediction_user"' in main_tf
+    ded_block = _extract_block(main_tf, r'resource\s+"google_vertex_ai_endpoint_iam_member"\s+"faq_agent_dedicated_prediction_user"')
+    assert "roles/aiplatform.predictionUser" in ded_block
+    assert "var.faq_agent_principal" in ded_block
+
+    # 3. Custom role ticketRouterAgentInference
+    assert 'resource "google_project_iam_member" "faq_agent_inference_custom_role"' in main_tf
+    inf_block = _extract_block(main_tf, r'resource\s+"google_project_iam_member"\s+"faq_agent_inference_custom_role"')
+    assert "google_project_iam_custom_role.agent_inference.id" in inf_block
+    assert "var.faq_agent_principal" in inf_block
+
+    # 4. Discovery Engine viewer
+    assert 'resource "google_project_iam_member" "faq_agent_discovery_engine_viewer"' in main_tf
+    disc_block = _extract_block(main_tf, r'resource\s+"google_project_iam_member"\s+"faq_agent_discovery_engine_viewer"')
+    assert "roles/discoveryengine.viewer" in disc_block
+    assert "var.faq_agent_principal" in disc_block
+
+    # 5. Pub/Sub human queue publisher
+    assert 'resource "google_pubsub_topic_iam_member" "faq_agent_human_queue_publisher"' in main_tf
+    ps_block = _extract_block(main_tf, r'resource\s+"google_pubsub_topic_iam_member"\s+"faq_agent_human_queue_publisher"')
+    assert "roles/pubsub.publisher" in ps_block
+    assert "var.faq_agent_principal" in ps_block
+
+    # 6. Cloud Trace agent
+    assert 'resource "google_project_iam_member" "faq_agent_cloudtrace_agent"' in main_tf
+    trace_block = _extract_block(main_tf, r'resource\s+"google_project_iam_member"\s+"faq_agent_cloudtrace_agent"')
+    assert "roles/cloudtrace.agent" in trace_block
+    assert "var.faq_agent_principal" in trace_block
+
+
+# REQ-AUTH-008
+def test_model_armor_module_faq_agent_principal_grant() -> None:
+    """Verify model-armor module grants roles/modelarmor.user to faq_agent_principal."""
+    main_tf = (MOD_DIR / "model-armor" / "main.tf").read_text(encoding="utf-8")
+    assert 'resource "google_project_iam_member" "model_armor_user_faq_agent"' in main_tf
+    ma_block = _extract_block(main_tf, r'resource\s+"google_project_iam_member"\s+"model_armor_user_faq_agent"')
+    assert "roles/modelarmor.user" in ma_block
+    assert "var.faq_agent_principal" in ma_block
+
+
+# REQ-AUTH-008 / REQ-AUTH-009
+def test_cloud_run_services_module_order_lookup_spiffe_grants() -> None:
+    """Verify cloud-run-services module grants run.invoker to faq_agent_principal and passes ALLOWED_CALLER_SPIFFE_IDS."""
+    main_tf = (MOD_DIR / "cloud-run-services" / "main.tf").read_text(encoding="utf-8")
+    vars_tf = (MOD_DIR / "cloud-run-services" / "variables.tf").read_text(encoding="utf-8")
+
+    # Order lookup invoker grant for FaqResolver agent principal
+    assert 'resource "google_cloud_run_v2_service_iam_member" "order_lookup_invoker_faq_agent"' in main_tf
+    inv_block = _extract_block(main_tf, r'resource\s+"google_cloud_run_v2_service_iam_member"\s+"order_lookup_invoker_faq_agent"')
+    assert "roles/run.invoker" in inv_block
+    assert "var.faq_agent_principal" in inv_block
+
+    # Order lookup env ALLOWED_CALLER_SPIFFE_IDS
+    assert "ALLOWED_CALLER_SPIFFE_IDS" in main_tf
+    assert "var.allowed_caller_spiffe_ids" in main_tf
+
+    # Redaction / Purge variables
+    assert 'variable "allowed_caller_spiffe_ids"' in vars_tf
+    assert 'variable "redaction_kms_key"' in vars_tf
+    assert 'variable "purge_audience"' in vars_tf
+    assert 'variable "purge_invoker_email"' in vars_tf

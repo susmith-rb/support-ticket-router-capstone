@@ -19,3 +19,8 @@ output "key_prefix" {
   description = "Key resource name prefix for verification key validation"
   value       = "${google_kms_crypto_key.customer_context_signer.id}/"
 }
+
+output "redaction_map_wrapper_key_id" {
+  description = "Resource ID of the symmetric redaction map wrapper crypto key"
+  value       = google_kms_crypto_key.redaction_map_wrapper.id
+}

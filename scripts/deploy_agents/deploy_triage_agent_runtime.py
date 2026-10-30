@@ -87,6 +87,11 @@ DEFAULT_ROUTER_BASE_URL = (
 DEFAULT_TICKET_DB_URL = "https://ticket-db-mcp-34mwh7k34a-uc.a.run.app"
 DEFAULT_ORDER_LOOKUP_URL = "https://order-lookup-mcp-34mwh7k34a-uc.a.run.app"
 DEFAULT_HUMAN_QUEUE_URL = "https://human-queue-34mwh7k34a-uc.a.run.app"
+DEFAULT_HUMAN_QUEUE_TOPIC = "human-queue"
+# REQ-STORE-009: symmetric KMS key that wraps redaction-map DEKs (TriageRouter encrypts only).
+DEFAULT_REDACTION_KMS_KEY = (
+    "projects/susmith-fde-ticket-router/locations/us-central1/keyRings/ticket-router-identity/cryptoKeys/redaction-map-wrapper"
+)
 DEFAULT_FAQ_RESOLVER_URL = "https://faq.8-232-184-225.sslip.io"
 DEFAULT_FAQ_RESOLVER_AUDIENCE = "https://faq.8-232-184-225.sslip.io"
 
@@ -104,6 +109,8 @@ def prepare_environment(
     ticket_db_mcp_url: str = DEFAULT_TICKET_DB_URL,
     order_lookup_mcp_url: str = DEFAULT_ORDER_LOOKUP_URL,
     human_queue_url: str = DEFAULT_HUMAN_QUEUE_URL,
+    human_queue_topic: str = DEFAULT_HUMAN_QUEUE_TOPIC,
+    redaction_kms_key: str = DEFAULT_REDACTION_KMS_KEY,
     faq_resolver_url: str = DEFAULT_FAQ_RESOLVER_URL,
     faq_resolver_audience: str = DEFAULT_FAQ_RESOLVER_AUDIENCE,
     router_s1_endpoint: str = DEFAULT_ROUTER_ENDPOINT,
@@ -142,6 +149,8 @@ def prepare_environment(
         "ORDER_LOOKUP_MCP_URL": order_lookup_mcp_url,
         "TICKET_DB_MCP_URL": ticket_db_mcp_url,
         "HUMAN_QUEUE_URL": human_queue_url,
+        "HUMAN_QUEUE_TOPIC": human_queue_topic,
+        "REDACTION_KMS_KEY": redaction_kms_key,
         "FAQ_RESOLVER_URL": faq_resolver_url,
         "FAQ_RESOLVER_AUDIENCE": faq_resolver_audience,
         "ALLOWED_CALLERS": allowed_callers,
@@ -361,10 +370,18 @@ def deploy_reasoning_engine(
     dry_run: bool = False,
     identity_type: str = "sa",
     resource_name: str | None = None,
+    agent_gateway: str | None = None,
 ) -> str | None:
     """Package and deploy or update TriageRouterAgent on Vertex AI Agent Engine."""
-    if identity_type not in ("sa", "agent"):
+    if identity_type not in ("sa", "agent", "service_account"):
         raise ValueError(f"Unsupported identity_type={identity_type!r}; expected 'sa' or 'agent'")
+    effective_identity_type = "sa" if identity_type in ("sa", "service_account") else "agent"
+
+    agent_gw = _non_empty_str(agent_gateway)
+    if agent_gw and effective_identity_type != "agent":
+        raise ValueError(
+            f"--agent-gateway is not supported with identity_type={identity_type!r}; requires 'agent'"
+        )
 
     upd_arg = _non_empty_str(update_resource_name)
     res_arg = _non_empty_str(resource_name)
@@ -376,7 +393,7 @@ def deploy_reasoning_engine(
     pkgs = extra_packages or DEFAULT_EXTRA_PACKAGES
     contract = contract_vars or {}
 
-    if identity_type == "agent":
+    if effective_identity_type == "agent":
         default_triage_sa = f"sa-triage@{project}.iam.gserviceaccount.com"
         impersonate_sa = _non_empty_str(contract.get("ID_TOKEN_IMPERSONATE_SA")) or default_triage_sa
         default_allowed_callers = impersonate_sa
@@ -390,6 +407,8 @@ def deploy_reasoning_engine(
         ticket_db_mcp_url=contract.get("TICKET_DB_MCP_URL", DEFAULT_TICKET_DB_URL),
         order_lookup_mcp_url=contract.get("ORDER_LOOKUP_MCP_URL", DEFAULT_ORDER_LOOKUP_URL),
         human_queue_url=contract.get("HUMAN_QUEUE_URL", DEFAULT_HUMAN_QUEUE_URL),
+        human_queue_topic=contract.get("HUMAN_QUEUE_TOPIC", DEFAULT_HUMAN_QUEUE_TOPIC),
+        redaction_kms_key=contract.get("REDACTION_KMS_KEY", DEFAULT_REDACTION_KMS_KEY),
         faq_resolver_url=contract.get("FAQ_RESOLVER_URL", DEFAULT_FAQ_RESOLVER_URL),
         faq_resolver_audience=contract.get("FAQ_RESOLVER_AUDIENCE", DEFAULT_FAQ_RESOLVER_AUDIENCE),
         router_s1_endpoint=contract.get("ROUTER_S1_ENDPOINT", DEFAULT_ROUTER_ENDPOINT),
@@ -418,8 +437,10 @@ def deploy_reasoning_engine(
     logger.info("Target Region:         %s", region)
     logger.info("Staging Bucket:        %s", staging_bucket)
     logger.info("Display Name:          %s", display_name)
-    logger.info("Identity Type:         %s", identity_type)
-    if identity_type == "agent":
+    logger.info("Identity Type:         %s", effective_identity_type)
+    if agent_gw:
+        logger.info("Agent Gateway:         %s", agent_gw)
+    if effective_identity_type == "agent":
         logger.info("Impersonate SA (OIDC): %s", impersonate_sa)
     else:
         logger.info("Service Account:       %s", service_account)
@@ -432,7 +453,7 @@ def deploy_reasoning_engine(
     if dry_run:
         sample_name = f"projects/{project}/locations/{region}/reasoningEngines/dry-run-sample-id"
         logger.info("[Dry Run] Agent application built and serialized successfully without calling GCP APIs.")
-        if identity_type == "agent":
+        if effective_identity_type == "agent":
             sample_principal = (
                 f"principal://agents.global.org-dry-run.system.id.goog/resources/aiplatform/{sample_name}"
             )
@@ -448,8 +469,11 @@ def deploy_reasoning_engine(
         bucket_uri = f"gs://{bucket_name}"
 
     deployed_resource_name: str | None = None
-    if identity_type == "agent":
+    if effective_identity_type == "agent":
         # REQ-AUTH-004: Deploy via vertexai.Client().agent_engines with AGENT_IDENTITY and no service_account.
+        # REQ-AUTH-007: Optional Agent Gateway configuration and token sharing prevention.
+        if agent_gw:
+            remote_env_vars["GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES"] = "False"
         client = vertexai.Client(project=project, location=region)
         agent_config: dict[str, Any] = {
             "staging_bucket": bucket_uri,
@@ -461,6 +485,12 @@ def deploy_reasoning_engine(
             "gcs_dir_name": "agent_engine/triage_router",
             "identity_type": vertexai.types.IdentityType.AGENT_IDENTITY,
         }
+        if agent_gw:
+            agent_config["agent_gateway_config"] = {
+                "agent_to_anywhere_config": {
+                    "agent_gateway": agent_gw,
+                }
+            }
         if target_resource:
             wait_for_reasoning_engine_idle(
                 resource_name=target_resource,
@@ -625,6 +655,16 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         help=f"Human Queue URL (default: {DEFAULT_HUMAN_QUEUE_URL})",
     )
     parser.add_argument(
+        "--human-queue-topic",
+        default=os.environ.get("HUMAN_QUEUE_TOPIC", DEFAULT_HUMAN_QUEUE_TOPIC),
+        help=f"Pub/Sub human queue topic name (default: {DEFAULT_HUMAN_QUEUE_TOPIC})",
+    )
+    parser.add_argument(
+        "--redaction-kms-key",
+        default=os.environ.get("REDACTION_KMS_KEY", DEFAULT_REDACTION_KMS_KEY),
+        help="KMS cryptoKey that wraps redaction-map DEKs (REQ-STORE-009)",
+    )
+    parser.add_argument(
         "--faq-resolver-url",
         default=os.environ.get("FAQ_RESOLVER_URL", DEFAULT_FAQ_RESOLVER_URL),
         help=f"Faq Resolver URL (default: {DEFAULT_FAQ_RESOLVER_URL})",
@@ -700,6 +740,11 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         help="Runtime workload identity type: 'sa' (default service account) or 'agent' (SPIFFE AGENT_IDENTITY, REQ-AUTH-004)",
     )
     parser.add_argument(
+        "--agent-gateway",
+        default=os.environ.get("TRIAGE_AGENT_GATEWAY"),
+        help="Agent Gateway resource name for egress governance (requires --identity-type agent, REQ-AUTH-007)",
+    )
+    parser.add_argument(
         "--update",
         metavar="RESOURCE_NAME",
         default=None,
@@ -717,6 +762,9 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         help="Validate packaging and environment isolation without deploying to GCP",
     )
     parsed = parser.parse_args(args)
+    gw_val = _non_empty_str(parsed.agent_gateway)
+    if gw_val and parsed.identity_type != "agent":
+        parser.error("--agent-gateway requires --identity-type agent")
     upd_val = _non_empty_str(parsed.update)
     res_val = _non_empty_str(parsed.resource_name)
     if upd_val and res_val and upd_val != res_val:
@@ -731,6 +779,8 @@ def main(argv: list[str] | None = None) -> None:
         "TICKET_DB_MCP_URL": args.ticket_db_url,
         "ORDER_LOOKUP_MCP_URL": args.order_lookup_url,
         "HUMAN_QUEUE_URL": args.human_queue_url,
+        "HUMAN_QUEUE_TOPIC": args.human_queue_topic,
+        "REDACTION_KMS_KEY": args.redaction_kms_key,
         "FAQ_RESOLVER_URL": args.faq_resolver_url,
         "FAQ_RESOLVER_AUDIENCE": args.faq_resolver_audience,
         "ROUTER_S1_ENDPOINT": args.router_endpoint,
@@ -759,6 +809,7 @@ def main(argv: list[str] | None = None) -> None:
             update_resource_name=args.target_resource_name,
             dry_run=args.dry_run,
             identity_type=args.identity_type,
+            agent_gateway=args.agent_gateway,
         )
         logger.info("Deployment script completed. Output: %s", resource_name)
         if resource_name and args.identity_type != "agent":

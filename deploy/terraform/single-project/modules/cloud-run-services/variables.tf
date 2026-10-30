@@ -83,3 +83,46 @@ variable "triage_agent_principal" {
   default     = ""
 }
 
+variable "push_audience" {
+  description = "Expected audience for Pub/Sub push subscription OIDC tokens"
+  type        = string
+  default     = ""
+}
+
+variable "sa_queue_push_email" {
+  description = "Email of the sa-queue-push service account authorized to invoke human-queue push endpoint"
+  type        = string
+  default     = ""
+}
+
+variable "faq_agent_principal" {
+  description = "SPIFFE IAM principal (principal://...) for FaqResolver GKE Agent Identity (REQ-AUTH-008)"
+  type        = string
+  default     = ""
+}
+
+variable "allowed_caller_spiffe_ids" {
+  description = "Comma-separated list of allowed caller SPIFFE IDs for order-lookup-mcp (REQ-AUTH-009)"
+  type        = string
+  default     = ""
+}
+
+variable "redaction_kms_key" {
+  description = "KMS key resource name for redaction envelope encryption"
+  type        = string
+  default     = ""
+}
+
+variable "purge_audience" {
+  description = "Expected audience for purge endpoint invocations"
+  type        = string
+  default     = ""
+}
+
+variable "purge_invoker_email" {
+  description = "Email of service account authorized to invoke purge endpoint"
+  type        = string
+  default     = ""
+}
+
+

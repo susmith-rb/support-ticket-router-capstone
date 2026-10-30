@@ -735,4 +735,81 @@ def test_triage_a2a_handoff_failure_degrades_to_escalation():
     assert result.handoff_response["reason"] == "a2a_handoff_failed"
 
 
+def test_triage_double_publish_guard_with_faq_handoff():
+    """Verify TriageRouter does not double-publish when FaqResolver completes HumanHandoff (REQ-AGENT-030)."""
+    mock_s1 = MagicMock(spec=RouterS1Client)
+    mock_s1.route.return_value = _make_prediction(
+        escalate_prob=0.04,
+        intent="shipping",
+        intent_prob=0.92,
+        sentiment="neutral",
+    )
+    policy = TriagePolicy(s1_client=mock_s1)
+    mcp_client = InMemoryTicketDbMcpClient()
+
+    # Case 1: FaqResolver returns handoff_done=True
+    mock_a2a_done = MagicMock()
+    mock_a2a_done.handoff.return_value = {
+        "status": "ESCALATED",
+        "handoff_done": True,
+        "queue": "human-standard",
+        "reason": "circuit_breaker_open",
+        "calming_ack": "Thank you for contacting support. Ticket #TICK-GUARD-1 is with human support (ETA 2 hours).",
+    }
+    mock_handoff1 = MagicMock()
+
+    agent1 = TriageRouterAgent(
+        policy=policy,
+        mcp_client=mcp_client,
+        a2a_client=mock_a2a_done,
+        human_handoff=mock_handoff1,
+    )
+    res1 = agent1.triage(
+        session_id="sess_guard_1",
+        customer_id="cust_1",
+        message_text="Need shipping info",
+        ticket_id="TICK-GUARD-1",
+    )
+    assert res1.decision.decision == "auto_rag"
+    assert res1.handoff_response["status"] == "ESCALATED"
+    assert "TICK-GUARD-1" in res1.calming_ack
+    # Crucial assertion: human_handoff.escalate was NOT called by TriageRouter
+    mock_handoff1.escalate.assert_not_called()
+
+    # Case 2: FaqResolver returns handoff_done=False (or missing)
+    mock_a2a_not_done = MagicMock()
+    mock_a2a_not_done.handoff.return_value = {
+        "status": "ESCALATED",
+        "handoff_done": False,
+        "queue": "human-standard",
+        "reason": "faq_escalated",
+    }
+    mock_handoff2 = MagicMock()
+    mock_handoff2.escalate.return_value = MagicMock(
+        calming_ack="Calming ack from triage fallback",
+        persisted=True,
+        published=True,
+        message_id="msg-123",
+    )
+
+    agent2 = TriageRouterAgent(
+        policy=policy,
+        mcp_client=mcp_client,
+        a2a_client=mock_a2a_not_done,
+        human_handoff=mock_handoff2,
+    )
+    res2 = agent2.triage(
+        session_id="sess_guard_2",
+        customer_id="cust_2",
+        message_text="Need shipping info",
+        ticket_id="TICK-GUARD-2",
+    )
+    assert res2.decision.decision == "auto_rag"
+    assert res2.handoff_response["status"] == "ESCALATED"
+    assert res2.calming_ack == "Calming ack from triage fallback"
+    # Crucial assertion: human_handoff.escalate WAS called by TriageRouter
+    mock_handoff2.escalate.assert_called_once()
+
+
+
 

@@ -1,0 +1,32 @@
+{
+  "supportedInterfaces": [
+    {
+      "url": "https://faq.8-232-184-225.sslip.io/resolve",
+      "protocolBinding": "HTTP+JSON",
+      "protocolVersion": "1.0.0"
+    }
+  ],
+  "name": "FaqResolverAgent",
+  "description": "Bounded ReAct FAQ and order status resolution agent with mandatory grounded citations.",
+  "version": "1.0.0",
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false
+  },
+  "defaultInputModes": ["application/json"],
+  "defaultOutputModes": ["application/json"],
+  "skills": [
+    {
+      "id": "faq-resolution",
+      "name": "FAQ Resolution",
+      "description": "Resolves factual product and support inquiries using grounded knowledge base retrieval.",
+      "tags": ["faq", "support", "citations"]
+    },
+    {
+      "id": "order-lookup",
+      "name": "Order Status Lookup",
+      "description": "Retrieves order status, line items, and delivery estimates using verified customer context.",
+      "tags": ["orders", "support"]
+    }
+  ]
+}

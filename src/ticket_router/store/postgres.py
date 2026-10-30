@@ -10,7 +10,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from ticket_router.store.interfaces import CustomerRepository, OrderRepository, TicketRepository
 from ticket_router.store.models import (
@@ -66,6 +66,14 @@ class PostgresTicketRepo(TicketRepository):
     def __init__(self, connection_factory: Callable[[], Any]) -> None:
         self._connection_factory = connection_factory
 
+    def _normalize_uuid(self, ticket_id: UUID | str) -> str:
+        if isinstance(ticket_id, UUID):
+            return str(ticket_id)
+        try:
+            return str(UUID(ticket_id))
+        except (ValueError, AttributeError):
+            return str(uuid5(NAMESPACE_URL, f"idempotency:{ticket_id}"))
+
     def create_ticket(self, ticket_create: TicketCreate) -> Ticket:
         """Create ticket idempotently.
 
@@ -83,7 +91,10 @@ class PostgresTicketRepo(TicketRepository):
         ) VALUES (
             %s, %s, %s, %s, %s::jsonb, 'open', %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         )
-        ON CONFLICT (ticket_id) DO UPDATE SET updated_at = tickets.updated_at
+        ON CONFLICT (ticket_id) DO UPDATE SET
+            updated_at = CURRENT_TIMESTAMP,
+            assigned_queue = COALESCE(EXCLUDED.assigned_queue, tickets.assigned_queue),
+            decision = COALESCE(EXCLUDED.decision, tickets.decision)
         RETURNING ticket_id, customer_id, channel, body_redacted, decision,
                   status, assigned_to, assigned_queue, answer_text, citations,
                   resolution_notes, created_at, updated_at;
@@ -143,7 +154,7 @@ class PostgresTicketRepo(TicketRepository):
             conn.close()
 
     def get_ticket(self, ticket_id: UUID | str) -> Optional[Ticket]:
-        t_id = str(ticket_id)
+        t_id = self._normalize_uuid(ticket_id)
         query = """
         SELECT ticket_id, customer_id, channel, body_redacted, decision,
                status, assigned_to, assigned_queue, answer_text, citations,
@@ -223,7 +234,7 @@ class PostgresTicketRepo(TicketRepository):
 
     def claim_ticket(self, ticket_id: UUID | str, agent_id: str) -> bool:
         """Atomically claim ticket. Returns False if already claimed or resolved."""
-        t_id = str(ticket_id)
+        t_id = self._normalize_uuid(ticket_id)
         update_query = """
         UPDATE tickets
         SET status = 'assigned', assigned_to = %s, updated_at = CURRENT_TIMESTAMP
@@ -265,7 +276,7 @@ class PostgresTicketRepo(TicketRepository):
         actor: str,
         payload: Optional[Dict[str, Any]] = None,
     ) -> TicketEvent:
-        t_id = str(ticket_id)
+        t_id = self._normalize_uuid(ticket_id)
         event_id = uuid4()
         payload_json = json.dumps(payload) if payload else None
 
@@ -299,7 +310,7 @@ class PostgresTicketRepo(TicketRepository):
             conn.close()
 
     def list_events(self, ticket_id: UUID | str) -> List[TicketEvent]:
-        t_id = str(ticket_id)
+        t_id = self._normalize_uuid(ticket_id)
         query = """
         SELECT event_id, ticket_id, event_type, actor, payload, created_at
         FROM ticket_events
@@ -334,7 +345,7 @@ class PostgresTicketRepo(TicketRepository):
         answer_text: Optional[str] = None,
         citations: Optional[List[Dict[str, Any]]] = None,
     ) -> Optional[Ticket]:
-        t_id = str(ticket_id)
+        t_id = self._normalize_uuid(ticket_id)
         citations_json = json.dumps(citations) if citations else None
         query = """
         UPDATE tickets
@@ -396,11 +407,13 @@ class PostgresTicketRepo(TicketRepository):
             conn.close()
 
     def get_redaction_map(self, ticket_id: UUID | str) -> Optional[RedactionMap]:
-        t_id = str(ticket_id)
+        t_id = self._normalize_uuid(ticket_id)
         query = """
         SELECT map_id, ticket_id, customer_id, encrypted_mappings, key_id, created_at, expires_at
         FROM redaction_maps
-        WHERE ticket_id = %s;
+        WHERE ticket_id = %s
+        ORDER BY created_at DESC
+        LIMIT 1;
         """
         conn = self._connection_factory()
         cursor = conn.cursor()
@@ -427,17 +440,50 @@ class PostgresTicketRepo(TicketRepository):
             cursor.close()
             conn.close()
 
+    def get_redaction_maps(self, ticket_id: UUID | str) -> List[RedactionMap]:
+        t_id = self._normalize_uuid(ticket_id)
+        query = """
+        SELECT map_id, ticket_id, customer_id, encrypted_mappings, key_id, created_at, expires_at
+        FROM redaction_maps
+        WHERE ticket_id = %s
+        ORDER BY created_at DESC;
+        """
+        conn = self._connection_factory()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(query, (t_id,))
+            rows = cursor.fetchall()
+            results: List[RedactionMap] = []
+            for row in rows:
+                encrypted_data = row[3]
+                if isinstance(encrypted_data, memoryview):
+                    encrypted_data = bytes(encrypted_data)
+                elif isinstance(encrypted_data, str):
+                    encrypted_data = encrypted_data.encode("utf-8")
+                results.append(
+                    RedactionMap(
+                        map_id=UUID(str(row[0])),
+                        ticket_id=UUID(str(row[1])),
+                        customer_id=str(row[2]),
+                        encrypted_mappings=encrypted_data,
+                        key_id=str(row[4]),
+                        created_at=_parse_datetime(row[5]),
+                        expires_at=_parse_datetime(row[6]) if row[6] else None,
+                    )
+                )
+            return results
+        finally:
+            cursor.close()
+            conn.close()
+
     def save_redaction_map(self, redaction_map: RedactionMap) -> RedactionMap:
+        # Plain INSERT without RETURNING or ON CONFLICT to respect ticket_rw INSERT-only grant (REQ-STORE-009)
         query = """
         INSERT INTO redaction_maps (
             map_id, ticket_id, customer_id, encrypted_mappings, key_id, created_at, expires_at
         ) VALUES (
-            %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '30 days'
-        )
-        ON CONFLICT (map_id) DO UPDATE SET
-            encrypted_mappings = EXCLUDED.encrypted_mappings,
-            key_id = EXCLUDED.key_id
-        RETURNING map_id, ticket_id, customer_id, encrypted_mappings, key_id, created_at, expires_at;
+            %s, %s, %s, %s, %s, COALESCE(%s, CURRENT_TIMESTAMP), COALESCE(%s, CURRENT_TIMESTAMP + INTERVAL '30 days')
+        );
         """
         conn = self._connection_factory()
         cursor = conn.cursor()
@@ -446,28 +492,36 @@ class PostgresTicketRepo(TicketRepository):
                 query,
                 (
                     str(redaction_map.map_id),
-                    str(redaction_map.ticket_id),
+                    self._normalize_uuid(redaction_map.ticket_id),
                     redaction_map.customer_id,
                     redaction_map.encrypted_mappings,
                     redaction_map.key_id,
+                    redaction_map.created_at,
+                    redaction_map.expires_at,
                 ),
             )
-            row = cursor.fetchone()
             conn.commit()
-            encrypted_data = row[3]
-            if isinstance(encrypted_data, memoryview):
-                encrypted_data = bytes(encrypted_data)
-            elif isinstance(encrypted_data, str):
-                encrypted_data = encrypted_data.encode("utf-8")
-            return RedactionMap(
-                map_id=UUID(str(row[0])),
-                ticket_id=UUID(str(row[1])),
-                customer_id=str(row[2]),
-                encrypted_mappings=encrypted_data,
-                key_id=str(row[4]),
-                created_at=_parse_datetime(row[5]),
-                expires_at=_parse_datetime(row[6]) if row[6] else None,
-            )
+            return redaction_map
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
+            conn.close()
+
+    def purge_expired_redaction_maps(self) -> int:
+        # Purge expired redaction maps (REQ-STORE-010) under queue_rw role
+        query = """
+        DELETE FROM redaction_maps
+        WHERE expires_at < CURRENT_TIMESTAMP;
+        """
+        conn = self._connection_factory()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(query)
+            deleted_count = cursor.rowcount if cursor.rowcount is not None else 0
+            conn.commit()
+            return deleted_count
         except Exception:
             conn.rollback()
             raise

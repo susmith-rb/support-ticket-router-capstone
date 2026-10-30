@@ -49,3 +49,9 @@ output "subscription_id" {
   description = "Alias for human_queue_sub_id"
   value       = google_pubsub_subscription.human_queue_sub.id
 }
+
+output "sa_queue_push_email" {
+  description = "Email of the dedicated Pub/Sub push service account"
+  value       = google_service_account.sa_queue_push.email
+}
+

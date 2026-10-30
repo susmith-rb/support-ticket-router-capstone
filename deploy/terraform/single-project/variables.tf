@@ -84,6 +84,12 @@ variable "cd_approvers" {
   default     = ["user:susmith@gcp.altostrat.com"]
 }
 
+variable "triage_agent_gateway" {
+  description = "Agent Gateway (deploy/terraform/agent-gateway output gateway_id) bound to TriageRouter by CD (REQ-AUTH-007)."
+  type        = string
+  default     = ""
+}
+
 variable "triage_resource_name" {
   description = "Resource name of the TriageRouter Agent Engine instance for deployment update"
   type        = string
@@ -184,4 +190,22 @@ variable "triage_agent_principal" {
   description = "SPIFFE IAM principal (principal://...) for TriageRouter Agent Runtime identity (REQ-AUTH-004). Empty string grants nothing."
   type        = string
   default     = ""
+}
+
+variable "faq_agent_principal" {
+  description = "SPIFFE IAM principal (principal://...) for FaqResolver Agent identity on GKE (REQ-AUTH-004). Empty string grants nothing."
+  type        = string
+  default     = ""
+}
+
+variable "allowed_caller_spiffe_ids" {
+  description = "Comma-separated SPIFFE IDs allowed to call order-lookup-mcp (REQ-AUTH-009). Empty keeps the staged (log-only) behaviour."
+  type        = string
+  default     = ""
+}
+
+variable "human_queue_url" {
+  description = "Base HTTPS URL of the human-queue Cloud Run service (breaks dependency cycle between pubsub and cloud_run_services)"
+  type        = string
+  default     = "https://human-queue-34mwh7k34a-uc.a.run.app"
 }

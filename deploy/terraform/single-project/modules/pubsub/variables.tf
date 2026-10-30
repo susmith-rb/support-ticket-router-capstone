@@ -14,3 +14,10 @@ variable "labels" {
   type        = map(string)
   default     = {}
 }
+
+variable "push_endpoint" {
+  description = "HTTPS endpoint URL for human-queue push subscription (empty for pull subscription)"
+  type        = string
+  default     = ""
+}
+

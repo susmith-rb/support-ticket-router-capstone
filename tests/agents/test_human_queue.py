@@ -7,7 +7,9 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,7 +18,7 @@ from ticket_router.agents.human_queue.agent import HumanQueueAgent
 from ticket_router.agents.human_queue.server import create_app as create_human_queue_app
 from ticket_router.agents.triage_router.mcp_client import InMemoryTicketDbMcpClient
 from ticket_router.store.fake import FakeTicketRepo
-from ticket_router.store.models import TicketCreate
+from ticket_router.store.models import RedactionMap, TicketCreate
 
 # =============================================================================
 # REQ-AGENT-009: HumanQueue Acceptance Test
@@ -48,6 +50,14 @@ def test_queue_claim_and_pii_reid():
         )
     )
     t_urg_new.created_at = now - timedelta(minutes=5)
+    repo.save_redaction_map(
+        RedactionMap(
+            map_id=uuid4(),
+            ticket_id=t_urg_new.ticket_id,
+            customer_id=t_urg_new.customer_id,
+            encrypted_mappings=json.dumps({"email": "cust-102@example.com"}).encode("utf-8"),
+        )
+    )
 
     t_std_new = repo.create_ticket(
         TicketCreate(
@@ -177,6 +187,14 @@ def test_human_queue_cloud_run_service():
             customer_id="cust-cr",
             body_redacted="Cloud Run service test",
             assigned_queue="human-urgent",
+        )
+    )
+    repo.save_redaction_map(
+        RedactionMap(
+            map_id=uuid4(),
+            ticket_id=t.ticket_id,
+            customer_id=t.customer_id,
+            encrypted_mappings=json.dumps({"email": "cust-cr@example.com"}).encode("utf-8"),
         )
     )
 

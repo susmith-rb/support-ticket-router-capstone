@@ -15,7 +15,7 @@ Cloud SQL for PostgreSQL 16 serves as the authoritative system of record for sup
 | `tickets` | Master ticket records with classification decisions & status | C2 Internal | 2-year operational | `ticket_rw` (CRUD), `queue_rw` (Select + column Update) |
 | `ticket_events` | Immutable lifecycle audit trail | C2 Internal | 2-year operational | `ticket_rw` (Insert/Select), `queue_rw` (Insert/Select) |
 | `orders_mock` | Mock e-commerce order state for order-lookup MCP tool | C2 Internal | Non-PII mock | `orders_ro` (Select with Row-Level Security) |
-| `redaction_maps` | PII token to real entity mappings (pgcrypto encrypted) | C3 Confidential | 30-day TTL | `queue_rw` (Select for claimed tickets only) |
+| `redaction_maps` | PII token to real value mappings (KMS envelope-encrypted, REQ-STORE-009) | C3 Confidential | 30-day TTL, purged daily (REQ-STORE-010) | `ticket_rw` (Insert only), `queue_rw` (Select for claimed tickets, Delete expired) |
 
 ---
 
@@ -77,3 +77,22 @@ Cloud SQL for PostgreSQL 16 serves as the authoritative system of record for sup
 - **Status**: done
 - **Owner**: store
 
+### REQ-STORE-009: Reversible PII Tokens and KMS Envelope-Encrypted Redaction Maps
+- **Statement**: PII found by Model Armor at ingress MUST be replaced with **reversible typed tokens** and the token map stored encrypted:
+  1. **Tokenize**: `ticket_router.security.pii_tokens.tokenize_pii(text, findings) -> (tokenized_text, mapping)` replaces each SDP finding span (`location.codepointRange`) with `[<INFO_TYPE>_<n>]` (e.g. `[EMAIL_ADDRESS_1]`, `[PHONE_NUMBER_1]`), numbering per type in order of appearance and reusing the same token for repeated identical values. `mapping` is `{token: original_value}`. Card numbers (`CREDIT_CARD_NUMBER`) are tokenized as `[CREDIT_CARD_NUMBER_n]` but their original value is NEVER stored in the mapping (value replaced by `"<withheld>"`), keeping the system out of PCI scope (TDD §4.2 C4).
+  2. **Encrypt**: `ticket_router.security.envelope.EnvelopeCipher(kms_key_name)` generates a random 256-bit DEK per map, encrypts the JSON mapping with AES-256-GCM (random 96-bit nonce, AAD = `ticket_id`), and wraps the DEK with Cloud KMS `encrypt` on a symmetric key (`ENCRYPT_DECRYPT`, `GOOGLE_SYMMETRIC_ENCRYPTION`). The stored blob is a versioned JSON envelope `{v:1, kid:<cryptoKey name>, wdek:<b64>, nonce:<b64>, ct:<b64>}`. Plaintext DEKs and mappings exist only in memory and are never logged. KMS calls go through `create_google_session()`/`to_mtls_url()` (REQ-AUTH-006).
+  3. **Persist**: TriageRouter persists the tokenized text as `body_redacted` and saves the envelope via a new ticket-db-mcp tool `save_redaction_map(ticket_id, customer_id, envelope_b64, key_id)` after the ticket row exists. Migration `0004_redaction_envelope.sql` grants `ticket_rw` **INSERT only** on `redaction_maps` (no SELECT/UPDATE/DELETE), changes the `key_id` default from `'secret-manager-v1'` to `'kms-envelope-v1'`, and grants `queue_rw` DELETE for the TTL purge (REQ-STORE-010).
+  4. **Restore**: human-queue `reidentify_pii` (claimed tickets only, audited) loads the ticket's maps, decrypts with `EnvelopeCipher.decrypt` (KMS `decrypt`), and returns `{token: value}`. The previous fake fallbacks (`pii_store` and synthesized `example.com` values) MUST be removed: no map → empty result.
+  5. **IAM**: TriageRouter (agent identity principal and `sa-triage`) gets `roles/cloudkms.cryptoKeyEncrypter` on the key; `sa-queue` gets `roles/cloudkms.cryptoKeyDecrypter`. No other principal holds either.
+  Failure policy: if KMS or the save fails, the ticket still persists with tokenized text (fail closed: no plaintext anywhere), and a `redaction_map_failed` event is recorded.
+- **Rationale**: TDD §3.3 step 1, §3.4 and §4.2 C3. Previously the redacted text was irreversible and `redaction_maps` was never written, while the reader decoded it as plain JSON.
+- **Acceptance**: `tests/security/test_pii_tokens.py::test_tokenize_is_reversible_and_withholds_cards` and `tests/security/test_envelope.py::test_envelope_roundtrip_and_aad_binding` and `manual: live e2e message with an email produces a [EMAIL_ADDRESS_1] ticket body and a kms-envelope-v1 redaction map that human-queue restores after claim`
+- **Status**: done
+- **Owner**: ticket-store
+
+### REQ-STORE-010: Redaction Map 30-Day TTL Purge
+- **Statement**: Redaction maps MUST be deleted once `expires_at < now()`. human-queue exposes `POST /internal/purge-expired-redaction-maps`, authenticated by an OIDC token from the Cloud Scheduler service account (audience = endpoint URL; any other caller → 401). It runs `DELETE FROM redaction_maps WHERE expires_at < now()` under `queue_rw`, records the deleted count (no PII) in logs, and is idempotent. Terraform provisions a Cloud Scheduler job (daily 03:15 UTC) that calls it, plus `roles/run.invoker` on human-queue for the scheduler SA only.
+- **Rationale**: TDD §3.4/§4.2 30-day TTL; the column and index existed but nothing deleted rows.
+- **Acceptance**: `tests/agents/test_redaction_purge.py::test_purge_requires_scheduler_oidc_and_deletes_expired`
+- **Status**: done
+- **Owner**: ticket-store

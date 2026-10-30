@@ -5,7 +5,7 @@ Implements REQ-AGENT-010: Typed JSON contracts, schema validation, and BOLA/IDOR
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -21,13 +21,6 @@ class GetOrderToolRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     order_id: str = Field(..., description="Target order identifier (e.g. ORD-1001)")
-
-
-class GetOrderHttpRequest(BaseModel):
-    """HTTP client payload for /get_order supporting HttpOrderLookupClient wire format."""
-
-    order_id: str = Field(..., description="Target order identifier")
-    customer_id: Optional[str] = Field(default=None, description="Customer ID passed from verified agent context")
 
 
 class GetOrderResponse(BaseModel):
@@ -49,12 +42,6 @@ class ListOrdersToolRequest(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid")
-
-    limit: int = Field(default=5, ge=1, le=10, description="Maximum number of orders to return (1-10)")
-
-
-class ListOrdersHttpRequest(BaseModel):
-    """HTTP client payload for /list_orders supporting HttpOrderLookupClient wire format."""
 
     limit: int = Field(default=5, ge=1, le=10, description="Maximum number of orders to return (1-10)")
 

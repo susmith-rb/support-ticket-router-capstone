@@ -64,6 +64,8 @@ FAQ_RESOLVER_AGENT_CARD: Dict[str, Any] = {
             "reason": {"type": "string", "description": "Handoff reason if escalated"},
             "degraded": {"type": "boolean", "description": "True if operating under partial outage"},
             "latency_ms": {"type": "number"},
+            "handoff_done": {"type": "boolean", "description": "True if HumanHandoff workflow already persisted and published"},
+            "calming_ack": {"type": ["string", "null"], "description": "Deterministic calming acknowledgement for user"},
         },
     },
 }
@@ -110,6 +112,8 @@ def handle_a2a_request(
             "reason": "invalid_a2a_payload",
             "message": "Missing required A2A fields (ticket_id, message).",
             "degraded": False,
+            "handoff_done": False,
+            "calming_ack": None,
         }
 
     resolution = active_agent.resolve(

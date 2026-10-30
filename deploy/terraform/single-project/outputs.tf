@@ -247,6 +247,21 @@ output "key_prefix" {
   value       = module.kms_identity.key_prefix
 }
 
+output "redaction_map_wrapper_key_id" {
+  description = "Resource ID of the symmetric redaction map wrapper crypto key (REQ-STORE-009)"
+  value       = module.kms_identity.redaction_map_wrapper_key_id
+}
+
+output "redaction_purge_scheduler_job_id" {
+  description = "Resource ID of the Cloud Scheduler redaction map purge job (REQ-STORE-010)"
+  value       = module.redaction_purge.scheduler_job_id
+}
+
+output "redaction_purge_sa_email" {
+  description = "Email of the Cloud Scheduler redaction purge service account (REQ-STORE-010)"
+  value       = module.redaction_purge.service_account_email
+}
+
 
 
 

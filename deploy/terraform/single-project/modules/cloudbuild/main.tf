@@ -195,7 +195,8 @@ resource "google_cloudbuild_trigger" "cd" {
 
   substitutions = {
     _CI_TRIGGER_ID   = length(google_cloudbuild_trigger.ci) > 0 ? google_cloudbuild_trigger.ci[0].trigger_id : ""
-    _TRIAGE_RESOURCE = var.triage_resource_name
+    _TRIAGE_RESOURCE      = var.triage_resource_name
+    _TRIAGE_AGENT_GATEWAY = var.triage_agent_gateway
   }
 
   repository_event_config {

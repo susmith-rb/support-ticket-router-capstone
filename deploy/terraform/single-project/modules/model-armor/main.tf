@@ -62,8 +62,17 @@ resource "google_project_iam_member" "model_armor_user_triage_agent" {
   member  = var.triage_agent_principal
 }
 
+# TODO(REQ-AUTH-008): remove after live e2e
 resource "google_project_iam_member" "model_armor_user_faq" {
   project = var.project_id
   role    = "roles/modelarmor.user"
   member  = "serviceAccount:${var.faq_sa_email}"
+}
+
+# REQ-AUTH-008: FaqResolver GKE Agent Identity Model Armor user
+resource "google_project_iam_member" "model_armor_user_faq_agent" {
+  count   = var.faq_agent_principal != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/modelarmor.user"
+  member  = var.faq_agent_principal
 }

@@ -355,3 +355,114 @@ def test_deploy_agent_identity_updates_existing_engine_and_fetches_effective_ide
     stdout = capsys.readouterr().out
     assert target in stdout
     assert expected_principal in stdout
+
+
+# REQ-AUTH-007
+def test_parse_args_agent_gateway_flag_and_env():
+    """Verify --agent-gateway flag parsing and rejection with sa identity."""
+    # S1: Rejected with --identity-type sa
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "--agent-gateway",
+                "projects/p/locations/l/agentGateways/gw",
+                "--identity-type",
+                "sa",
+            ]
+        )
+
+    # S2: Accepted with --identity-type agent
+    args = parse_args(
+        [
+            "--agent-gateway",
+            "projects/p/locations/l/agentGateways/gw",
+            "--identity-type",
+            "agent",
+        ]
+    )
+    assert args.agent_gateway == "projects/p/locations/l/agentGateways/gw"
+    assert args.identity_type == "agent"
+
+    # S3: Environment variable fallback
+    with patch.dict(
+        os.environ,
+        {"TRIAGE_AGENT_GATEWAY": "projects/p/locations/l/agentGateways/env-gw"},
+    ):
+        args_env = parse_args(["--identity-type", "agent"])
+        assert args_env.agent_gateway == "projects/p/locations/l/agentGateways/env-gw"
+
+
+# REQ-AUTH-007
+def test_deploy_reasoning_engine_rejects_agent_gateway_for_sa():
+    """Verify deploy_reasoning_engine raises ValueError when agent_gateway is used with SA identity."""
+    with pytest.raises(
+        ValueError, match="--agent-gateway is not supported with identity_type='sa'"
+    ):
+        deploy_reasoning_engine(
+            project="p",
+            region="l",
+            staging_bucket="gs://b",
+            display_name="d",
+            identity_type="sa",
+            agent_gateway="projects/p/locations/l/agentGateways/gw",
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="--agent-gateway is not supported with identity_type='service_account'",
+    ):
+        deploy_reasoning_engine(
+            project="p",
+            region="l",
+            staging_bucket="gs://b",
+            display_name="d",
+            identity_type="service_account",
+            agent_gateway="projects/p/locations/l/agentGateways/gw",
+        )
+
+
+# REQ-AUTH-007
+def test_deploy_agent_identity_configures_agent_gateway():
+    """Verify deploy_reasoning_engine configures agent_gateway_config and token sharing prevention."""
+    vertexai = pytest.importorskip("vertexai")
+
+    target = "projects/620485621180/locations/us-central1/reasoningEngines/888000222"
+    gateway_name = "projects/620485621180/locations/us-central1/agentGateways/tr-egress"
+
+    mock_engine = MagicMock()
+    mock_engine.api_resource.name = target
+    mock_engine.api_resource.spec.effective_identity = "principal://agents.test"
+
+    mock_client = MagicMock()
+    mock_client.agent_engines.update.return_value = mock_engine
+
+    with (
+        patch.object(vertexai, "Client", return_value=mock_client),
+        patch(
+            "scripts.deploy_agents.deploy_triage_agent_runtime.wait_for_reasoning_engine_idle"
+        ),
+    ):
+        deploy_reasoning_engine(
+            project="susmith-fde-ticket-router",
+            region="us-central1",
+            staging_bucket="gs://b/agent-engine-staging",
+            display_name="TriageRouterAgent",
+            identity_type="agent",
+            resource_name=target,
+            agent_gateway=gateway_name,
+            dry_run=False,
+        )
+
+    mock_client.agent_engines.update.assert_called_once()
+    cfg = mock_client.agent_engines.update.call_args.kwargs["config"]
+
+    assert cfg["agent_gateway_config"] == {
+        "agent_to_anywhere_config": {
+            "agent_gateway": gateway_name,
+        }
+    }
+    assert (
+        cfg["env_vars"]["GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES"]
+        == "False"
+    )
+

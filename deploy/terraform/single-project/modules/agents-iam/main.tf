@@ -59,6 +59,7 @@ resource "google_vertex_ai_endpoint_iam_member" "triage_agent_prediction_user" {
   member   = var.triage_agent_principal
 }
 
+# TODO(REQ-AUTH-008): remove after live e2e
 resource "google_vertex_ai_endpoint_iam_member" "faq_prediction_user" {
   provider = google-beta
   count    = var.router_endpoint_id != null && var.router_endpoint_id != "" ? 1 : 0
@@ -67,6 +68,17 @@ resource "google_vertex_ai_endpoint_iam_member" "faq_prediction_user" {
   endpoint = var.router_endpoint_id
   role     = "roles/aiplatform.predictionUser"
   member   = "serviceAccount:${google_service_account.sa_faq.email}"
+}
+
+# REQ-AUTH-008: FaqResolver GKE Agent Identity SPIFFE principal prediction user
+resource "google_vertex_ai_endpoint_iam_member" "faq_agent_prediction_user" {
+  provider = google-beta
+  count    = var.router_endpoint_id != null && var.router_endpoint_id != "" && var.faq_agent_principal != "" ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  endpoint = var.router_endpoint_id
+  role     = "roles/aiplatform.predictionUser"
+  member   = var.faq_agent_principal
 }
 
 resource "google_vertex_ai_endpoint_iam_member" "triage_dedicated_prediction_user" {
@@ -89,6 +101,7 @@ resource "google_vertex_ai_endpoint_iam_member" "triage_agent_dedicated_predicti
   member   = var.triage_agent_principal
 }
 
+# TODO(REQ-AUTH-008): remove after live e2e
 resource "google_vertex_ai_endpoint_iam_member" "faq_dedicated_prediction_user" {
   provider = google-beta
   count    = var.dedicated_router_endpoint_id != "" ? 1 : 0
@@ -97,6 +110,17 @@ resource "google_vertex_ai_endpoint_iam_member" "faq_dedicated_prediction_user" 
   endpoint = var.dedicated_router_endpoint_id
   role     = "roles/aiplatform.predictionUser"
   member   = "serviceAccount:${google_service_account.sa_faq.email}"
+}
+
+# REQ-AUTH-008: FaqResolver GKE Agent Identity dedicated prediction user
+resource "google_vertex_ai_endpoint_iam_member" "faq_agent_dedicated_prediction_user" {
+  provider = google-beta
+  count    = var.dedicated_router_endpoint_id != "" && var.faq_agent_principal != "" ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  endpoint = var.dedicated_router_endpoint_id
+  role     = "roles/aiplatform.predictionUser"
+  member   = var.faq_agent_principal
 }
 
 
@@ -151,20 +175,38 @@ resource "google_project_iam_member" "triage_agent_runtime_custom_role" {
   member  = var.triage_agent_principal
 }
 
+# TODO(REQ-AUTH-008): remove after live e2e
 resource "google_project_iam_member" "faq_inference_custom_role" {
   project = var.project_id
   role    = google_project_iam_custom_role.agent_inference.id
   member  = "serviceAccount:${google_service_account.sa_faq.email}"
 }
 
+# REQ-AUTH-008: FaqResolver GKE Agent Identity inference custom role
+resource "google_project_iam_member" "faq_agent_inference_custom_role" {
+  count   = var.faq_agent_principal != "" ? 1 : 0
+  project = var.project_id
+  role    = google_project_iam_custom_role.agent_inference.id
+  member  = var.faq_agent_principal
+}
+
 # -----------------------------------------------------------------------------
 # 5. Agent Search (Discovery Engine) Viewer for FaqResolverAgent
 # -----------------------------------------------------------------------------
 
+# TODO(REQ-AUTH-008): remove after live e2e
 resource "google_project_iam_member" "faq_discovery_engine_viewer" {
   project = var.project_id
   role    = "roles/discoveryengine.viewer"
   member  = "serviceAccount:${google_service_account.sa_faq.email}"
+}
+
+# REQ-AUTH-008: FaqResolver GKE Agent Identity discovery engine viewer
+resource "google_project_iam_member" "faq_agent_discovery_engine_viewer" {
+  count   = var.faq_agent_principal != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/discoveryengine.viewer"
+  member  = var.faq_agent_principal
 }
 
 # -----------------------------------------------------------------------------
@@ -187,6 +229,25 @@ resource "google_pubsub_topic_iam_member" "triage_agent_human_queue_publisher" {
   member  = var.triage_agent_principal
 }
 
+# TODO(REQ-AUTH-008): remove after live e2e
+# REQ-AGENT-030: FaqResolver publishes escalations to human-queue topic via HumanHandoff
+resource "google_pubsub_topic_iam_member" "faq_human_queue_publisher" {
+  count   = var.pubsub_human_queue_topic_name != "" ? 1 : 0
+  topic   = var.pubsub_human_queue_topic_name
+  project = var.project_id
+  role    = "roles/pubsub.publisher"
+  member  = "serviceAccount:${google_service_account.sa_faq.email}"
+}
+
+# REQ-AUTH-008: FaqResolver GKE Agent Identity human queue publisher
+resource "google_pubsub_topic_iam_member" "faq_agent_human_queue_publisher" {
+  count   = var.pubsub_human_queue_topic_name != "" && var.faq_agent_principal != "" ? 1 : 0
+  topic   = var.pubsub_human_queue_topic_name
+  project = var.project_id
+  role    = "roles/pubsub.publisher"
+  member  = var.faq_agent_principal
+}
+
 resource "google_pubsub_subscription_iam_member" "queue_human_queue_subscriber" {
   count        = var.pubsub_human_queue_sub_name != "" && var.sa_queue_email != "" ? 1 : 0
   subscription = var.pubsub_human_queue_sub_name
@@ -194,6 +255,7 @@ resource "google_pubsub_subscription_iam_member" "queue_human_queue_subscriber" 
   role         = "roles/pubsub.subscriber"
   member       = "serviceAccount:${var.sa_queue_email}"
 }
+
 
 # -----------------------------------------------------------------------------
 # 7. Reasoning Engine Service Agent Permissions (Agent Runtime staging bucket)
@@ -223,10 +285,19 @@ resource "google_project_iam_member" "triage_agent_cloudtrace_agent" {
   member  = var.triage_agent_principal
 }
 
+# TODO(REQ-AUTH-008): remove after live e2e
 resource "google_project_iam_member" "faq_cloudtrace_agent" {
   project = var.project_id
   role    = "roles/cloudtrace.agent"
   member  = "serviceAccount:${google_service_account.sa_faq.email}"
+}
+
+# REQ-AUTH-008: FaqResolver GKE Agent Identity cloudtrace agent
+resource "google_project_iam_member" "faq_agent_cloudtrace_agent" {
+  count   = var.faq_agent_principal != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = var.faq_agent_principal
 }
 
 resource "google_project_iam_member" "ticket_mcp_cloudtrace_agent" {

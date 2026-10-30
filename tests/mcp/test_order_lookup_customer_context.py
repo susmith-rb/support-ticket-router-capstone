@@ -225,49 +225,6 @@ def test_cct_verification_matrix(auth_fixture):
 
 
 # REQ-AUTH-003
-def test_cct_http_endpoints_verification(auth_fixture):
-    """Test legacy HTTP routes (/get_order, /list_orders) with CCT verification."""
-    signer, resolver = auth_fixture
-    valid_token = mint_customer_context_token(
-        signer=signer,
-        issuer="triage-router",
-        audience="order-lookup-mcp",
-        customer_id="cust_1001",
-        ticket_id=None,
-    )
-
-    app, _ = _build_test_app(resolver, cct_mode="accept")
-    client = TestClient(app)
-
-    # /get_order with valid CCT
-    resp = client.post(
-        "/get_order",
-        json={"order_id": "ORD-1001"},
-        headers={"X-Customer-Context": valid_token},
-    )
-    assert resp.status_code == 200
-    assert resp.json()["order_id"] == "ORD-1001"
-
-    # /get_order with body customer_id is rejected with 400 (BOLA/IDOR guard, REQ-AGENT-010, # REQ-AUTH-003)
-    resp_mismatch = client.post(
-        "/get_order",
-        json={"order_id": "ORD-1001", "customer_id": "cust_1002"},
-        headers={"X-Customer-Context": valid_token},
-    )
-    assert resp_mismatch.status_code == 400
-    assert "BOLA/IDOR violation" in resp_mismatch.json()["detail"]
-
-    # /list_orders with valid CCT
-    resp_list = client.post(
-        "/list_orders",
-        json={"limit": 5},
-        headers={"X-Customer-Context": valid_token},
-    )
-    assert resp_list.status_code == 200
-    assert len(resp_list.json()["orders"]) == 1
-
-
-# REQ-AUTH-003
 def test_unknown_cct_mode_validation(auth_fixture):
     """Verify that unknown cct_mode raises ValueError in create_app and 403 fail-closed at runtime."""
     _, resolver = auth_fixture

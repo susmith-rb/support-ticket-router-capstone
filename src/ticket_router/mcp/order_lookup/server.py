@@ -22,6 +22,7 @@ import threading
 from typing import Any, Dict, Iterable, Optional
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from ticket_router.common.settings import Settings
@@ -31,10 +32,8 @@ from ticket_router.identity.customer_token import (
     verify_customer_context_token,
 )
 from ticket_router.mcp.order_lookup.schemas import (
-    GetOrderHttpRequest,
     GetOrderResponse,
     GetOrderToolRequest,
-    ListOrdersHttpRequest,
     ListOrdersResponse,
     ListOrdersToolRequest,
     get_tool_schemas,
@@ -77,7 +76,82 @@ def _extract_caller_identity(
             return claims.get("email") or claims.get("sub") or "sa-authenticated-caller"
         except Exception:
             return "sa-authenticated-caller"
-    return "sa-authenticated-caller"
+
+
+class CallerNotAuthorizedError(HTTPException):
+    """Raised when the caller SPIFFE ID does not match ALLOWED_CALLER_SPIFFE_IDS (REQ-AUTH-009)."""
+
+    def __init__(self, detail: str = "caller_not_authorized") -> None:
+        super().__init__(status_code=403, detail=detail)
+
+
+_ALLOWED_CALLERS_WARNING_LOGGED = False
+_ALLOWED_CALLERS_WARNING_LOCK = threading.Lock()
+
+
+def _extract_forwarded_token_sub(
+    authorization: Optional[str] = None,
+    serverless_authorization: Optional[str] = None,
+) -> Optional[str]:
+    """Extract sub claim from forwarded bearer token without signature verification.
+
+    # REQ-AUTH-009: Cloud Run validates the bearer token at ingress and forwards it
+    # with the signature replaced by SIGNATURE_REMOVED_BY_GOOGLE. We decode the
+    # base64url payload to read sub. Never log the token or token payload.
+    """
+    token_header = serverless_authorization or authorization
+    if not token_header or not token_header.startswith("Bearer "):
+        return None
+
+    token = token_header[7:].strip()
+    parts = token.split(".")
+    if len(parts) >= 2:
+        try:
+            payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
+            payload_json = base64.urlsafe_b64decode(payload_b64.encode("utf-8")).decode("utf-8")
+            claims = json.loads(payload_json)
+            sub = claims.get("sub")
+            if sub:
+                return str(sub)
+        except Exception:
+            return None
+    return None
+
+
+def _check_caller_authorization(
+    request: Request,
+    authorization: Optional[str] = None,
+    serverless_authorization: Optional[str] = None,
+) -> None:
+    """Authorize caller identity before CCT verification (REQ-AUTH-009).
+
+    Requires caller's forwarded token sub in ALLOWED_CALLER_SPIFFE_IDS.
+    When empty/unset, logs a warning once and allows staging.
+    Raises CallerNotAuthorizedError (HTTP 403 {"error": "caller_not_authorized"}) otherwise.
+    Never logs tokens.
+    """
+    global _ALLOWED_CALLERS_WARNING_LOGGED
+    allowed_ids = getattr(request.app.state, "allowed_caller_spiffe_ids", None)
+    if allowed_ids is None:
+        raw = os.environ.get("ALLOWED_CALLER_SPIFFE_IDS", "").strip()
+        if raw:
+            allowed_ids = [s.strip() for s in raw.split(",") if s.strip()]
+        else:
+            allowed_ids = []
+
+    if not allowed_ids:
+        if not _ALLOWED_CALLERS_WARNING_LOGGED:
+            with _ALLOWED_CALLERS_WARNING_LOCK:
+                if not _ALLOWED_CALLERS_WARNING_LOGGED:
+                    logger.warning(
+                        "ALLOWED_CALLER_SPIFFE_IDS is empty; allowing unvalidated caller identity for staging"
+                    )
+                    _ALLOWED_CALLERS_WARNING_LOGGED = True
+        return
+
+    sub = _extract_forwarded_token_sub(authorization, serverless_authorization)
+    if not sub or sub not in allowed_ids:
+        raise CallerNotAuthorizedError()
 
 
 def get_order_repo(request: Request) -> OrderRepository:
@@ -157,31 +231,14 @@ def _validate_verified_customer_headers(
     x_verified_customer_id: Optional[str],
     x_customer_verified: Optional[str],
     caller: str,
-    body_customer_id: Optional[str] = None,
-    is_http_route: bool = False,
 ) -> str:
     header_customer = x_customer_id or x_verified_customer_id
-    if header_customer is not None:
-        if body_customer_id is not None and body_customer_id != header_customer:
-            logger.warning(
-                "BOLA mismatch detected: caller=%s reason=body_header_mismatch",
-                caller,
-            )
-            raise HTTPException(
-                status_code=403,
-                detail="Access denied: customer context mismatch.",
-            )
-        effective_customer = header_customer
-    else:
-        if body_customer_id is not None:
-            effective_customer = body_customer_id
-        else:
-            detail = (
-                "Missing customer identification context."
-                if is_http_route
-                else "Missing verified customer context header (X-Customer-ID / X-Verified-Customer-Id)."
-            )
-            raise HTTPException(status_code=400, detail=detail)
+    if header_customer is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing verified customer context header (X-Customer-ID / X-Verified-Customer-Id).",
+        )
+    effective_customer = header_customer
 
     if effective_customer.startswith("anon:"):
         logger.warning(
@@ -216,8 +273,6 @@ async def _resolve_customer(
     x_verified_customer_id: Optional[str],
     x_customer_verified: Optional[str],
     caller: str,
-    body_customer_id: Optional[str] = None,
-    is_http_route: bool = False,
 ) -> str:
     mode = getattr(request.app.state, "cct_mode", None)
     if mode is None:
@@ -238,8 +293,6 @@ async def _resolve_customer(
             x_verified_customer_id=x_verified_customer_id,
             x_customer_verified=x_customer_verified,
             caller=caller,
-            body_customer_id=body_customer_id,
-            is_http_route=is_http_route,
         )
 
     if mode == "require" and not x_customer_context:
@@ -287,10 +340,6 @@ async def _resolve_customer(
             logger.warning("CCT customer mismatch: jti=%s caller=%s", verified_ctx.jti, caller)
             raise HTTPException(status_code=403, detail="customer_context_mismatch")
 
-        if body_customer_id is not None and body_customer_id != sub:
-            logger.warning("CCT body customer mismatch: jti=%s caller=%s", verified_ctx.jti, caller)
-            raise HTTPException(status_code=403, detail="customer_context_mismatch")
-
         return sub
 
     return _validate_verified_customer_headers(
@@ -299,8 +348,6 @@ async def _resolve_customer(
         x_verified_customer_id=x_verified_customer_id,
         x_customer_verified=x_customer_verified,
         caller=caller,
-        body_customer_id=body_customer_id,
-        is_http_route=is_http_route,
     )
 
 
@@ -346,6 +393,13 @@ async def get_order_tool(
             detail="BOLA/IDOR violation: customer_id is strictly derived from verified session claims and must not be passed as a tool parameter (REQ-AGENT-010, AGENTS.md rule 7).",
         )
 
+    # Authorize caller SPIFFE identity BEFORE CCT verification (REQ-AUTH-009)
+    _check_caller_authorization(
+        request=request,
+        authorization=authorization,
+        serverless_authorization=x_serverless_authorization,
+    )
+
     verified_customer = await _resolve_customer(
         request=request,
         x_customer_context=x_customer_context,
@@ -360,45 +414,6 @@ async def get_order_tool(
         raise HTTPException(status_code=400, detail="Field 'order_id' is required.")
 
     return _lookup_order_for_customer(repo, str(order_id), verified_customer)
-
-
-@router.post("/get_order", response_model=GetOrderResponse)
-async def get_order_http(
-    req: GetOrderHttpRequest,
-    request: Request,
-    x_customer_id: Optional[str] = Header(None, alias="X-Customer-ID"),
-    x_verified_customer_id: Optional[str] = Header(None, alias="X-Verified-Customer-Id"),
-    x_customer_verified: Optional[str] = Header(None, alias="X-Customer-Verified"),
-    x_customer_context: Optional[str] = Header(None, alias="X-Customer-Context"),
-    authorization: Optional[str] = Header(None),
-    x_serverless_authorization: Optional[str] = Header(None),
-    repo: OrderRepository = Depends(get_order_repo),
-) -> GetOrderResponse:
-    caller = _extract_caller_identity(authorization, x_serverless_authorization)
-
-    body_bytes = await request.body()
-    try:
-        body_dict = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
-
-    if "customer_id" in body_dict:
-        logger.warning("BOLA guard: rejected untrusted customer_id in body from caller=%s", caller)
-        raise HTTPException(
-            status_code=400,
-            detail="BOLA/IDOR violation: customer_id is strictly derived from verified session claims and must not be passed as a tool parameter (REQ-AGENT-010, AGENTS.md rule 7).",
-        )
-
-    verified_customer = await _resolve_customer(
-        request=request,
-        x_customer_context=x_customer_context,
-        x_customer_id=x_customer_id,
-        x_verified_customer_id=x_verified_customer_id,
-        x_customer_verified=x_customer_verified,
-        caller=caller,
-        is_http_route=True,
-    )
-    return _lookup_order_for_customer(repo, req.order_id, verified_customer)
 
 
 @router.post("/tools/list_orders", response_model=ListOrdersResponse)
@@ -430,6 +445,13 @@ async def list_orders_tool(
             detail="BOLA/IDOR violation: customer_id is strictly derived from verified session claims and must not be passed as a tool parameter (REQ-AGENT-010, AGENTS.md rule 7).",
         )
 
+    # Authorize caller SPIFFE identity BEFORE CCT verification (REQ-AUTH-009)
+    _check_caller_authorization(
+        request=request,
+        authorization=authorization,
+        serverless_authorization=x_serverless_authorization,
+    )
+
     verified_customer = await _resolve_customer(
         request=request,
         x_customer_context=x_customer_context,
@@ -451,50 +473,10 @@ async def list_orders_tool(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
-@router.post("/list_orders", response_model=ListOrdersResponse)
-async def list_orders_http(
-    req: ListOrdersHttpRequest,
-    request: Request,
-    x_customer_id: Optional[str] = Header(None, alias="X-Customer-ID"),
-    x_verified_customer_id: Optional[str] = Header(None, alias="X-Verified-Customer-Id"),
-    x_customer_verified: Optional[str] = Header(None, alias="X-Customer-Verified"),
-    x_customer_context: Optional[str] = Header(None, alias="X-Customer-Context"),
-    authorization: Optional[str] = Header(None),
-    x_serverless_authorization: Optional[str] = Header(None),
-    repo: OrderRepository = Depends(get_order_repo),
-) -> ListOrdersResponse:
-    caller = _extract_caller_identity(authorization, x_serverless_authorization)
-
-    body_bytes = await request.body()
-    try:
-        body_dict = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
-
-    if "customer_id" in body_dict:
-        logger.warning(
-            "BOLA guard: rejected untrusted customer_id in body from caller=%s",
-            caller,
-        )
-        raise HTTPException(
-            status_code=400,
-            detail="BOLA/IDOR violation: customer_id is strictly derived from verified session claims and must not be passed as a tool parameter (REQ-AGENT-010, AGENTS.md rule 7).",
-        )
-
-    verified_customer = await _resolve_customer(
-        request=request,
-        x_customer_context=x_customer_context,
-        x_customer_id=x_customer_id,
-        x_verified_customer_id=x_verified_customer_id,
-        x_customer_verified=x_customer_verified,
-        caller=caller,
-    )
-    server = OrderLookupMcpServer(repo)
-    tool_req = ListOrdersToolRequest(limit=req.limit)
-    try:
-        return server.list_orders_tool(verified_customer, tool_req)
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+async def _caller_not_authorized_handler(
+    request: Request, exc: CallerNotAuthorizedError
+) -> JSONResponse:
+    return JSONResponse(status_code=403, content={"error": "caller_not_authorized"})
 
 
 def create_app(
@@ -505,6 +487,7 @@ def create_app(
     cct_audience: Optional[str] = None,
     cct_allowed_issuers: Optional[Iterable[str]] = None,
     cct_key_prefix: Optional[str] = None,
+    allowed_caller_spiffe_ids: Optional[Iterable[str]] = None,
 ) -> FastAPI:
     """Create and configure FastAPI application for order-lookup-mcp."""
     if order_repo is None:
@@ -524,6 +507,11 @@ def create_app(
     )
     application.state.order_repo = order_repo
     application.state.require_verified_header = require_verified_header
+    if allowed_caller_spiffe_ids is not None:
+        application.state.allowed_caller_spiffe_ids = tuple(allowed_caller_spiffe_ids)
+
+    application.add_exception_handler(CallerNotAuthorizedError, _caller_not_authorized_handler)
+
     if cct_mode is not None:
         cct_mode_norm = cct_mode.strip().lower()
         if cct_mode_norm not in {"off", "accept", "require"}:

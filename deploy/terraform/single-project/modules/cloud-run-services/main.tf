@@ -186,6 +186,10 @@ resource "google_cloud_run_v2_service" "order_lookup_mcp" {
         name  = "CCT_KEY_PREFIX"
         value = var.cct_key_prefix
       }
+      env {
+        name  = "ALLOWED_CALLER_SPIFFE_IDS"
+        value = var.allowed_caller_spiffe_ids
+      }
 
       ports {
         container_port = 8080
@@ -203,6 +207,7 @@ resource "google_cloud_run_v2_service" "order_lookup_mcp" {
   labels = var.labels
 }
 
+# TODO(REQ-AUTH-008): remove after live e2e
 # Invoker for order-lookup-mcp: sa-faq
 resource "google_cloud_run_v2_service_iam_member" "order_lookup_invoker" {
   count    = local.service_count > 0 && var.sa_faq_email != "" ? 1 : 0
@@ -211,6 +216,16 @@ resource "google_cloud_run_v2_service_iam_member" "order_lookup_invoker" {
   name     = google_cloud_run_v2_service.order_lookup_mcp[0].name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${var.sa_faq_email}"
+}
+
+# REQ-AUTH-008 / REQ-AUTH-009: Invoker for order-lookup-mcp: FaqResolver GKE Agent Identity SPIFFE principal
+resource "google_cloud_run_v2_service_iam_member" "order_lookup_invoker_faq_agent" {
+  count    = local.service_count > 0 && var.faq_agent_principal != "" ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.order_lookup_mcp[0].name
+  role     = "roles/run.invoker"
+  member   = var.faq_agent_principal
 }
 
 # -----------------------------------------------------------------------------
@@ -272,6 +287,26 @@ resource "google_cloud_run_v2_service" "human_queue" {
         name  = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
         value = "NO_CONTENT"
       }
+      env {
+        name  = "PUSH_AUDIENCE"
+        value = var.push_audience
+      }
+      env {
+        name  = "PUSH_INVOKER_EMAIL"
+        value = var.sa_queue_push_email
+      }
+      env {
+        name  = "REDACTION_KMS_KEY"
+        value = var.redaction_kms_key
+      }
+      env {
+        name  = "PURGE_AUDIENCE"
+        value = var.purge_audience
+      }
+      env {
+        name  = "PURGE_INVOKER_EMAIL"
+        value = var.purge_invoker_email
+      }
 
       ports {
         container_port = 8080
@@ -307,3 +342,14 @@ resource "google_cloud_run_v2_service_iam_member" "human_queue_invoker_triage_ag
   role     = "roles/run.invoker"
   member   = var.triage_agent_principal
 }
+
+# Invoker for human-queue: sa-queue-push (for Pub/Sub push subscription delivery REQ-AGENT-031)
+resource "google_cloud_run_v2_service_iam_member" "human_queue_push_invoker" {
+  count    = local.service_count > 0 && var.sa_queue_push_email != "" ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.human_queue[0].name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${var.sa_queue_push_email}"
+}
+

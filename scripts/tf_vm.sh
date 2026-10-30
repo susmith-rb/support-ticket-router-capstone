@@ -69,7 +69,7 @@ sync_code() {
 
 pull_locks() {
   echo "==> Fetching .terraform.lock.hcl files from VM..."
-  for target in bootstrap single-project; do
+  for target in bootstrap single-project agent-gateway; do
     local lock_content
     lock_content="$(run_ssh "cat ~/capstone-tf/deploy/terraform/${target}/.terraform.lock.hcl 2>/dev/null || true")"
     if [ -n "${lock_content}" ]; then
@@ -164,6 +164,7 @@ Commands:
 Targets:
   bootstrap       (deploy/terraform/bootstrap)
   single-project  (deploy/terraform/single-project)
+  agent-gateway   (deploy/terraform/agent-gateway)
 EOF
     ;;
 esac

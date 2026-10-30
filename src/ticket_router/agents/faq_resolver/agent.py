@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -46,6 +47,11 @@ from ticket_router.agents.faq_resolver.search import (
     execute_faq_search,
 )
 from ticket_router.agents.faq_resolver.validator import CitationValidator
+from ticket_router.agents.triage_router.mcp_client import (
+    HttpTicketDbMcpClient,
+    InMemoryTicketDbMcpClient,
+)
+from ticket_router.agents.triage_router.templates import render_calming_acknowledgement
 from ticket_router.common.hedging import hedged_call
 from ticket_router.common.observability import start_span
 from ticket_router.common.resilience import (
@@ -56,6 +62,8 @@ from ticket_router.common.resilience import (
 )
 from ticket_router.common.settings import Settings
 from ticket_router.config.models import get, model_id, model_thinking_level
+from ticket_router.handoff.human_handoff import HumanHandoff
+from ticket_router.handoff.publisher import FakePublisher, PubSubRestPublisher
 from ticket_router.models.router_s1_client import RouterS1Client
 from ticket_router.security.model_armor import (
     ModelArmorClient,
@@ -81,6 +89,8 @@ class ResolutionResult:
     retrieval_passes_count: int = 0
     regeneration_count: int = 0
     latency_ms: float = 0.0
+    handoff_done: bool = False
+    calming_ack: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -96,6 +106,8 @@ class ResolutionResult:
             "retrieval_passes_count": self.retrieval_passes_count,
             "regeneration_count": self.regeneration_count,
             "latency_ms": self.latency_ms,
+            "handoff_done": self.handoff_done,
+            "calming_ack": self.calming_ack,
         }
 
 
@@ -306,6 +318,9 @@ class FaqResolverAgent:
         max_retrieval_passes: int = 2,
         max_regenerations: int = 1,
         lazy_init: bool = False,
+        human_handoff: Optional[HumanHandoff] = None,
+        ticket_db_client: Optional[Any] = None,
+        publisher: Optional[Any] = None,
     ) -> None:
         self.search_client = search_client
         self.reranker = reranker
@@ -321,9 +336,14 @@ class FaqResolverAgent:
         self.max_retrieval_passes = max_retrieval_passes
         self.max_regenerations = max_regenerations
         self._lazy_init = lazy_init
+        self.human_handoff = human_handoff
+        self.ticket_db_client = ticket_db_client
+        self.publisher = publisher
 
         # Resolve model ID dynamically from configuration
         self.resolved_model_id = model_id(self.model_role)
+        if not lazy_init:
+            self._ensure_initialized()
 
     def _ensure_initialized(self) -> None:
         """Lazily initialize real dependencies from environment settings."""
@@ -332,9 +352,42 @@ class FaqResolverAgent:
                 self.order_client = FakeOrderLookupClient()
             if self.llm_client is None:
                 self.llm_client = FakeLLMClient()
+            if self.ticket_db_client is None:
+                self.ticket_db_client = InMemoryTicketDbMcpClient()
+            if self.publisher is None:
+                self.publisher = FakePublisher()
+            if self.human_handoff is None:
+                self.human_handoff = HumanHandoff(
+                    ticket_db_client=self.ticket_db_client,
+                    publisher=self.publisher,
+                    escalated_by="faq_resolver",
+                )
             return
 
         settings = Settings.from_env()
+        if self.ticket_db_client is None:
+            if settings.require_real_deps:
+                ticket_db_url = os.environ.get("TICKET_DB_MCP_URL") or settings.ticket_db_mcp_url or ""
+                self.ticket_db_client = HttpTicketDbMcpClient(base_url=ticket_db_url)
+            else:
+                self.ticket_db_client = InMemoryTicketDbMcpClient()
+
+        if self.publisher is None:
+            if settings.require_real_deps:
+                topic = os.environ.get("HUMAN_QUEUE_TOPIC", "human-queue")
+                self.publisher = PubSubRestPublisher(
+                    project=settings.project or os.environ.get("GOOGLE_CLOUD_PROJECT"),
+                    topic=topic,
+                )
+            else:
+                self.publisher = FakePublisher()
+
+        if self.human_handoff is None:
+            self.human_handoff = HumanHandoff(
+                ticket_db_client=self.ticket_db_client,
+                publisher=self.publisher,
+                escalated_by="faq_resolver",
+            )
         if self.model_armor_client is None and settings.model_armor_enabled:
             self.model_armor_client = ModelArmorClient(
                 template=settings.model_armor_template,
@@ -425,6 +478,63 @@ class FaqResolverAgent:
                 return self.llm_client.generate_answer(**call_kwargs)
             raise
 
+    def _escalate(
+        self,
+        *,
+        ticket_id: str,
+        queue: str = "human-standard",
+        reason: str,
+        degraded: bool = False,
+        message: Optional[str] = None,
+        tool_calls_count: int = 0,
+        retrieval_passes_count: int = 0,
+        regeneration_count: int = 0,
+        latency_ms: float = 0.0,
+        traceparent: Optional[str] = None,
+        customer_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        body_redacted: Optional[str] = None,
+    ) -> ResolutionResult:
+        """Execute shared HumanHandoff and return ESCALATED ResolutionResult (REQ-AGENT-030)."""
+        calming_ack: Optional[str] = None
+        handoff_done = False
+        if self.human_handoff is not None:
+            try:
+                res = self.human_handoff.escalate(
+                    ticket_id=ticket_id,
+                    queue=queue,
+                    reason=reason,
+                    escalated_by="faq_resolver",
+                    degraded=degraded,
+                    traceparent=traceparent,
+                    customer_id=customer_id,
+                    session_id=session_id,
+                    body_redacted=body_redacted,
+                )
+                calming_ack = res.calming_ack
+                handoff_done = True
+            except Exception as exc:
+                logger.warning("FaqResolver HumanHandoff failed: %s", exc)
+                calming_ack = render_calming_acknowledgement(queue=queue, ticket_id=ticket_id)
+                handoff_done = True
+        else:
+            calming_ack = render_calming_acknowledgement(queue=queue, ticket_id=ticket_id)
+
+        return ResolutionResult(
+            status="ESCALATED",
+            route="human",
+            queue=queue,
+            reason=reason,
+            degraded=degraded,
+            message=message,
+            tool_calls_count=tool_calls_count,
+            retrieval_passes_count=retrieval_passes_count,
+            regeneration_count=regeneration_count,
+            latency_ms=latency_ms,
+            handoff_done=handoff_done,
+            calming_ack=calming_ack,
+        )
+
     def _is_static_fallback_eligible(
         self,
         predicted_intent: Optional[str],
@@ -491,6 +601,10 @@ class FaqResolverAgent:
         retrieval_passes_count: int,
         regeneration_count: int,
         t_start: float,
+        ticket_id: str = "",
+        traceparent: Optional[str] = None,
+        customer_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> ResolutionResult:
         """Produce deterministic static grounded fallback per REQ-AGENT-028."""
         top_doc_id = ordered_doc_ids[0]
@@ -500,9 +614,8 @@ class FaqResolverAgent:
         val_result = self.validator.validate(fallback_payload, retrieved_docs_map)
 
         if not val_result.is_valid:
-            return ResolutionResult(
-                status="ESCALATED",
-                route="human",
+            return self._escalate(
+                ticket_id=ticket_id,
                 queue="human-standard",
                 reason="uncited_answer",
                 degraded=True,
@@ -511,15 +624,18 @@ class FaqResolverAgent:
                 retrieval_passes_count=retrieval_passes_count,
                 regeneration_count=regeneration_count,
                 latency_ms=self._elapsed_ms(t_start),
+                traceparent=traceparent,
+                customer_id=customer_id,
+                session_id=session_id,
+                body_redacted=message,
             )
 
         raw_answer = fallback_payload.get("answer", "")
         if self.model_armor_client is not None:
             ma_verdict = self.model_armor_client.sanitize_model_response(raw_answer)
             if ma_verdict.blocked:
-                return ResolutionResult(
-                    status="ESCALATED",
-                    route="human",
+                return self._escalate(
+                    ticket_id=ticket_id,
                     queue="human-standard",
                     reason="model_armor_response_blocked",
                     degraded=False,
@@ -528,11 +644,14 @@ class FaqResolverAgent:
                     retrieval_passes_count=retrieval_passes_count,
                     regeneration_count=regeneration_count,
                     latency_ms=self._elapsed_ms(t_start),
+                    traceparent=traceparent,
+                    customer_id=customer_id,
+                    session_id=session_id,
+                    body_redacted=message,
                 )
             if ma_verdict.degraded:
-                return ResolutionResult(
-                    status="ESCALATED",
-                    route="human",
+                return self._escalate(
+                    ticket_id=ticket_id,
                     queue="human-standard",
                     reason="model_armor_degraded",
                     degraded=True,
@@ -541,6 +660,10 @@ class FaqResolverAgent:
                     retrieval_passes_count=retrieval_passes_count,
                     regeneration_count=regeneration_count,
                     latency_ms=self._elapsed_ms(t_start),
+                    traceparent=traceparent,
+                    customer_id=customer_id,
+                    session_id=session_id,
+                    body_redacted=message,
                 )
 
         return ResolutionResult(
@@ -593,6 +716,7 @@ class FaqResolverAgent:
                 memory_summary=memory_summary,
                 untrusted_customer_id=untrusted_customer_id,
                 customer_context_token=customer_context_token,
+                traceparent=traceparent,
             )
             resolve_span.set_attribute("status", res.status)
             return res
@@ -609,6 +733,7 @@ class FaqResolverAgent:
         memory_summary: Optional[str] = None,
         untrusted_customer_id: Optional[str] = None,
         customer_context_token: Optional[str] = None,
+        traceparent: Optional[str] = None,
     ) -> ResolutionResult:
         t_start = self._clock()
 
@@ -618,9 +743,8 @@ class FaqResolverAgent:
 
         # Enforce initial budget check
         if self._is_budget_exhausted(t_start):
-            return ResolutionResult(
-                status="ESCALATED",
-                route="human",
+            return self._escalate(
+                ticket_id=ticket_id,
                 queue="human-standard",
                 reason="budget_exceeded",
                 degraded=False,
@@ -629,6 +753,10 @@ class FaqResolverAgent:
                 retrieval_passes_count=0,
                 regeneration_count=0,
                 latency_ms=self._elapsed_ms(t_start),
+                traceparent=traceparent,
+                customer_id=customer_id,
+                session_id=session_id,
+                body_redacted=message,
             )
 
         # Determine verification status (REQ-IDENT-004, REQ-IDENT-005)
@@ -716,9 +844,8 @@ class FaqResolverAgent:
                         get_order_kwargs["customer_context_token"] = customer_context_token
                     order_info = self.order_client.get_order(**get_order_kwargs)
                 except BolaViolationError:
-                    return ResolutionResult(
-                        status="ESCALATED",
-                        route="human",
+                    return self._escalate(
+                        ticket_id=ticket_id,
                         queue="human-standard",
                         reason="bola_violation",
                         degraded=False,
@@ -727,6 +854,10 @@ class FaqResolverAgent:
                         retrieval_passes_count=0,
                         regeneration_count=0,
                         latency_ms=self._elapsed_ms(t_start),
+                        traceparent=traceparent,
+                        customer_id=customer_id,
+                        session_id=session_id,
+                        body_redacted=message,
                     )
                 except LookupError:
                     order_info = {"order_id": order_id, "status": "NOT_FOUND"}
@@ -756,9 +887,8 @@ class FaqResolverAgent:
                         else:
                             order_info = {"orders": [], "status": "NO_ORDERS_FOUND"}
                 except BolaViolationError:
-                    return ResolutionResult(
-                        status="ESCALATED",
-                        route="human",
+                    return self._escalate(
+                        ticket_id=ticket_id,
                         queue="human-standard",
                         reason="bola_violation",
                         degraded=False,
@@ -767,6 +897,10 @@ class FaqResolverAgent:
                         retrieval_passes_count=0,
                         regeneration_count=0,
                         latency_ms=self._elapsed_ms(t_start),
+                        traceparent=traceparent,
+                        customer_id=customer_id,
+                        session_id=session_id,
+                        body_redacted=message,
                     )
                 except Exception as exc:
                     logger.warning("Natural order lookup (list_orders) failed gracefully: %s", exc)
@@ -795,9 +929,8 @@ class FaqResolverAgent:
 
             # Agent Search failure -> degraded escalation
             if not search_res.success or search_res.degraded:
-                return ResolutionResult(
-                    status="ESCALATED",
-                    route="human",
+                return self._escalate(
+                    ticket_id=ticket_id,
                     queue="human-standard",
                     reason="search_failure",
                     degraded=True,
@@ -806,6 +939,10 @@ class FaqResolverAgent:
                     retrieval_passes_count=retrieval_passes_count,
                     regeneration_count=regeneration_count,
                     latency_ms=self._elapsed_ms(t_start),
+                    traceparent=traceparent,
+                    customer_id=customer_id,
+                    session_id=session_id,
+                    body_redacted=message,
                 )
 
             for doc_id, doc in search_res.documents.items():
@@ -842,9 +979,8 @@ class FaqResolverAgent:
         # Step 4: Grounded Answer Synthesis & Mandatory Citations
         # -----------------------------------------------------------------
         if self._is_budget_exhausted(t_start):
-            return ResolutionResult(
-                status="ESCALATED",
-                route="human",
+            return self._escalate(
+                ticket_id=ticket_id,
                 queue="human-standard",
                 reason="budget_exceeded",
                 degraded=False,
@@ -853,6 +989,10 @@ class FaqResolverAgent:
                 retrieval_passes_count=retrieval_passes_count,
                 regeneration_count=regeneration_count,
                 latency_ms=self._elapsed_ms(t_start),
+                traceparent=traceparent,
+                customer_id=customer_id,
+                session_id=session_id,
+                body_redacted=message,
             )
 
         candidate_docs_list = [retrieved_docs_map[did] for did in ordered_doc_ids if did in retrieved_docs_map]
@@ -894,10 +1034,13 @@ class FaqResolverAgent:
                     retrieval_passes_count=retrieval_passes_count,
                     regeneration_count=regeneration_count,
                     t_start=t_start,
+                    ticket_id=ticket_id,
+                    traceparent=traceparent,
+                    customer_id=customer_id,
+                    session_id=session_id,
                 )
-            return ResolutionResult(
-                status="ESCALATED",
-                route="human",
+            return self._escalate(
+                ticket_id=ticket_id,
                 queue="human-standard",
                 reason="uncited_answer",
                 degraded=True,
@@ -906,6 +1049,10 @@ class FaqResolverAgent:
                 retrieval_passes_count=retrieval_passes_count,
                 regeneration_count=regeneration_count,
                 latency_ms=self._elapsed_ms(t_start),
+                traceparent=traceparent,
+                customer_id=customer_id,
+                session_id=session_id,
+                body_redacted=message,
             )
 
         val_result = self.validator.validate(answer_payload, retrieved_docs_map)
@@ -964,10 +1111,13 @@ class FaqResolverAgent:
                             retrieval_passes_count=retrieval_passes_count,
                             regeneration_count=regeneration_count,
                             t_start=t_start,
+                            ticket_id=ticket_id,
+                            traceparent=traceparent,
+                            customer_id=customer_id,
+                            session_id=session_id,
                         )
-                    return ResolutionResult(
-                        status="ESCALATED",
-                        route="human",
+                    return self._escalate(
+                        ticket_id=ticket_id,
                         queue="human-standard",
                         reason="uncited_answer",
                         degraded=True,
@@ -976,6 +1126,10 @@ class FaqResolverAgent:
                         retrieval_passes_count=retrieval_passes_count,
                         regeneration_count=regeneration_count,
                         latency_ms=self._elapsed_ms(t_start),
+                        traceparent=traceparent,
+                        customer_id=customer_id,
+                        session_id=session_id,
+                        body_redacted=message,
                     )
 
                 val_result = self.validator.validate(answer_payload, retrieved_docs_map)
@@ -1002,9 +1156,8 @@ class FaqResolverAgent:
                         regeneration_count=regeneration_count,
                         t_start=t_start,
                     )
-                return ResolutionResult(
-                    status="ESCALATED",
-                    route="human",
+                return self._escalate(
+                    ticket_id=ticket_id,
                     queue="human-standard",
                     reason="uncited_answer",
                     degraded=False,
@@ -1013,15 +1166,18 @@ class FaqResolverAgent:
                     retrieval_passes_count=retrieval_passes_count,
                     regeneration_count=regeneration_count,
                     latency_ms=self._elapsed_ms(t_start),
+                    traceparent=traceparent,
+                    customer_id=customer_id,
+                    session_id=session_id,
+                    body_redacted=message,
                 )
 
         # -----------------------------------------------------------------
         # Step 6: Non-Hallucination Fallback or Auto-Resolution
         # -----------------------------------------------------------------
         if not val_result.is_valid:
-            return ResolutionResult(
-                status="ESCALATED",
-                route="human",
+            return self._escalate(
+                ticket_id=ticket_id,
                 queue="human-standard",
                 reason="uncited_answer",
                 degraded=llm_failed,
@@ -1030,6 +1186,10 @@ class FaqResolverAgent:
                 retrieval_passes_count=retrieval_passes_count,
                 regeneration_count=regeneration_count,
                 latency_ms=self._elapsed_ms(t_start),
+                traceparent=traceparent,
+                customer_id=customer_id,
+                session_id=session_id,
+                body_redacted=message,
             )
 
         # -----------------------------------------------------------------
@@ -1039,9 +1199,8 @@ class FaqResolverAgent:
         if self.model_armor_client is not None:
             ma_verdict = self.model_armor_client.sanitize_model_response(raw_answer)
             if ma_verdict.blocked:
-                return ResolutionResult(
-                    status="ESCALATED",
-                    route="human",
+                return self._escalate(
+                    ticket_id=ticket_id,
                     queue="human-standard",
                     reason="model_armor_response_blocked",
                     degraded=False,
@@ -1050,11 +1209,14 @@ class FaqResolverAgent:
                     retrieval_passes_count=retrieval_passes_count,
                     regeneration_count=regeneration_count,
                     latency_ms=self._elapsed_ms(t_start),
+                    traceparent=traceparent,
+                    customer_id=customer_id,
+                    session_id=session_id,
+                    body_redacted=message,
                 )
             if ma_verdict.degraded:
-                return ResolutionResult(
-                    status="ESCALATED",
-                    route="human",
+                return self._escalate(
+                    ticket_id=ticket_id,
                     queue="human-standard",
                     reason="model_armor_degraded",
                     degraded=True,
@@ -1063,6 +1225,10 @@ class FaqResolverAgent:
                     retrieval_passes_count=retrieval_passes_count,
                     regeneration_count=regeneration_count,
                     latency_ms=self._elapsed_ms(t_start),
+                    traceparent=traceparent,
+                    customer_id=customer_id,
+                    session_id=session_id,
+                    body_redacted=message,
                 )
 
         return ResolutionResult(
@@ -1119,12 +1285,34 @@ def create_faq_resolver_agent(settings: Optional[Settings] = None) -> FaqResolve
     else:
         llm_client = FakeLLMClient()
 
+    # 5. Ticket DB client and PubSub publisher for HumanHandoff
+    if cfg.require_real_deps:
+        ticket_db_url = cfg.ticket_db_mcp_url or os.environ.get("TICKET_DB_MCP_URL", "")
+        ticket_db_client = HttpTicketDbMcpClient(base_url=ticket_db_url)
+        topic = os.environ.get("HUMAN_QUEUE_TOPIC", "human-queue")
+        publisher = PubSubRestPublisher(
+            project=cfg.project or os.environ.get("GOOGLE_CLOUD_PROJECT"),
+            topic=topic,
+        )
+    else:
+        ticket_db_client = InMemoryTicketDbMcpClient()
+        publisher = FakePublisher()
+
+    human_handoff = HumanHandoff(
+        ticket_db_client=ticket_db_client,
+        publisher=publisher,
+        escalated_by="faq_resolver",
+    )
+
     return FaqResolverAgent(
         search_client=search_client,
         reranker=reranker,
         order_client=order_client,
         llm_client=llm_client,
         circuit_breaker=CircuitBreaker(name="agent_search"),
+        human_handoff=human_handoff,
+        ticket_db_client=ticket_db_client,
+        publisher=publisher,
     )
 
 

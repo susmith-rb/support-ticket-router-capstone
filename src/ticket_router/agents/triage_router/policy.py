@@ -12,7 +12,7 @@ import concurrent.futures
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ticket_router.common.resilience import CircuitBreakerError
 from ticket_router.models.router_s1_client import RouterPrediction, RouterS1Client
@@ -20,6 +20,7 @@ from ticket_router.security.model_armor import (
     ModelArmorClientProtocol,
     ModelArmorVerdict,
 )
+from ticket_router.security.pii_tokens import tokenize_pii
 
 
 class QueuePriority(str, Enum):
@@ -102,6 +103,33 @@ class RouterDecision:
     customer_verified: bool = False
     identity_issuer: Optional[str] = None
     identity_reason: str = "missing_token"
+    tokenized_text: Optional[str] = None
+    pii_mapping: Dict[str, str] = field(default_factory=dict, repr=False)
+
+
+def _extract_sdp_findings(verdict: Optional[ModelArmorVerdict]) -> List[Any]:
+    """Extract raw SDP findings list from ModelArmorVerdict if present."""
+    if verdict is None:
+        return []
+    if verdict.raw_filter_results:
+        sdp_data = (
+            verdict.raw_filter_results.get("sdpFilterResult")
+            or verdict.raw_filter_results.get("sdp_filter_result")
+            or {}
+        )
+        inspect_res = (
+            sdp_data.get("inspectResult")
+            or sdp_data.get("inspect_result")
+            or sdp_data.get("sdpInspectionResult")
+            or sdp_data.get("sdp_inspection_result")
+            or {}
+        )
+        findings = inspect_res.get("findings")
+        if findings and isinstance(findings, list):
+            return findings
+    if verdict.sdp_findings:
+        return list(verdict.sdp_findings)
+    return []
 
 
 # -----------------------------------------------------------------------------
@@ -460,9 +488,20 @@ class TriagePolicy:
         # ---------------------------------------------------------------------
         ma_details: Dict[str, Any] = {}
         sanitized_text: Optional[str] = None
+        tokenized_text: Optional[str] = None
+        pii_mapping: Dict[str, str] = {}
         if ma_verdict is not None:
             ma_details = ma_verdict.to_summary_dict()
-            if ma_verdict.sanitized_text:
+            findings = _extract_sdp_findings(ma_verdict)
+            if findings:
+                tok_text, tok_map = tokenize_pii(text, findings)
+                if tok_map or tok_text != text:
+                    tokenized_text = tok_text
+                    pii_mapping = tok_map
+                    sanitized_text = tokenized_text
+                elif ma_verdict.sanitized_text:
+                    sanitized_text = ma_verdict.sanitized_text
+            elif ma_verdict.sanitized_text:
                 sanitized_text = ma_verdict.sanitized_text
 
             # 1. Prompt Injection, Jailbreak, or Malicious URI -> Hard Security Escalation
@@ -492,6 +531,8 @@ class TriagePolicy:
                         "model_armor": ma_details,
                         "sanitized_text": sanitized_text,
                     },
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
                 )
 
             # 2. Responsible AI (RAI) Harassment / Abuse -> Boundary Ack + Human Review
@@ -519,6 +560,8 @@ class TriagePolicy:
                         "model_armor": ma_details,
                         "sanitized_text": sanitized_text,
                     },
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
                 )
 
             # 3. Model Armor Degraded / Timeout -> Fail-safe to human-standard (never drop)
@@ -539,6 +582,8 @@ class TriagePolicy:
                         "category": "degraded",
                         "model_armor": ma_details,
                     },
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
                 )
 
         # If router-s1 succeeded, inspect prediction against operating thresholds
@@ -581,6 +626,8 @@ class TriagePolicy:
                     degraded=False,
                     latency_ms=s1_pred.latency_ms,
                     details=details_s1,
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
                 )
 
             # 2. Definitive auto-RAG: p_esc < tau_low (0.15) and p_intent >= tau_intent (0.70)
@@ -614,6 +661,8 @@ class TriagePolicy:
                     degraded=False,
                     latency_ms=s1_pred.latency_ms,
                     details=details_rag,
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
                 )
 
             # 3. Deterministic order-lookup intent rule (REQ-AGENT-026)
@@ -642,6 +691,8 @@ class TriagePolicy:
                     degraded=False,
                     latency_ms=s1_pred.latency_ms,
                     details=details_order,
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
                 )
 
         # ---------------------------------------------------------------------
@@ -656,7 +707,8 @@ class TriagePolicy:
 
         if self.tier2_invoker is not None:
             try:
-                t2_pred = self.tier2_invoker(text)
+                text_for_t2 = tokenized_text if tokenized_text is not None else text
+                t2_pred = self.tier2_invoker(text_for_t2)
             except Exception as exc:
                 t2_error = f"tier2_error: {exc}"
 
@@ -707,6 +759,8 @@ class TriagePolicy:
                     degraded=bool(s1_error),
                     latency_ms=t2_pred.latency_ms,
                     details=details_t2,
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
                 )
 
             if t2_pred.out_of_scope:
@@ -733,6 +787,8 @@ class TriagePolicy:
                     degraded=bool(s1_error),
                     latency_ms=t2_pred.latency_ms,
                     details=details_t2_oos,
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
                 )
 
             details_t2_rag: Dict[str, Any] = {"s1_error": s1_error}
@@ -755,6 +811,8 @@ class TriagePolicy:
                 degraded=bool(s1_error),
                 latency_ms=t2_pred.latency_ms,
                 details=details_t2_rag,
+                tokenized_text=tokenized_text,
+                pii_mapping=pii_mapping,
             )
 
         # ---------------------------------------------------------------------
@@ -781,4 +839,6 @@ class TriagePolicy:
             reason=f"degraded_fallback: s1=({s1_error}), t2=({t2_error})",
             degraded=True,
             details=details_fb,
+            tokenized_text=tokenized_text,
+            pii_mapping=pii_mapping,
         )
