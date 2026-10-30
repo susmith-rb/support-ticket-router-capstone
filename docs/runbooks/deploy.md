@@ -162,7 +162,7 @@ From an environment with the repository and ADC credentials:
 git checkout <LAST_GOOD_SHA>
 pip install -e .[deploy]
 python scripts/deploy_agents/deploy_triage_agent_runtime.py \
-  --update "projects/620485621180/locations/us-central1/reasoningEngines/8384262420809383936" \
+  --update "projects/620485621180/locations/us-central1/reasoningEngines/2170218524805431296" \
   --project susmith-fde-ticket-router \
   --region us-central1
 ```

@@ -45,7 +45,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 DEFAULT_RESOURCE_NAME = (
-    "projects/620485621180/locations/us-central1/reasoningEngines/8384262420809383936"
+    "projects/620485621180/locations/us-central1/reasoningEngines/2170218524805431296"
 )
 DEFAULT_PROJECT = "susmith-fde-ticket-router"
 DEFAULT_REGION = "us-central1"

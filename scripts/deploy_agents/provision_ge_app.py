@@ -35,7 +35,7 @@ DEFAULT_DATA_STORE_ID = "support-ge-default-ds"
 DEFAULT_ENGINE_ID = "support-assistant-app"
 DEFAULT_KB_ENGINE_ID = "support-kb-search"
 DEFAULT_REASONING_ENGINE = (
-    "projects/620485621180/locations/us-central1/reasoningEngines/8384262420809383936"
+    "projects/620485621180/locations/us-central1/reasoningEngines/2170218524805431296"
 )
 DEFAULT_DISPLAY_NAME = "Global Retail Hub Support Assistant"
 DEFAULT_COMPANY_NAME = "Global Retail Hub"

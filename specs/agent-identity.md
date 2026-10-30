@@ -43,8 +43,8 @@ Related specs: [customer-identity.md](customer-identity.md) (REQ-IDENT-*: ingres
     - **Terraform grants:** root variable `triage_agent_principal` (default `""`, meaning no grants). When set, it receives the same project and resource grants as `sa-triage`, plus `roles/iam.serviceAccountOpenIdTokenCreator` on `sa-triage`.
     - **Google-signed ID tokens:** at runtime, setting env `ID_TOKEN_IMPERSONATE_SA=<sa-triage email>` makes `ticket_router.common.idtoken.get_id_token` mint ID tokens with IAM Credentials `generateIdToken` on that SA, using the agent identity's ADC access token. No keys are involved. Receivers (Cloud Run IAM, FaqResolver `ALLOWED_CALLERS`) keep seeing `sa-triage` as the ID-token subject, while every Google API call (Gemini, sessions, router-s1, Model Armor, Pub/Sub, KMS sign) is attributed to the agent principal.
 - **Rationale**: Per-agent SPIFFE identity, with no shared SA and no keys, gives precise audit attribution (FDE security guidance; review feedback 2026-10-29).
-- **Acceptance**: `manual: staging engine deployed with identity_type=AGENT_IDENTITY; cloud_run_smoke + identity e2e + Model Armor smoke pass against it`
-- **Status**: partial
+- **Acceptance**: `manual: staging engine deployed with identity_type=AGENT_IDENTITY; cloud_run_smoke + identity e2e + Model Armor smoke pass against it` (2026-10-30: engine `reasoningEngines/2170218524805431296` promoted to production; GE App agent `11280911196073273342` re-registered to it; CD deploys it with `--identity-type agent`)
+- **Status**: done
 - **Owner**: identity
 
 ### REQ-AUTH-005: Stated Service-Account Exceptions

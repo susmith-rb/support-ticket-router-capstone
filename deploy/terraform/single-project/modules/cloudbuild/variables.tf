@@ -84,6 +84,6 @@ variable "cd_approvers" {
 variable "triage_resource_name" {
   description = "Resource name of the TriageRouter Agent Engine instance for deployment update"
   type        = string
-  default     = "projects/620485621180/locations/us-central1/reasoningEngines/8384262420809383936"
+  default     = "projects/620485621180/locations/us-central1/reasoningEngines/2170218524805431296"
 }
 

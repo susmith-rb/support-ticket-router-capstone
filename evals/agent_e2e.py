@@ -46,7 +46,7 @@ DATA_DIR = REPO_ROOT / "evals" / "data" / "agent_e2e_v1"
 RESULTS_DIR = REPO_ROOT / "evals" / "results"
 
 DEFAULT_RESOURCE_NAME = (
-    "projects/620485621180/locations/us-central1/reasoningEngines/8384262420809383936"
+    "projects/620485621180/locations/us-central1/reasoningEngines/2170218524805431296"
 )
 DEFAULT_PROJECT = "susmith-fde-ticket-router"
 DEFAULT_REGION = "us-central1"

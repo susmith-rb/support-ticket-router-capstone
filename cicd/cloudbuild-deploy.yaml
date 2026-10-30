@@ -17,7 +17,7 @@
 
 substitutions:
   _CI_TRIGGER_ID: ''
-  _TRIAGE_RESOURCE: 'projects/620485621180/locations/us-central1/reasoningEngines/8384262420809383936'
+  _TRIAGE_RESOURCE: 'projects/620485621180/locations/us-central1/reasoningEngines/2170218524805431296'
   _CORPUS_BUCKET: 'susmith-fde-ticket-router-laya'
   _REGION: 'us-central1'
   _GKE_CLUSTER: 'support-agents'
@@ -248,8 +248,9 @@ steps:
           echo "Skipping Agent Engine update (fingerprint unchanged)."
           exit 0
         elif [ "$${RC}" -eq 0 ]; then
-          $${PY} scripts/deploy_agents/deploy_triage_agent_runtime.py \
-            --update "${_TRIAGE_RESOURCE}" --project "${PROJECT_ID}" --region "${_REGION}"
+          # REQ-AUTH-004: production TriageRouter runs under its SPIFFE agent identity.
+          $${PY} scripts/deploy_agents/deploy_triage_agent_runtime.py --identity-type agent \
+            --resource-name "${_TRIAGE_RESOURCE}" --project "${PROJECT_ID}" --region "${_REGION}"
           $${PY} scripts/deploy_agents/ae_fingerprint.py record \
             --bucket "${_CORPUS_BUCKET}" --sha "${SHORT_SHA}"
         else

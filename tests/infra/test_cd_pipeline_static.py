@@ -186,7 +186,7 @@ def test_cd_updates_agent_engine():
     Invariants:
     1. pyproject.toml defines [project.optional-dependencies].deploy with pinned runtime dependencies.
     2. deploy_triage_agent_runtime.py contains wait_for_reasoning_engine_idle polling <= 10 min.
-    3. Step deploy-agent-engine runs on python:3.11-slim and calls deploy_triage_agent_runtime.py --update.
+    3. Step deploy-agent-engine runs on python:3.11-slim and calls deploy_triage_agent_runtime.py --identity-type agent --resource-name.
     """
     pyproject_text = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     pyproject_data = tomllib.loads(pyproject_text)
@@ -213,7 +213,9 @@ def test_cd_updates_agent_engine():
     prep = next(st for st in config.get("steps", []) if st["id"] == "prepare-python")
     assert ".[deploy" in " ".join(prep["args"])
     assert "deploy_triage_agent_runtime.py" in script
-    assert "--update" in script
+    # REQ-AUTH-004: production TriageRouter is updated in place under its SPIFFE agent identity.
+    assert "--identity-type agent" in script
+    assert "--resource-name" in script
 
 
 # REQ-CD-011

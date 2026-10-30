@@ -8,13 +8,13 @@
 Usage:
     # Query with raw Identity Platform ID token:
     python scripts/deploy_agents/query_triage_agent.py \\
-        --resource-name projects/620485621180/locations/us-central1/reasoningEngines/8384262420809383936 \\
+        --resource-name projects/620485621180/locations/us-central1/reasoningEngines/2170218524805431296 \\
         --message "Where is my order ORD-10001?" \\
         --customer-id-token "<JWT>"
 
     # Query as demo user 1001 or 1002 (mints token automatically):
     python scripts/deploy_agents/query_triage_agent.py \\
-        --resource-name projects/620485621180/locations/us-central1/reasoningEngines/8384262420809383936 \\
+        --resource-name projects/620485621180/locations/us-central1/reasoningEngines/2170218524805431296 \\
         --message "Where is my order ORD-10001?" \\
         --demo-user 1001
 
