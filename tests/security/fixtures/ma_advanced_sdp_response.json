@@ -1,0 +1,113 @@
+{
+  "sanitizationResult": {
+    "filterMatchState": "MATCH_FOUND",
+    "filterResults": {
+      "csam": {
+        "csamFilterFilterResult": {
+          "executionState": "EXECUTION_SUCCESS",
+          "matchState": "NO_MATCH_FOUND"
+        }
+      },
+      "malicious_uris": {
+        "maliciousUriFilterResult": {
+          "executionState": "EXECUTION_SUCCESS",
+          "matchState": "NO_MATCH_FOUND"
+        }
+      },
+      "rai": {
+        "raiFilterResult": {
+          "executionState": "EXECUTION_SUCCESS",
+          "matchState": "MATCH_FOUND",
+          "raiFilterTypeResults": {
+            "sexually_explicit": {
+              "confidenceLevel": "MEDIUM_AND_ABOVE",
+              "matchState": "MATCH_FOUND"
+            },
+            "harassment": {
+              "confidenceLevel": "HIGH",
+              "matchState": "MATCH_FOUND"
+            },
+            "dangerous": {
+              "confidenceLevel": "HIGH",
+              "matchState": "MATCH_FOUND"
+            },
+            "hate_speech": {
+              "matchState": "NO_MATCH_FOUND"
+            }
+          }
+        }
+      },
+      "pi_and_jailbreak": {
+        "piAndJailbreakFilterResult": {
+          "executionState": "EXECUTION_SUCCESS",
+          "matchState": "NO_MATCH_FOUND"
+        }
+      },
+      "sdp": {
+        "sdpFilterResult": {
+          "inspectResult": {
+            "executionState": "EXECUTION_SUCCESS",
+            "matchState": "MATCH_FOUND",
+            "findings": [
+              {
+                "infoType": "EMAIL_ADDRESS",
+                "likelihood": "LIKELY",
+                "location": {
+                  "byteRange": {
+                    "start": "12",
+                    "end": "35"
+                  },
+                  "codepointRange": {
+                    "start": "12",
+                    "end": "35"
+                  }
+                }
+              },
+              {
+                "infoType": "PHONE_NUMBER",
+                "likelihood": "VERY_LIKELY",
+                "location": {
+                  "byteRange": {
+                    "start": "43",
+                    "end": "55"
+                  },
+                  "codepointRange": {
+                    "start": "43",
+                    "end": "55"
+                  }
+                }
+              },
+              {
+                "infoType": "CREDIT_CARD_NUMBER",
+                "likelihood": "VERY_LIKELY",
+                "location": {
+                  "byteRange": {
+                    "start": "79",
+                    "end": "98"
+                  },
+                  "codepointRange": {
+                    "start": "79",
+                    "end": "98"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "sanitizationMetadata": {
+      "filterVersionConfig": {
+        "filterVersion": "v3",
+        "filterVersionAlias": "FILTER_VERSION_ALIAS_STABLE",
+        "releaseDate": {
+          "year": 2026,
+          "month": 5,
+          "day": 25
+        },
+        "projectedDeprecationDate": {}
+      }
+    },
+    "invocationResult": "SUCCESS"
+  }
+}

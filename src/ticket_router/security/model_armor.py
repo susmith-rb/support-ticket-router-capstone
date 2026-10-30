@@ -61,7 +61,7 @@ class SdpFinding:
 
     info_type: str = ""
     likelihood: str = ""
-    location: str = ""
+    location: Any = None  # raw SDP location dict (codepointRange), REQ-STORE-009
 
 
 @dataclass(frozen=True)
@@ -247,7 +247,7 @@ def parse_model_armor_response(
         SdpFinding(
             info_type=str(f.get("infoType") or f.get("info_type") or ""),
             likelihood=str(f.get("likelihood") or ""),
-            location=str(f.get("location") or ""),
+            location=f.get("location") if isinstance(f.get("location"), dict) else None,
         )
         for f in raw_findings
     ]
