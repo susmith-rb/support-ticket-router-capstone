@@ -1,6 +1,7 @@
 """FastAPI server for order-lookup-mcp service on Cloud Run.
 
 # REQ-AGENT-010: MCP Tool Contracts, JSON Schemas, and Role-Based DB Access
+# REQ-AUTH-003: CCT Transport and Verification at order-lookup-mcp (RLS from verified claims)
 # AGENTS.md rule 7: customer_id is never a tool parameter; read from verified session claims.
 # TDD §8.4: BOLA/IDOR protection.
 
@@ -17,10 +18,18 @@ import base64
 import json
 import logging
 import os
-from typing import Any, Dict, Optional
+import threading
+from typing import Any, Dict, Iterable, Optional
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 
+from ticket_router.common.settings import Settings
+from ticket_router.identity.customer_token import (
+    CustomerContextError,
+    KmsPublicKeyResolver,
+    verify_customer_context_token,
+)
 from ticket_router.mcp.order_lookup.schemas import (
     GetOrderHttpRequest,
     GetOrderResponse,
@@ -36,6 +45,18 @@ from ticket_router.store.models import Order
 logger = logging.getLogger("ticket_router.mcp.order_lookup")
 
 router = APIRouter()
+
+_DEFAULT_KMS_RESOLVER: Optional[KmsPublicKeyResolver] = None
+_DEFAULT_KMS_RESOLVER_LOCK = threading.Lock()
+
+
+def _get_default_kms_resolver() -> KmsPublicKeyResolver:
+    global _DEFAULT_KMS_RESOLVER
+    if _DEFAULT_KMS_RESOLVER is None:
+        with _DEFAULT_KMS_RESOLVER_LOCK:
+            if _DEFAULT_KMS_RESOLVER is None:
+                _DEFAULT_KMS_RESOLVER = KmsPublicKeyResolver()
+    return _DEFAULT_KMS_RESOLVER
 
 
 def _extract_caller_identity(
@@ -136,17 +157,35 @@ def _validate_verified_customer_headers(
     x_verified_customer_id: Optional[str],
     x_customer_verified: Optional[str],
     caller: str,
+    body_customer_id: Optional[str] = None,
+    is_http_route: bool = False,
 ) -> str:
-    verified_customer = x_customer_id or x_verified_customer_id
-    if not verified_customer:
-        raise HTTPException(
-            status_code=400,
-            detail="Missing verified customer context header (X-Customer-ID / X-Verified-Customer-Id).",
-        )
-    if verified_customer.startswith("anon:"):
+    header_customer = x_customer_id or x_verified_customer_id
+    if header_customer is not None:
+        if body_customer_id is not None and body_customer_id != header_customer:
+            logger.warning(
+                "BOLA mismatch detected: caller=%s reason=body_header_mismatch",
+                caller,
+            )
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied: customer context mismatch.",
+            )
+        effective_customer = header_customer
+    else:
+        if body_customer_id is not None:
+            effective_customer = body_customer_id
+        else:
+            detail = (
+                "Missing customer identification context."
+                if is_http_route
+                else "Missing verified customer context header (X-Customer-ID / X-Verified-Customer-Id)."
+            )
+            raise HTTPException(status_code=400, detail=detail)
+
+    if effective_customer.startswith("anon:"):
         logger.warning(
-            "Rejected unverified anonymous customer lookup: customer_id=%s caller=%s",
-            verified_customer,
+            "Rejected unverified anonymous customer lookup: caller=%s reason=anonymous_customer",
             caller,
         )
         raise HTTPException(status_code=403, detail="unverified_customer")
@@ -154,9 +193,7 @@ def _validate_verified_customer_headers(
     is_verified = (x_customer_verified or "").strip().lower() == "true"
     if x_customer_verified is not None and not is_verified:
         logger.warning(
-            "Rejected unverified customer (X-Customer-Verified=%s) customer_id=%s caller=%s",
-            x_customer_verified,
-            verified_customer,
+            "Rejected unverified customer: caller=%s reason=customer_not_verified",
             caller,
         )
         raise HTTPException(status_code=403, detail="unverified_customer")
@@ -164,13 +201,107 @@ def _validate_verified_customer_headers(
     require_verified_header = bool(getattr(request.app.state, "require_verified_header", False))
     if require_verified_header and not is_verified:
         logger.warning(
-            "Rejected customer lookup without required X-Customer-Verified: true header customer_id=%s caller=%s",
-            verified_customer,
+            "Rejected customer lookup without required X-Customer-Verified: caller=%s reason=missing_verified_header",
             caller,
         )
         raise HTTPException(status_code=403, detail="unverified_customer")
 
-    return verified_customer
+    return effective_customer
+
+
+async def _resolve_customer(
+    request: Request,
+    x_customer_context: Optional[str],
+    x_customer_id: Optional[str],
+    x_verified_customer_id: Optional[str],
+    x_customer_verified: Optional[str],
+    caller: str,
+    body_customer_id: Optional[str] = None,
+    is_http_route: bool = False,
+) -> str:
+    mode = getattr(request.app.state, "cct_mode", None)
+    if mode is None:
+        settings = getattr(request.app.state, "settings", None)
+        if settings is None:
+            settings = Settings.from_env()
+        mode = settings.cct_mode
+    mode = (mode or "accept").strip().lower()
+
+    if mode not in {"off", "accept", "require"}:
+        logger.warning("Unknown cct_mode '%s', failing closed for caller=%s", mode, caller)
+        raise HTTPException(status_code=403, detail="invalid_customer_context")
+
+    if mode == "off":
+        return _validate_verified_customer_headers(
+            request=request,
+            x_customer_id=x_customer_id,
+            x_verified_customer_id=x_verified_customer_id,
+            x_customer_verified=x_customer_verified,
+            caller=caller,
+            body_customer_id=body_customer_id,
+            is_http_route=is_http_route,
+        )
+
+    if mode == "require" and not x_customer_context:
+        logger.warning("CCT missing in require mode for caller=%s", caller)
+        raise HTTPException(status_code=403, detail="invalid_customer_context")
+
+    if x_customer_context:
+        resolver = getattr(request.app.state, "cct_resolver", None)
+        if resolver is None:
+            resolver = _get_default_kms_resolver()
+
+        settings = getattr(request.app.state, "settings", None)
+        if settings is None:
+            settings = Settings.from_env()
+
+        audience = getattr(request.app.state, "cct_audience", None)
+        if audience is None:
+            audience = settings.cct_audience
+
+        allowed_issuers = getattr(request.app.state, "cct_allowed_issuers", None)
+        if allowed_issuers is None:
+            allowed_issuers = settings.cct_allowed_issuers
+
+        key_prefix = getattr(request.app.state, "cct_key_prefix", None)
+        if key_prefix is None:
+            key_prefix = settings.cct_key_prefix
+
+        try:
+            verified_ctx = await run_in_threadpool(
+                verify_customer_context_token,
+                x_customer_context,
+                resolver=resolver,
+                audience=audience,
+                allowed_issuers=allowed_issuers,
+                key_prefix=key_prefix,
+            )
+            logger.info("CCT verified: jti=%s", verified_ctx.jti)
+        except CustomerContextError as exc:
+            logger.warning("CCT verification failed: reason=%s caller=%s", exc.reason, caller)
+            raise HTTPException(status_code=403, detail="invalid_customer_context") from exc
+
+        sub = verified_ctx.customer_id
+        header_customer = x_customer_id or x_verified_customer_id
+        if header_customer is not None and header_customer != sub:
+            logger.warning("CCT customer mismatch: jti=%s caller=%s", verified_ctx.jti, caller)
+            raise HTTPException(status_code=403, detail="customer_context_mismatch")
+
+        if body_customer_id is not None and body_customer_id != sub:
+            logger.warning("CCT body customer mismatch: jti=%s caller=%s", verified_ctx.jti, caller)
+            raise HTTPException(status_code=403, detail="customer_context_mismatch")
+
+        return sub
+
+    return _validate_verified_customer_headers(
+        request=request,
+        x_customer_id=x_customer_id,
+        x_verified_customer_id=x_verified_customer_id,
+        x_customer_verified=x_customer_verified,
+        caller=caller,
+        body_customer_id=body_customer_id,
+        is_http_route=is_http_route,
+    )
 
 
 def _lookup_order_for_customer(
@@ -193,12 +324,12 @@ async def get_order_tool(
     x_customer_id: Optional[str] = Header(None, alias="X-Customer-ID"),
     x_verified_customer_id: Optional[str] = Header(None, alias="X-Verified-Customer-Id"),
     x_customer_verified: Optional[str] = Header(None, alias="X-Customer-Verified"),
+    x_customer_context: Optional[str] = Header(None, alias="X-Customer-Context"),
     authorization: Optional[str] = Header(None),
     x_serverless_authorization: Optional[str] = Header(None),
     repo: OrderRepository = Depends(get_order_repo),
 ) -> GetOrderResponse:
     caller = _extract_caller_identity(authorization, x_serverless_authorization)
-    verified_customer = x_customer_id or x_verified_customer_id
 
     # Inspect raw body to enforce BOLA invariant (AGENTS.md rule 7 / REQ-AGENT-010)
     body_bytes = await request.body()
@@ -215,34 +346,14 @@ async def get_order_tool(
             detail="BOLA/IDOR violation: customer_id is strictly derived from verified session claims and must not be passed as a tool parameter (REQ-AGENT-010, AGENTS.md rule 7).",
         )
 
-    if not verified_customer:
-        raise HTTPException(
-            status_code=400,
-            detail="Missing verified customer context header (X-Customer-ID / X-Verified-Customer-Id).",
-        )
-
-    # Customer Identity Guard (REQ-IDENT-004, REQ-IDENT-005):
-    if verified_customer.startswith("anon:"):
-        logger.warning("Rejected unverified anonymous customer lookup: customer_id=%s caller=%s", verified_customer, caller)
-        raise HTTPException(
-            status_code=403,
-            detail="unverified_customer",
-        )
-
-    is_verified = (x_customer_verified or "").strip().lower() == "true"
-    if x_customer_verified is not None and not is_verified:
-        logger.warning("Rejected unverified customer (X-Customer-Verified=%s) customer_id=%s caller=%s", x_customer_verified, verified_customer, caller)
-        raise HTTPException(
-            status_code=403,
-            detail="unverified_customer",
-        )
-    require_verified_header = bool(request.app.state.require_verified_header)
-    if require_verified_header and not is_verified:
-        logger.warning("Rejected customer lookup without required X-Customer-Verified: true header customer_id=%s caller=%s", verified_customer, caller)
-        raise HTTPException(
-            status_code=403,
-            detail="unverified_customer",
-        )
+    verified_customer = await _resolve_customer(
+        request=request,
+        x_customer_context=x_customer_context,
+        x_customer_id=x_customer_id,
+        x_verified_customer_id=x_verified_customer_id,
+        x_customer_verified=x_customer_verified,
+        caller=caller,
+    )
 
     order_id = body_dict.get("order_id")
     if not order_id:
@@ -258,61 +369,36 @@ async def get_order_http(
     x_customer_id: Optional[str] = Header(None, alias="X-Customer-ID"),
     x_verified_customer_id: Optional[str] = Header(None, alias="X-Verified-Customer-Id"),
     x_customer_verified: Optional[str] = Header(None, alias="X-Customer-Verified"),
+    x_customer_context: Optional[str] = Header(None, alias="X-Customer-Context"),
     authorization: Optional[str] = Header(None),
     x_serverless_authorization: Optional[str] = Header(None),
     repo: OrderRepository = Depends(get_order_repo),
 ) -> GetOrderResponse:
     caller = _extract_caller_identity(authorization, x_serverless_authorization)
-    header_customer = x_customer_id or x_verified_customer_id
 
-    # BOLA / IDOR Verification:
-    # If verified customer header is present, any body customer_id MUST match it exactly.
-    if header_customer is not None:
-        if req.customer_id is not None and req.customer_id != header_customer:
-            logger.warning(
-                "BOLA mismatch detected: body customer_id='%s' does not match verified header='%s' caller=%s",
-                req.customer_id,
-                header_customer,
-                caller,
-            )
-            raise HTTPException(
-                status_code=403,
-                detail=f"Access denied: customer_id '{req.customer_id}' does not match verified session '{header_customer}'.",
-            )
-        effective_customer = header_customer
-    else:
-        # When caller header is not provided, customer_id comes from verified context in body
-        if req.customer_id is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Missing customer identification context.",
-            )
-        effective_customer = req.customer_id
+    body_bytes = await request.body()
+    try:
+        body_dict = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
 
-    # Customer Identity Guard (REQ-IDENT-004, REQ-IDENT-005):
-    if effective_customer.startswith("anon:"):
-        logger.warning("Rejected unverified anonymous customer lookup: customer_id=%s caller=%s", effective_customer, caller)
+    if "customer_id" in body_dict:
+        logger.warning("BOLA guard: rejected untrusted customer_id in body from caller=%s", caller)
         raise HTTPException(
-            status_code=403,
-            detail="unverified_customer",
+            status_code=400,
+            detail="BOLA/IDOR violation: customer_id is strictly derived from verified session claims and must not be passed as a tool parameter (REQ-AGENT-010, AGENTS.md rule 7).",
         )
 
-    is_verified = (x_customer_verified or "").strip().lower() == "true"
-    if x_customer_verified is not None and not is_verified:
-        logger.warning("Rejected unverified customer (X-Customer-Verified=%s) customer_id=%s caller=%s", x_customer_verified, effective_customer, caller)
-        raise HTTPException(
-            status_code=403,
-            detail="unverified_customer",
-        )
-    require_verified_header = bool(request.app.state.require_verified_header)
-    if require_verified_header and not is_verified:
-        logger.warning("Rejected customer lookup without required X-Customer-Verified: true header customer_id=%s caller=%s", effective_customer, caller)
-        raise HTTPException(
-            status_code=403,
-            detail="unverified_customer",
-        )
-
-    return _lookup_order_for_customer(repo, req.order_id, effective_customer)
+    verified_customer = await _resolve_customer(
+        request=request,
+        x_customer_context=x_customer_context,
+        x_customer_id=x_customer_id,
+        x_verified_customer_id=x_verified_customer_id,
+        x_customer_verified=x_customer_verified,
+        caller=caller,
+        is_http_route=True,
+    )
+    return _lookup_order_for_customer(repo, req.order_id, verified_customer)
 
 
 @router.post("/tools/list_orders", response_model=ListOrdersResponse)
@@ -321,14 +407,12 @@ async def list_orders_tool(
     x_customer_id: Optional[str] = Header(None, alias="X-Customer-ID"),
     x_verified_customer_id: Optional[str] = Header(None, alias="X-Verified-Customer-Id"),
     x_customer_verified: Optional[str] = Header(None, alias="X-Customer-Verified"),
+    x_customer_context: Optional[str] = Header(None, alias="X-Customer-Context"),
     authorization: Optional[str] = Header(None),
     x_serverless_authorization: Optional[str] = Header(None),
     repo: OrderRepository = Depends(get_order_repo),
 ) -> ListOrdersResponse:
     caller = _extract_caller_identity(authorization, x_serverless_authorization)
-    verified_customer = _validate_verified_customer_headers(
-        request, x_customer_id, x_verified_customer_id, x_customer_verified, caller
-    )
 
     body_bytes = await request.body()
     try:
@@ -345,6 +429,15 @@ async def list_orders_tool(
             status_code=400,
             detail="BOLA/IDOR violation: customer_id is strictly derived from verified session claims and must not be passed as a tool parameter (REQ-AGENT-010, AGENTS.md rule 7).",
         )
+
+    verified_customer = await _resolve_customer(
+        request=request,
+        x_customer_context=x_customer_context,
+        x_customer_id=x_customer_id,
+        x_verified_customer_id=x_verified_customer_id,
+        x_customer_verified=x_customer_verified,
+        caller=caller,
+    )
 
     try:
         tool_req = ListOrdersToolRequest.model_validate(body_dict)
@@ -365,13 +458,36 @@ async def list_orders_http(
     x_customer_id: Optional[str] = Header(None, alias="X-Customer-ID"),
     x_verified_customer_id: Optional[str] = Header(None, alias="X-Verified-Customer-Id"),
     x_customer_verified: Optional[str] = Header(None, alias="X-Customer-Verified"),
+    x_customer_context: Optional[str] = Header(None, alias="X-Customer-Context"),
     authorization: Optional[str] = Header(None),
     x_serverless_authorization: Optional[str] = Header(None),
     repo: OrderRepository = Depends(get_order_repo),
 ) -> ListOrdersResponse:
     caller = _extract_caller_identity(authorization, x_serverless_authorization)
-    verified_customer = _validate_verified_customer_headers(
-        request, x_customer_id, x_verified_customer_id, x_customer_verified, caller
+
+    body_bytes = await request.body()
+    try:
+        body_dict = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+
+    if "customer_id" in body_dict:
+        logger.warning(
+            "BOLA guard: rejected untrusted customer_id in body from caller=%s",
+            caller,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="BOLA/IDOR violation: customer_id is strictly derived from verified session claims and must not be passed as a tool parameter (REQ-AGENT-010, AGENTS.md rule 7).",
+        )
+
+    verified_customer = await _resolve_customer(
+        request=request,
+        x_customer_context=x_customer_context,
+        x_customer_id=x_customer_id,
+        x_verified_customer_id=x_verified_customer_id,
+        x_customer_verified=x_customer_verified,
+        caller=caller,
     )
     server = OrderLookupMcpServer(repo)
     tool_req = ListOrdersToolRequest(limit=req.limit)
@@ -384,6 +500,11 @@ async def list_orders_http(
 def create_app(
     order_repo: Optional[OrderRepository] = None,
     require_verified_header: bool = False,
+    cct_mode: Optional[str] = None,
+    cct_resolver: Optional[Any] = None,
+    cct_audience: Optional[str] = None,
+    cct_allowed_issuers: Optional[Iterable[str]] = None,
+    cct_key_prefix: Optional[str] = None,
 ) -> FastAPI:
     """Create and configure FastAPI application for order-lookup-mcp."""
     if order_repo is None:
@@ -403,6 +524,21 @@ def create_app(
     )
     application.state.order_repo = order_repo
     application.state.require_verified_header = require_verified_header
+    if cct_mode is not None:
+        cct_mode_norm = cct_mode.strip().lower()
+        if cct_mode_norm not in {"off", "accept", "require"}:
+            raise ValueError(
+                f"Invalid cct_mode '{cct_mode}'; must be one of 'off', 'accept', 'require'"
+            )
+        application.state.cct_mode = cct_mode_norm
+    if cct_resolver is not None:
+        application.state.cct_resolver = cct_resolver
+    if cct_audience is not None:
+        application.state.cct_audience = cct_audience
+    if cct_allowed_issuers is not None:
+        application.state.cct_allowed_issuers = tuple(cct_allowed_issuers)
+    if cct_key_prefix is not None:
+        application.state.cct_key_prefix = cct_key_prefix
     application.include_router(router)
     return application
 

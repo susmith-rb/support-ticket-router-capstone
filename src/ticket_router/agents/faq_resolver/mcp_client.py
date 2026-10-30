@@ -1,8 +1,9 @@
 """mcp_client.py — Order Lookup MCP client with strict BOLA/IDOR protection.
 
-# REQ-AGENT-010, REQ-AGENT-012, AGENTS.md rule 7, TDD §8.4.
+# REQ-AGENT-010, REQ-AGENT-012, REQ-AUTH-003, AGENTS.md rule 7, TDD §8.4.
 # Enforces BOLA/IDOR protection: customer_id is strictly derived from verified session
 # claims and NEVER accepted from untrusted model/tool arguments.
+# Forwards customer_context_token unchanged in X-Customer-Context (REQ-AUTH-003).
 """
 
 from __future__ import annotations
@@ -99,6 +100,7 @@ class HttpOrderLookupClient(OrderLookupProtocol):
         order_id: str,
         customer_id: str,
         untrusted_customer_id: Optional[str] = None,
+        customer_context_token: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Fetch order details bound strictly to the verified customer_id.
 
@@ -115,16 +117,17 @@ class HttpOrderLookupClient(OrderLookupProtocol):
         if not customer_id or customer_id.startswith("anon:"):
             raise BolaViolationError("Anonymous or unverified customer cannot access order lookup.")
 
-        url = f"{self.base_url}/get_order"
+        url = f"{self.base_url}/tools/get_order"
         body = {
             "order_id": order_id,
-            "customer_id": customer_id,  # Passed strictly from verified context
         }
         headers = {
             "Content-Type": "application/json",
             "X-Customer-ID": customer_id,  # Verified customer context header
             "X-Customer-Verified": "true",
         }
+        if customer_context_token is not None and customer_context_token != "":
+            headers["X-Customer-Context"] = customer_context_token
 
         token = None
         try:
@@ -146,6 +149,7 @@ class HttpOrderLookupClient(OrderLookupProtocol):
         self,
         customer_id: str,
         limit: int = 5,
+        customer_context_token: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Fetch recent orders bound strictly to the verified customer_id."""
         if not customer_id or customer_id.startswith("anon:"):
@@ -158,6 +162,8 @@ class HttpOrderLookupClient(OrderLookupProtocol):
             "X-Customer-ID": customer_id,
             "X-Customer-Verified": "true",
         }
+        if customer_context_token is not None and customer_context_token != "":
+            headers["X-Customer-Context"] = customer_context_token
 
         token = None
         try:
@@ -167,7 +173,7 @@ class HttpOrderLookupClient(OrderLookupProtocol):
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
-        with start_span("mcp.order_lookup.list_orders", attributes={"customer_id": customer_id}) as span:
+        with start_span("mcp.order_lookup.list_orders", attributes={"limit": limit}) as span:
             if tp := (getattr(span, "traceparent", None) or get_current_traceparent()):
                 headers["traceparent"] = tp
 
@@ -218,15 +224,20 @@ class FakeOrderLookupClient(OrderLookupProtocol):
         order_id: str,
         customer_id: str,
         untrusted_customer_id: Optional[str] = None,
+        customer_context_token: Optional[str] = None,
     ) -> Dict[str, Any]:
+        headers = {
+            "X-Customer-ID": customer_id,
+            "X-Customer-Verified": "true",
+        }
+        if customer_context_token is not None and customer_context_token != "":
+            headers["X-Customer-Context"] = customer_context_token
         self.call_history.append({
             "order_id": order_id,
             "customer_id": customer_id,
             "untrusted_customer_id": untrusted_customer_id,
-            "headers": {
-                "X-Customer-ID": customer_id,
-                "X-Customer-Verified": "true",
-            },
+            "customer_context_token": customer_context_token,
+            "headers": headers,
             "timestamp": time.time(),
         })
 
@@ -262,15 +273,20 @@ class FakeOrderLookupClient(OrderLookupProtocol):
         self,
         customer_id: str,
         limit: int = 5,
+        customer_context_token: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
+        headers = {
+            "X-Customer-ID": customer_id,
+            "X-Customer-Verified": "true",
+        }
+        if customer_context_token is not None and customer_context_token != "":
+            headers["X-Customer-Context"] = customer_context_token
         self.call_history.append({
             "action": "list_orders",
             "customer_id": customer_id,
             "limit": limit,
-            "headers": {
-                "X-Customer-ID": customer_id,
-                "X-Customer-Verified": "true",
-            },
+            "customer_context_token": customer_context_token,
+            "headers": headers,
             "timestamp": time.time(),
         })
 

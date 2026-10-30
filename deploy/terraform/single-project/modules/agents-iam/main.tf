@@ -1,6 +1,7 @@
 # deploy/terraform/single-project/modules/agents-iam/main.tf
 # Service accounts and least-privilege IAM policies for agent runtime and microservices.
 # Implements REQ-AGENT-016: Dedicated identities for TriageRouter and FaqResolver.
+# Implements REQ-AUTH-001: Least-privilege custom roles for agent inference and runtime.
 
 data "google_project" "project" {
   project_id = var.project_id
@@ -80,18 +81,52 @@ resource "google_vertex_ai_endpoint_iam_member" "faq_dedicated_prediction_user" 
 
 
 # -----------------------------------------------------------------------------
-# 4. Generative AI Inference (Gemini 3.8 Flash via Vertex AI)
+# 4. Generative AI Inference & Runtime Custom Roles (REQ-AUTH-001)
 # -----------------------------------------------------------------------------
 
-resource "google_project_iam_member" "triage_aiplatform_user" {
+# REQ-AUTH-001: Least-privilege custom role permissions for agent inference and runtime.
+locals {
+  agent_inference_permissions = [
+    "aiplatform.endpoints.predict",
+  ]
+  triage_runtime_permissions = [
+    "aiplatform.endpoints.predict",
+    "aiplatform.sessions.create",
+    "aiplatform.sessions.get",
+    "aiplatform.sessions.list",
+    "aiplatform.sessions.update",
+    "aiplatform.sessions.delete",
+    "aiplatform.sessions.run",
+    "aiplatform.sessionEvents.append",
+    "aiplatform.sessionEvents.list",
+  ]
+}
+
+resource "google_project_iam_custom_role" "agent_inference" {
+  project     = var.project_id
+  role_id     = "ticketRouterAgentInference"
+  title       = "Ticket Router Agent Inference"
+  description = "Least-privilege role for FaqResolver agent inference via Vertex AI (REQ-AUTH-001)"
+  permissions = local.agent_inference_permissions
+}
+
+resource "google_project_iam_custom_role" "triage_runtime" {
+  project     = var.project_id
+  role_id     = "ticketRouterTriageRuntime"
+  title       = "Ticket Router Triage Runtime"
+  description = "Least-privilege role for TriageRouter runtime sessions and inference via Vertex AI (REQ-AUTH-001)"
+  permissions = local.triage_runtime_permissions
+}
+
+resource "google_project_iam_member" "triage_runtime_custom_role" {
   project = var.project_id
-  role    = "roles/aiplatform.user"
+  role    = google_project_iam_custom_role.triage_runtime.id
   member  = "serviceAccount:${google_service_account.sa_triage.email}"
 }
 
-resource "google_project_iam_member" "faq_aiplatform_user" {
+resource "google_project_iam_member" "faq_inference_custom_role" {
   project = var.project_id
-  role    = "roles/aiplatform.user"
+  role    = google_project_iam_custom_role.agent_inference.id
   member  = "serviceAccount:${google_service_account.sa_faq.email}"
 }
 

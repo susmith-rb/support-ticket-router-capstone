@@ -13,6 +13,7 @@ Key deployment invariants:
    - ROUTER_S1_ENDPOINT, ROUTER_S1_BASE_URL
    - ORDER_LOOKUP_MCP_URL, TICKET_DB_MCP_URL, HUMAN_QUEUE_URL
    - FAQ_RESOLVER_URL, FAQ_RESOLVER_AUDIENCE
+   - CCT_KEY_VERSION, CCT_ISSUER, CCT_AUDIENCE, CCT_TTL_S
    - ALLOWED_CALLERS, REQUIRE_REAL_DEPS=1, SERVICE=triage_router
 2. Control Plane Reserved Names: Filters out reserved names
    (GOOGLE_CLOUD_PROJECT, GOOGLE_CLOUD_LOCATION, GOOGLE_CLOUD_REGION,
@@ -63,6 +64,7 @@ PINNED_REQUIREMENTS = [
     "google-adk>=2.2.0",
     "cloudpickle==3.0.0",
     "pydantic>=2.0.0",
+    "cryptography>=42.0.0",
     "google-genai>=0.1.0",
     "requests>=2.32.0",
     "google-auth>=2.27.0",
@@ -87,6 +89,13 @@ DEFAULT_HUMAN_QUEUE_URL = "https://human-queue-34mwh7k34a-uc.a.run.app"
 DEFAULT_FAQ_RESOLVER_URL = "https://faq.8-232-184-225.sslip.io"
 DEFAULT_FAQ_RESOLVER_AUDIENCE = "https://faq.8-232-184-225.sslip.io"
 
+DEFAULT_CCT_KEY_VERSION = (
+    "projects/susmith-fde-ticket-router/locations/us-central1/keyRings/ticket-router-identity/cryptoKeys/customer-context-signer/cryptoKeyVersions/1"
+)
+DEFAULT_CCT_ISSUER = "triage-router"
+DEFAULT_CCT_AUDIENCE = "order-lookup-mcp"
+DEFAULT_CCT_TTL_S = "300"
+
 
 def prepare_environment(
     project: str,
@@ -109,6 +118,10 @@ def prepare_environment(
     service: str = "triage_router",
     ge_oauth_auth_id: str | None = None,
     ge_oauth_client_id: str | None = None,
+    cct_key_version: str = DEFAULT_CCT_KEY_VERSION,
+    cct_issuer: str = DEFAULT_CCT_ISSUER,
+    cct_audience: str = DEFAULT_CCT_AUDIENCE,
+    cct_ttl_s: str = DEFAULT_CCT_TTL_S,
 ) -> dict[str, str]:
     """Set environment variables in-process before importing or pickling.
 
@@ -132,6 +145,10 @@ def prepare_environment(
         "ALLOWED_CALLERS": allowed_callers,
         "MODEL_ARMOR_TEMPLATE": model_armor_template,
         "MODEL_ARMOR_ENABLED": model_armor_enabled,
+        "CCT_KEY_VERSION": cct_key_version,
+        "CCT_ISSUER": cct_issuer,
+        "CCT_AUDIENCE": cct_audience,
+        "CCT_TTL_S": cct_ttl_s,
         "ENABLE_CLOUD_TRACE": "1",
         "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT": "NO_CONTENT",
         "REQUIRE_REAL_DEPS": require_real_deps,
@@ -276,6 +293,10 @@ def deploy_reasoning_engine(
         ge_oauth_client_id=contract.get(
             "GE_OAUTH_CLIENT_ID", os.environ.get("GE_OAUTH_CLIENT_ID")
         ),
+        cct_key_version=contract.get("CCT_KEY_VERSION", DEFAULT_CCT_KEY_VERSION),
+        cct_issuer=contract.get("CCT_ISSUER", DEFAULT_CCT_ISSUER),
+        cct_audience=contract.get("CCT_AUDIENCE", DEFAULT_CCT_AUDIENCE),
+        cct_ttl_s=contract.get("CCT_TTL_S", DEFAULT_CCT_TTL_S),
     )
     remote_env_vars = filter_reserved_env_vars(raw_env_vars)
     agent_app = build_agent_app()
@@ -461,6 +482,26 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         help="Enable Model Armor sanitization (1/0)",
     )
     parser.add_argument(
+        "--cct-key-version",
+        default=os.environ.get("CCT_KEY_VERSION", DEFAULT_CCT_KEY_VERSION),
+        help=f"CCT KMS key version resource name (default: {DEFAULT_CCT_KEY_VERSION})",
+    )
+    parser.add_argument(
+        "--cct-issuer",
+        default=os.environ.get("CCT_ISSUER", DEFAULT_CCT_ISSUER),
+        help=f"CCT issuer claim (default: {DEFAULT_CCT_ISSUER})",
+    )
+    parser.add_argument(
+        "--cct-audience",
+        default=os.environ.get("CCT_AUDIENCE", DEFAULT_CCT_AUDIENCE),
+        help=f"CCT audience claim (default: {DEFAULT_CCT_AUDIENCE})",
+    )
+    parser.add_argument(
+        "--cct-ttl-s",
+        default=os.environ.get("CCT_TTL_S", DEFAULT_CCT_TTL_S),
+        help=f"CCT TTL in seconds (default: {DEFAULT_CCT_TTL_S})",
+    )
+    parser.add_argument(
         "--ge-oauth-auth-id",
         default=os.environ.get("GE_OAUTH_AUTH_ID", "support-customer-oauth"),
         help="Gemini Enterprise OAuth Auth ID (default: support-customer-oauth)",
@@ -502,6 +543,10 @@ def main() -> None:
         "ROUTER_S1_BASE_URL": args.router_base_url,
         "MODEL_ARMOR_TEMPLATE": args.model_armor_template,
         "MODEL_ARMOR_ENABLED": args.model_armor_enabled,
+        "CCT_KEY_VERSION": args.cct_key_version,
+        "CCT_ISSUER": args.cct_issuer,
+        "CCT_AUDIENCE": args.cct_audience,
+        "CCT_TTL_S": args.cct_ttl_s,
     }
     if args.ge_oauth_auth_id:
         contract_vars["GE_OAUTH_AUTH_ID"] = args.ge_oauth_auth_id

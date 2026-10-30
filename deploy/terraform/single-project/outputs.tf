@@ -237,6 +237,17 @@ output "ge_app_console_url" {
   value       = "https://console.cloud.google.com/gemini-enterprise/locations/${module.ge_app.ge_location}/engines/${module.ge_app.ge_engine_id}/overview/dashboard?project=${var.project_id}"
 }
 
+output "signing_key_version" {
+  description = "Resource name of the primary asymmetric signing key version"
+  value       = module.kms_identity.signing_key_version
+}
+
+output "key_prefix" {
+  description = "Key resource name prefix for verification key validation"
+  value       = module.kms_identity.key_prefix
+}
+
+
 
 
 

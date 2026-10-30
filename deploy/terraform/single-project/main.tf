@@ -35,7 +35,8 @@ module "project_services" {
     "apikeys.googleapis.com",
     "modelarmor.googleapis.com",
     "cloudtrace.googleapis.com",
-    "telemetry.googleapis.com"
+    "telemetry.googleapis.com",
+    "cloudkms.googleapis.com"
   ]
 }
 
@@ -172,6 +173,17 @@ module "agents_iam" {
   depends_on = [module.project_services, module.pubsub, module.cloud_sql, module.router_endpoint]
 }
 
+module "kms_identity" {
+  source           = "./modules/kms-identity"
+  project_id       = var.project_id
+  region           = var.region
+  signer_members   = ["serviceAccount:${module.agents_iam.sa_triage_email}"]
+  verifier_members = ["serviceAccount:${module.cloud_sql.sa_order_mcp_email}"]
+  labels           = var.labels
+
+  depends_on = [module.project_services]
+}
+
 module "cloud_run_services" {
   source                    = "./modules/cloud-run-services"
   project_id                = var.project_id
@@ -185,9 +197,11 @@ module "cloud_run_services" {
   sa_faq_email              = module.agents_iam.sa_faq_email
   min_instance_count        = var.cloud_run_min_instances
   max_instance_count        = var.cloud_run_max_instances
+  cct_key_prefix            = module.kms_identity.key_prefix
+  cct_mode                  = var.cct_mode
   labels                    = var.labels
 
-  depends_on = [module.project_services, module.cloud_sql, module.agents_iam]
+  depends_on = [module.project_services, module.cloud_sql, module.agents_iam, module.kms_identity]
 }
 
 module "identity" {

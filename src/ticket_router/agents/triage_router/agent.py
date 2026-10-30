@@ -6,6 +6,8 @@
 # REQ-AGENT-004: Gaming-Resistant Queue Priority Assignment
 # REQ-AGENT-005: Templated Calming Acknowledgement and Idempotent Ticket Upsert
 # REQ-AGENT-006: Inter-Agent A2A Handoff Protocol
+# REQ-AUTH-002: Signed Customer Context Token (minting at TriageRouter)
+# REQ-AUTH-003: CCT Transport and Verification at order-lookup-mcp
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ import contextvars
 import json
 import logging
 import os
+import threading
 import time
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Callable, Dict, Optional
@@ -53,6 +56,11 @@ from ticket_router.common.resilience import TIER2_DEADLINE_S, TIER2_HEDGE_AFTER_
 from ticket_router.common.settings import Settings
 from ticket_router.config.models import model_id, model_location, model_thinking_level
 from ticket_router.identity import resolve_identity
+from ticket_router.identity.customer_token import (
+    KmsSigner,
+    Signer,
+    mint_customer_context_token,
+)
 from ticket_router.models.router_s1_client import RouterPrediction, RouterS1Client
 from ticket_router.security.model_armor import (
     ModelArmorClient,
@@ -60,6 +68,7 @@ from ticket_router.security.model_armor import (
 )
 
 logger = logging.getLogger(__name__)
+_SIGNER_INIT_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -319,6 +328,9 @@ class TriageRouterAgent:
         model_armor_client: Optional[ModelArmorClientProtocol] = None,
         logger: Optional[StructuredJsonLogger] = None,
         lazy_init: bool = False,
+        cct_signer: Optional[Signer] = None,
+        signer: Optional[Signer] = None,
+        settings: Optional[Settings] = None,
     ) -> None:
         self._policy = policy
         self._mcp_client = mcp_client
@@ -326,6 +338,9 @@ class TriageRouterAgent:
         self._model_armor_client = model_armor_client
         self.logger = logger or StructuredJsonLogger(name="triage_router")
         self.lazy_init = lazy_init
+        self._injected_signer: Optional[Signer] = cct_signer if cct_signer is not None else signer
+        self._default_kms_signer: Optional[KmsSigner] = None
+        self._settings: Optional[Settings] = settings
         self._expected_oauth_client_id: Optional[str] = os.environ.get("GE_OAUTH_CLIENT_ID") or None
         if not lazy_init:
             self._ensure_initialized()
@@ -398,6 +413,54 @@ class TriageRouterAgent:
         self._ensure_initialized()
         assert self._a2a_client is not None
         return self._a2a_client
+
+    def _mint_cct_if_verified(
+        self,
+        *,
+        customer_verified: bool,
+        customer_id: Optional[str],
+        ticket_id: str,
+    ) -> Optional[str]:
+        """Mint a Customer Context Token solely for verified customers when enabled.
+
+        # REQ-AUTH-002: Fail-safe on any minting exception; never log token or customer_id.
+        """
+        if not customer_verified or not customer_id or customer_id.startswith("anon:"):
+            return None
+
+        settings = self._settings if self._settings is not None else Settings.from_env()
+        key_version = settings.cct_key_version
+        if not key_version:
+            return None
+
+        try:
+            active_signer = self._injected_signer
+            if active_signer is None:
+                with _SIGNER_INIT_LOCK:
+                    if self._default_kms_signer is None or self._default_kms_signer.kid != key_version:
+                        self._default_kms_signer = KmsSigner(key_version)
+                    active_signer = self._default_kms_signer
+
+            return mint_customer_context_token(
+                signer=active_signer,
+                issuer=settings.cct_issuer,
+                audience=settings.cct_audience,
+                customer_id=customer_id,
+                ticket_id=ticket_id,
+                ttl_s=settings.cct_ttl_s,
+            )
+        except Exception as exc:
+            logger.warning(
+                json.dumps(
+                    {
+                        "event": "cct_mint_failed",
+                        "ticket_id": ticket_id,
+                        "error_type": type(exc).__name__,
+                    },
+                    separators=(",", ":"),
+                )
+            )
+            return None
 
     def _safe_upsert(
         self,
@@ -567,17 +630,6 @@ class TriageRouterAgent:
                     "answer": render_conversational_reply(decision.details.get("category")),
                 }
             else:
-                payload = A2AHandoffPayload(
-                    ticket_id=t_id,
-                    session_id=session_id,
-                    predicted_intent=decision.predicted_intent,
-                    redacted_message=body_to_persist,
-                    memory_summary=memory_summary,
-                    customer_id=cust_ctx.customer_id if cust_ctx.verified else None,
-                    customer_verified=customer_verified,
-                    identity_issuer=identity_issuer,
-                    traceparent=get_current_traceparent() or traceparent,
-                )
                 decision_snapshot = asdict(decision)
                 upsert_ctx = contextvars.copy_context()
                 a2a_failed_exc: Optional[Exception] = None
@@ -593,17 +645,36 @@ class TriageRouterAgent:
                         decision=decision_snapshot,
                     )
                     try:
-                        handoff_resp = self.a2a_client.handoff(payload)
-                        if isinstance(handoff_resp, dict) and handoff_resp.get("status") == "ESCALATED":
-                            calming_ack = str(
-                                handoff_resp.get("calming_ack")
-                                or render_calming_acknowledgement(
-                                    queue=str(handoff_resp.get("queue", "human-standard")),
-                                    ticket_id=t_id,
+                        verified_cid = cust_ctx.customer_id if cust_ctx.verified else None
+                        cct = self._mint_cct_if_verified(
+                            customer_verified=customer_verified,
+                            customer_id=verified_cid,
+                            ticket_id=t_id,
+                        )
+                        payload = A2AHandoffPayload(
+                            ticket_id=t_id,
+                            session_id=session_id,
+                            predicted_intent=decision.predicted_intent,
+                            redacted_message=body_to_persist,
+                            memory_summary=memory_summary,
+                            customer_id=verified_cid,
+                            customer_verified=customer_verified,
+                            identity_issuer=identity_issuer,
+                            traceparent=get_current_traceparent() or traceparent,
+                            customer_context_token=cct,
+                        )
+                        try:
+                            handoff_resp = self.a2a_client.handoff(payload)
+                            if isinstance(handoff_resp, dict) and handoff_resp.get("status") == "ESCALATED":
+                                calming_ack = str(
+                                    handoff_resp.get("calming_ack")
+                                    or render_calming_acknowledgement(
+                                        queue=str(handoff_resp.get("queue", "human-standard")),
+                                        ticket_id=t_id,
+                                    )
                                 )
-                            )
-                    except Exception as exc:
-                        a2a_failed_exc = exc
+                        except Exception as exc:
+                            a2a_failed_exc = exc
                     finally:
                         upsert_fut.result()
 

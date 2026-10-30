@@ -1,6 +1,7 @@
 """a2a.py — Agent-to-Agent (A2A) server entry and agent card for FaqResolverAgent.
 
 REQ-AGENT-006: Inter-Agent A2A Handoff Protocol.
+REQ-AUTH-003: CCT Transport and Verification at order-lookup-mcp (forward unchanged).
 Defines the A2A Agent Card and request handler so TriageRouterAgent (and Gateway)
 can dispatch non-escalated factual inquiries to FaqResolverAgent.
 """
@@ -36,6 +37,10 @@ FAQ_RESOLVER_AGENT_CARD: Dict[str, Any] = {
             "predicted_intent": {"type": "string", "description": "Intent predicted by router-s1"},
             "memory_summary": {"type": "string", "description": "Compact Memory Bank customer profile"},
             "traceparent": {"type": ["string", "null"], "description": "W3C traceparent header for distributed trace correlation"},
+            "customer_context_token": {
+                "type": ["string", "null"],
+                "description": "KMS-signed ES256 Customer Context Token forwarded unchanged to order-lookup-mcp",
+            },
         },
     },
     "output_schema": {
@@ -92,6 +97,10 @@ def handle_a2a_request(
     memory_summary = payload.get("memory_summary")
     traceparent = payload.get("traceparent") or get_current_traceparent()
     untrusted_customer_id = payload.get("untrusted_customer_id")
+    raw_cct = payload.get("customer_context_token")
+    customer_context_token: Optional[str] = (
+        raw_cct if isinstance(raw_cct, str) and raw_cct != "" else None
+    )
 
     if not ticket_id or not message:
         return {
@@ -114,6 +123,7 @@ def handle_a2a_request(
         memory_summary=memory_summary,
         traceparent=traceparent,
         untrusted_customer_id=untrusted_customer_id,
+        customer_context_token=customer_context_token,
     )
 
     return resolution.to_dict()

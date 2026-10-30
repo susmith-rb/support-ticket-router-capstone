@@ -323,3 +323,13 @@ def test_configure_tracing_env_gating_and_no_content_invariant(monkeypatch):
             assert child_span.parent.span_id == root_span.context.span_id
     except (ImportError, Exception):
         pass  # Hermetic offline CI isolation without opentelemetry-sdk
+
+
+def test_traceparent_with_all_digit_span_id_is_not_flagged_as_card() -> None:
+    """REQ-AGENT-014: random all-digit span ids must not trip the card-number PII pattern."""
+    record = {
+        "ticket_id": "TICK-1",
+        "traceparent": "00-23ed6fc64729d5b03713e497cdbe3019-1112381148514219-01",
+    }
+    assert is_pii_clean(record)
+    assert not is_pii_clean({"note": "4111 1111 1111 1111"})

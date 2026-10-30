@@ -64,3 +64,16 @@ variable "labels" {
   type        = map(string)
   default     = {}
 }
+
+variable "cct_mode" {
+  description = "Customer context token verification mode for order-lookup-mcp (off, accept, require)"
+  type        = string
+  default     = "accept"
+}
+
+variable "cct_key_prefix" {
+  description = "Allowed KMS key resource prefix for CCT verification"
+  type        = string
+  default     = ""
+}
+

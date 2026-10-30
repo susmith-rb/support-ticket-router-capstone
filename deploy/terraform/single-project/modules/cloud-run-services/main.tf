@@ -161,6 +161,22 @@ resource "google_cloud_run_v2_service" "order_lookup_mcp" {
         name  = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
         value = "NO_CONTENT"
       }
+      env {
+        name  = "CCT_MODE"
+        value = var.cct_mode
+      }
+      env {
+        name  = "CCT_AUDIENCE"
+        value = "order-lookup-mcp"
+      }
+      env {
+        name  = "CCT_ALLOWED_ISSUERS"
+        value = "triage-router"
+      }
+      env {
+        name  = "CCT_KEY_PREFIX"
+        value = var.cct_key_prefix
+      }
 
       ports {
         container_port = 8080

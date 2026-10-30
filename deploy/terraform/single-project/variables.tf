@@ -169,4 +169,13 @@ variable "manage_ge_search_engine" {
   default     = true
 }
 
+variable "cct_mode" {
+  description = "Customer context token mode for order-lookup-mcp (REQ-AUTH-003): off | accept | require."
+  type        = string
+  default     = "accept"
 
+  validation {
+    condition     = contains(["off", "accept", "require"], var.cct_mode)
+    error_message = "cct_mode must be one of off, accept, require."
+  }
+}

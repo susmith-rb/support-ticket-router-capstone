@@ -1,6 +1,8 @@
 """Agent-to-Agent (A2A) handoff protocol and client implementations.
 
 # REQ-AGENT-006: Inter-Agent A2A Handoff Protocol
+# REQ-AUTH-002: Signed Customer Context Token (minting at TriageRouter)
+# REQ-AUTH-003: CCT Transport and Verification at order-lookup-mcp
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ def _create_pooled_session() -> requests.Session:
 
 @dataclass(frozen=True)
 class A2AHandoffPayload:
-    """Inter-agent handoff payload sent from TriageRouter to FaqResolver (REQ-AGENT-006)."""
+    """Inter-agent handoff payload sent from TriageRouter to FaqResolver (REQ-AGENT-006, REQ-AUTH-002, REQ-AUTH-003)."""
     ticket_id: str
     session_id: str
     predicted_intent: str
@@ -37,6 +39,7 @@ class A2AHandoffPayload:
     customer_verified: bool = False
     identity_issuer: Optional[str] = None
     traceparent: Optional[str] = None
+    customer_context_token: Optional[str] = None
 
 
 @runtime_checkable

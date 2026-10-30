@@ -18,6 +18,7 @@ variable "services" {
     "container.googleapis.com",
     "secretmanager.googleapis.com",
     "pubsub.googleapis.com",
-    "compute.googleapis.com"
+    "compute.googleapis.com",
+    "cloudkms.googleapis.com"
   ]
 }

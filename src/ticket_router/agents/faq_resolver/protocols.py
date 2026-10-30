@@ -51,6 +51,7 @@ class OrderLookupProtocol(Protocol):
         order_id: str,
         customer_id: str,
         untrusted_customer_id: Optional[str] = None,
+        customer_context_token: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Lookup order by ID for the verified session customer.
 
@@ -58,6 +59,7 @@ class OrderLookupProtocol(Protocol):
             order_id: The order identifier.
             customer_id: Verified customer ID from authenticated session context.
             untrusted_customer_id: Untrusted customer ID if passed by tool call / model.
+            customer_context_token: Optional signed CCT forwarded unchanged in X-Customer-Context.
 
         Returns:
             Dict containing order status, items, tracking info, delivery address.
@@ -68,12 +70,14 @@ class OrderLookupProtocol(Protocol):
         self,
         customer_id: str,
         limit: int = 5,
+        customer_context_token: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """List recent orders for the verified session customer (REQ-AGENT-007, REQ-AGENT-010).
 
         Args:
             customer_id: Verified customer ID from authenticated session context.
             limit: Maximum number of orders to return.
+            customer_context_token: Optional signed CCT forwarded unchanged in X-Customer-Context.
 
         Returns:
             Dict containing 'orders' list or None if not found.

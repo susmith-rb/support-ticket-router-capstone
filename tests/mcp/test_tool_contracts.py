@@ -425,14 +425,14 @@ def test_order_lookup_bola_protection():
     assert tool_valid.status_code == 200
     assert tool_valid.json()["order_id"] == "ORD-500"
 
-    # 3. Body customer_id MISMATCH with verified header context rejected with 403
+    # 3. Body customer_id on legacy /get_order is rejected with 400 (BOLA/IDOR guard, REQ-AGENT-010, # REQ-AUTH-003)
     mismatch_resp = client.post(
         "/get_order",
         json={"order_id": "ORD-500", "customer_id": "cust-attacker"},
         headers={"X-Customer-ID": "cust-alice"},
     )
-    assert mismatch_resp.status_code == 403
-    assert "Access denied" in mismatch_resp.json()["detail"]
+    assert mismatch_resp.status_code == 400
+    assert "BOLA/IDOR violation" in mismatch_resp.json()["detail"]
 
     # 4. Attacker looking up Alice's order with attacker's verified header returns 404 (zero leakage)
     probe_resp = client.post(

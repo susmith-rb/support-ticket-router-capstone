@@ -104,9 +104,9 @@ def test_order_lookup_anonymous_customer_rejected():
     assert resp_http.json()["detail"] == "unverified_customer"
 
 
-# REQ-IDENT-005, REQ-AGENT-010
+# REQ-IDENT-005, REQ-AGENT-010, # REQ-AUTH-003
 def test_order_lookup_bola_body_guard():
-    """Verify BOLA protection: passing customer_id in tool body is rejected with 400 before database lookup."""
+    """Verify BOLA protection: passing customer_id in tool or HTTP body is rejected with 400 before database lookup."""
     app = _build_test_app(require_verified_header=True)
     client = TestClient(app)
 
@@ -121,3 +121,21 @@ def test_order_lookup_bola_body_guard():
     )
     assert resp.status_code == 400
     assert "BOLA/IDOR violation" in resp.json()["detail"]
+
+    # Also test /get_order
+    resp_get = client.post(
+        "/get_order",
+        json={"order_id": "ORD-1001", "customer_id": "cust_1001"},
+        headers=headers,
+    )
+    assert resp_get.status_code == 400
+    assert "BOLA/IDOR violation" in resp_get.json()["detail"]
+
+    # Also test /list_orders
+    resp_list = client.post(
+        "/list_orders",
+        json={"limit": 5, "customer_id": "cust_1001"},
+        headers=headers,
+    )
+    assert resp_list.status_code == 400
+    assert "BOLA/IDOR violation" in resp_list.json()["detail"]

@@ -34,6 +34,15 @@ class Settings:
     model_armor_enabled: bool
     ge_oauth_auth_id: str = "support-customer-oauth"
     ge_oauth_client_id: Optional[str] = None
+    cct_mode: str = "accept"
+    cct_issuer: str = "triage-router"
+    cct_audience: str = "order-lookup-mcp"
+    cct_ttl_s: int = 300
+    cct_key_version: str = ""
+    cct_key_prefix: str = (
+        "projects/susmith-fde-ticket-router/locations/us-central1/keyRings/ticket-router-identity/cryptoKeys/customer-context-signer/"
+    )
+    cct_allowed_issuers: Tuple[str, ...] = ("triage-router",)
 
     @classmethod
     def from_env(cls, env: Optional[Dict[str, str]] = None) -> Settings:
@@ -117,6 +126,39 @@ class Settings:
             environ.get("GE_OAUTH_CLIENT_ID", "").strip() or None
         )
 
+        raw_cct_mode = environ.get("CCT_MODE", "accept").strip().lower() or "accept"
+        if raw_cct_mode not in ("off", "accept", "require"):
+            raise ValueError(
+                f"Invalid CCT_MODE: '{raw_cct_mode}' (must be one of 'off', 'accept', 'require')"
+            )
+        cct_mode = raw_cct_mode
+
+        cct_issuer = environ.get("CCT_ISSUER", "triage-router").strip() or "triage-router"
+        cct_audience = environ.get("CCT_AUDIENCE", "order-lookup-mcp").strip() or "order-lookup-mcp"
+
+        raw_cct_ttl_s = environ.get("CCT_TTL_S")
+        if raw_cct_ttl_s is not None and raw_cct_ttl_s.strip():
+            cct_ttl_s = int(raw_cct_ttl_s.strip())
+        else:
+            cct_ttl_s = 300
+
+        cct_key_version = environ.get("CCT_KEY_VERSION", "").strip()
+        default_cct_prefix = (
+            "projects/susmith-fde-ticket-router/locations/us-central1/keyRings/ticket-router-identity/cryptoKeys/customer-context-signer/"
+        )
+        cct_key_prefix = environ.get("CCT_KEY_PREFIX", default_cct_prefix).strip() or default_cct_prefix
+
+        raw_cct_issuers = environ.get("CCT_ALLOWED_ISSUERS")
+        if raw_cct_issuers is not None:
+            issuers_list: List[str] = []
+            for iss in raw_cct_issuers.split(","):
+                cleaned = iss.strip()
+                if cleaned:
+                    issuers_list.append(cleaned)
+            cct_allowed_issuers = tuple(issuers_list)
+        else:
+            cct_allowed_issuers = ("triage-router",)
+
         return cls(
             project=project,
             location=location,
@@ -135,6 +177,13 @@ class Settings:
             model_armor_enabled=model_armor_enabled,
             ge_oauth_auth_id=ge_oauth_auth_id,
             ge_oauth_client_id=ge_oauth_client_id,
+            cct_mode=cct_mode,
+            cct_issuer=cct_issuer,
+            cct_audience=cct_audience,
+            cct_ttl_s=cct_ttl_s,
+            cct_key_version=cct_key_version,
+            cct_key_prefix=cct_key_prefix,
+            cct_allowed_issuers=cct_allowed_issuers,
         )
 
     def validate_for_faq(self) -> None:

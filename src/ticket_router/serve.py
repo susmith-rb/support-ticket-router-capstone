@@ -135,15 +135,22 @@ def get_app(service_name: Optional[str] = None) -> FastAPI:
         return _instrument_fastapi_app(raw_app, svc)
 
     if svc == "order_lookup":
+        from ticket_router.common.settings import Settings
         from ticket_router.mcp.order_lookup.server import create_app as create_order_lookup_app
 
+        settings = Settings.from_env()
         if allow_fake:
             from ticket_router.store.fake import FakeOrderRepo
 
             raw_app = create_order_lookup_app(
                 order_repo=FakeOrderRepo(),
                 require_verified_header=True,
+                cct_mode=settings.cct_mode,
+                cct_audience=settings.cct_audience,
+                cct_allowed_issuers=settings.cct_allowed_issuers,
+                cct_key_prefix=settings.cct_key_prefix,
             )
+            raw_app.state.settings = settings
             return _instrument_fastapi_app(raw_app, svc)
 
         conn_mgr = build_connection_manager()
@@ -153,7 +160,12 @@ def get_app(service_name: Optional[str] = None) -> FastAPI:
         raw_app = create_order_lookup_app(
             order_repo=order_repo,
             require_verified_header=True,
+            cct_mode=settings.cct_mode,
+            cct_audience=settings.cct_audience,
+            cct_allowed_issuers=settings.cct_allowed_issuers,
+            cct_key_prefix=settings.cct_key_prefix,
         )
+        raw_app.state.settings = settings
         return _instrument_fastapi_app(raw_app, svc)
 
     if svc == "human_queue":

@@ -388,6 +388,7 @@ class FaqResolverAgent:
         memory_summary: Optional[str] = None,
         traceparent: Optional[str] = None,
         untrusted_customer_id: Optional[str] = None,
+        customer_context_token: Optional[str] = None,
     ) -> ResolutionResult:
         """Execute bounded ReAct loop to resolve FAQ or order inquiry."""
         self._ensure_initialized()
@@ -411,6 +412,7 @@ class FaqResolverAgent:
                 predicted_intent=predicted_intent,
                 memory_summary=memory_summary,
                 untrusted_customer_id=untrusted_customer_id,
+                customer_context_token=customer_context_token,
             )
             resolve_span.set_attribute("status", res.status)
             return res
@@ -426,6 +428,7 @@ class FaqResolverAgent:
         predicted_intent: Optional[str] = None,
         memory_summary: Optional[str] = None,
         untrusted_customer_id: Optional[str] = None,
+        customer_context_token: Optional[str] = None,
     ) -> ResolutionResult:
         t_start = self._clock()
 
@@ -524,11 +527,14 @@ class FaqResolverAgent:
                 tool_calls_count += 1
                 try:
                     # BOLA / IDOR Protection: customer_id is verified session context
-                    order_info = self.order_client.get_order(
-                        order_id=order_id,
-                        customer_id=customer_id or "",
-                        untrusted_customer_id=untrusted_customer_id,
-                    )
+                    get_order_kwargs: Dict[str, Any] = {
+                        "order_id": order_id,
+                        "customer_id": customer_id or "",
+                        "untrusted_customer_id": untrusted_customer_id,
+                    }
+                    if customer_context_token is not None and customer_context_token != "":
+                        get_order_kwargs["customer_context_token"] = customer_context_token
+                    order_info = self.order_client.get_order(**get_order_kwargs)
                 except BolaViolationError:
                     return ResolutionResult(
                         status="ESCALATED",
@@ -557,10 +563,13 @@ class FaqResolverAgent:
                 tool_calls_count += 1
                 try:
                     with start_span("faq_resolver.list_orders", {"ticket_id": ticket_id}):
-                        listed = self.order_client.list_orders(
-                            customer_id=customer_id or "",
-                            limit=5,
-                        )
+                        list_orders_kwargs: Dict[str, Any] = {
+                            "customer_id": customer_id or "",
+                            "limit": 5,
+                        }
+                        if customer_context_token is not None and customer_context_token != "":
+                            list_orders_kwargs["customer_context_token"] = customer_context_token
+                        listed = self.order_client.list_orders(**list_orders_kwargs)
                     if isinstance(listed, dict) and "orders" in listed:
                         if listed.get("orders"):
                             order_info = listed

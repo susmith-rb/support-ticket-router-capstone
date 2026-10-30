@@ -23,6 +23,14 @@ def test_settings_defaults_loaded():
     assert cfg.order_lookup_mcp_url is None
     assert cfg.ticket_db_mcp_url is None
     assert cfg.faq_resolver_url is None
+    # CCT defaults
+    assert cfg.cct_mode == "accept"
+    assert cfg.cct_issuer == "triage-router"
+    assert cfg.cct_audience == "order-lookup-mcp"
+    assert cfg.cct_ttl_s == 300
+    assert cfg.cct_key_version == ""
+    assert "customer-context-signer" in cfg.cct_key_prefix
+    assert cfg.cct_allowed_issuers == ("triage-router",)
 
 
 def test_settings_container_default_requires_real_deps(monkeypatch):
@@ -48,6 +56,13 @@ def test_settings_custom_env_parsing():
         "FAQ_RESOLVER_AUDIENCE": "https://faq-resolver-aud.test",
         "ALLOWED_CALLERS": "sa-triage@test.iam.gserviceaccount.com, sa-admin@test.iam.gserviceaccount.com",
         "REQUIRE_REAL_DEPS": "0",
+        "CCT_MODE": "require",
+        "CCT_ISSUER": "custom-minter",
+        "CCT_AUDIENCE": "custom-order-lookup",
+        "CCT_TTL_S": "120",
+        "CCT_KEY_VERSION": "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1",
+        "CCT_KEY_PREFIX": "projects/p/locations/l/keyRings/r/cryptoKeys/k/",
+        "CCT_ALLOWED_ISSUERS": "custom-minter, admin-minter",
     }
     cfg = Settings.from_env(env=custom_env)
     assert cfg.project == "test-project-123"
@@ -65,6 +80,19 @@ def test_settings_custom_env_parsing():
     assert "sa-triage@test.iam.gserviceaccount.com" in cfg.allowed_callers
     assert "sa-admin@test.iam.gserviceaccount.com" in cfg.allowed_callers
     assert cfg.require_real_deps is False
+    assert cfg.cct_mode == "require"
+    assert cfg.cct_issuer == "custom-minter"
+    assert cfg.cct_audience == "custom-order-lookup"
+    assert cfg.cct_ttl_s == 120
+    assert cfg.cct_key_version == "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1"
+    assert cfg.cct_key_prefix == "projects/p/locations/l/keyRings/r/cryptoKeys/k/"
+    assert cfg.cct_allowed_issuers == ("custom-minter", "admin-minter")
+
+
+def test_settings_cct_mode_invalid_raises():
+    """Verify invalid CCT_MODE raises ValueError."""
+    with pytest.raises(ValueError, match="Invalid CCT_MODE"):
+        Settings.from_env(env={"CCT_MODE": "invalid"})
 
 
 def test_settings_validate_for_faq_missing_raises():

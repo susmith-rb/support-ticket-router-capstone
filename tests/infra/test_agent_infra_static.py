@@ -23,7 +23,7 @@ def test_agents_iam_least_privilege():
     1. sa-triage and sa-faq created as dedicated identities.
     2. Workload Identity binds ksa-faq in faq-resolver namespace to sa-faq.
     3. Resource-level roles/aiplatform.predictionUser granted on router-s1 endpoint.
-    4. roles/aiplatform.user granted for Gemini calls.
+    4. Custom roles granted for Gemini inference and runtime (REQ-AUTH-001 replaces roles/aiplatform.user).
     5. roles/discoveryengine.viewer granted exclusively to sa-faq (never sa-triage).
     6. Pub/Sub publisher on human-queue for sa-triage; subscriber on human-queue-sub for sa-queue.
     7. Invariant: Neither sa-triage nor sa-faq is granted direct database access.
@@ -53,8 +53,14 @@ def test_agents_iam_least_privilege():
     assert 'resource "google_vertex_ai_endpoint_iam_member" "faq_prediction_user"' in main_tf
     assert 'role     = "roles/aiplatform.predictionUser"' in main_tf
 
-    # Gemini inference
-    assert 'role    = "roles/aiplatform.user"' in main_tf
+    # Gemini inference and runtime custom roles (REQ-AUTH-001 replaces roles/aiplatform.user)
+    assert 'role    = "roles/aiplatform.user"' not in main_tf
+    assert 'resource "google_project_iam_custom_role" "agent_inference"' in main_tf
+    assert 'resource "google_project_iam_custom_role" "triage_runtime"' in main_tf
+    assert 'resource "google_project_iam_member" "triage_runtime_custom_role"' in main_tf
+    assert 'resource "google_project_iam_member" "faq_inference_custom_role"' in main_tf
+    assert "google_project_iam_custom_role.triage_runtime.id" in main_tf
+    assert "google_project_iam_custom_role.agent_inference.id" in main_tf
 
     # Discovery Engine viewer for FAQ only
     assert 'resource "google_project_iam_member" "faq_discovery_engine_viewer"' in main_tf
@@ -76,6 +82,8 @@ def test_agents_iam_least_privilege():
     # Outputs
     assert "sa_triage_email" in outputs_tf
     assert "sa_faq_email" in outputs_tf
+    assert "agent_inference_custom_role_id" in outputs_tf
+    assert "triage_runtime_custom_role_id" in outputs_tf
 
 
 # REQ-AGENT-017

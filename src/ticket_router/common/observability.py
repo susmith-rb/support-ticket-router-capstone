@@ -48,12 +48,16 @@ FORBIDDEN_PII_KEYS = frozenset({
     "api_key",
     "unmasked",
     "redaction_map",
+    "customer_context_token",
 })
 
 # PII regex detectors to guard against accidental leakage inside string values
 _EMAIL_REGEX = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+")
 _PHONE_REGEX = re.compile(r"\b(?:\+?1[-.]?)?\(?[2-9]\d{2}\)?[-.]?\d{3}[-.]?\d{4}\b")
 _CARD_REGEX = re.compile(r"\b(?:\d{4}[- ]?){3}\d{4}\b")
+# W3C trace identifiers are random hex; an all-digit 16-char span id matches _CARD_REGEX
+# and caused flaky PII false positives, so trace keys skip the value-pattern scan.
+_TRACE_KEYS = frozenset({"traceparent", "trace_id", "span_id"})
 
 # Context variable holding active W3C traceparent for thread/coroutine context propagation
 _CURRENT_TRACEPARENT: ContextVar[Optional[str]] = ContextVar("ticket_router_traceparent", default=None)
@@ -484,7 +488,11 @@ def is_pii_clean(data: Dict[str, Any]) -> bool:
         if isinstance(val, dict):
             if not is_pii_clean(val):
                 return False
-        elif isinstance(val, str) and (_EMAIL_REGEX.search(val) or _CARD_REGEX.search(val)):
+        elif (
+            isinstance(val, str)
+            and key_lower not in _TRACE_KEYS
+            and (_EMAIL_REGEX.search(val) or _CARD_REGEX.search(val))
+        ):
             return False
     return True
 
