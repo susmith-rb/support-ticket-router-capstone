@@ -72,7 +72,7 @@ load = [
 ]
 
 [tool.setuptools]
-package-dir = { "" = "src", "evals" = "evals", "corpus" = "corpus", "experiments" = "experiments", "training" = "training", "loadtest" = "loadtest", "chaos" = "chaos" }
+package-dir = { "" = "src", "evals" = "evals", "corpus" = "corpus", "experiments" = "experiments", "training" = "training" }
 packages = [
     "ticket_router",
     "ticket_router.config",
@@ -98,8 +98,6 @@ packages = [
     "training",
     "training.router_s1",
     "training.router_s1.pipeline",
-    "loadtest",
-    "chaos",
 ]
 
 [tool.setuptools.package-data]
