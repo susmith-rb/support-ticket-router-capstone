@@ -348,10 +348,6 @@ class RouterS1Client:
                 headers["Authorization"] = f"Bearer {token}"
         return headers, None
 
-    def _get_headers(self) -> Dict[str, str]:
-        """Construct request headers, delegating Bearer auth to AuthorizedSession when active."""
-        return self._build_headers(self._get_session())[0]
-
     def _execute_request(self, payload: Dict[str, Any], timeout_s: float) -> Dict[str, Any]:
         """Send HTTP POST request to endpoint via pooled session."""
         session = self._get_session()

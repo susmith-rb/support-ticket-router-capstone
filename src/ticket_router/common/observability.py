@@ -79,11 +79,6 @@ except ImportError:
     _TRACER = None
 
 
-def is_otel_available() -> bool:
-    """Return True if opentelemetry is installed and accessible."""
-    return _OTEL_AVAILABLE
-
-
 # -----------------------------------------------------------------------------
 # W3C & Cloud Trace Context Helpers (REQ-AGENT-014)
 # -----------------------------------------------------------------------------

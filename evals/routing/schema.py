@@ -48,7 +48,6 @@ VALID_SOURCE_DATASETS = (
     "perturbation",
     "observed_failure",
 )
-VALID_ANNOTATOR_TYPES = ("human", "llm", "teacher", "mapping", "generator")
 VALID_VERDICTS = ("accept", "relabel", "reject", "unsure")
 VALID_LABEL_STATUSES = ("verified", "provisional", "disputed", "rejected")
 VALID_GROUND_TRUTH_SOURCES = (

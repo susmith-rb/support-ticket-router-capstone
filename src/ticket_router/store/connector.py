@@ -12,14 +12,12 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 try:
-    import pg8000.dbapi
     from google.cloud.sql.connector import Connector, IPTypes
 
     _HAS_CONNECTOR = True
 except ImportError:
     Connector = None
     IPTypes = None
-    pg8000 = None
     _HAS_CONNECTOR = False
 
 

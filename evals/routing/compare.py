@@ -25,8 +25,6 @@ from evals.routing.metrics import compute_objective
 from evals.routing.schema import RoutingCase
 from evals.routing.stats import mcnemar_exact, paired_bootstrap_delta
 
-DEFAULT_LOG_PATH = Path("evals/results/routing/hillclimb_log.jsonl")
-
 
 def _is_routing_correct(c: RoutingCase, t: Dict[str, Any]) -> bool:
     pred = t.get("predicted", {})

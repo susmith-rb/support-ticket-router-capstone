@@ -355,32 +355,6 @@ def ingest_judge_scores(scored_packets_path: Path) -> Dict[str, Any]:
     return summary
 
 
-def rule_based_judge_simulator(packet: Dict[str, Any]) -> int:
-    """Deterministic simulated judge reflecting TDD §7.3 rubric for calibration tests."""
-    dim = packet.get("dimension")
-    resp = packet.get("response", "").lower()
-
-    if dim == "groundedness":
-        if "60 days" in resp or "store credit" in resp or "waive cancellation" in resp:
-            return 1
-        if "usually processed" in resp or "overnight" in resp:
-            return 3
-        return 5
-    if dim == "helpfulness":
-        if "what is your order number" in resp or "valued customer" in resp:
-            return 1
-        if "prima facie" in resp or "gift returns are handled" in resp:
-            return 3
-        return 5
-    if dim == "calming_ack":
-        if "value you as a customer" in resp or "guarantee you will receive a 100%" in resp:
-            return 1
-        if "as soon as possible" in resp or "received your message and escalated" in resp:
-            return 3
-        return 5
-    return 5
-
-
 def run_calibration_check(
     anchors_path: Optional[Path] = None,
     judge_scores_path: Optional[Path] = None,

@@ -28,7 +28,6 @@ from evals.routing.schema import (
 
 _MODULE_DIR = pathlib.Path(__file__).resolve().parent
 _DEFAULT_MAPPING_PATH = _MODULE_DIR.parent / "mappings" / "bitext_to_taxonomy.yaml"
-_DEFAULT_BITEXT_CSV = pathlib.Path(".cache/routing_eval/raw/bitext/Bitext_Sample_Customer_Support_Training_Dataset_27K_responses-v11.csv")
 
 PLACEHOLDER_REPLACEMENTS: Dict[str, str] = {
     "{{Order Number}}": "[ORDER]",

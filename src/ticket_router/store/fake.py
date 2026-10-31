@@ -365,14 +365,6 @@ class FakeCustomerRepo(CustomerRepository):
             for i in identities:
                 self._identities[(i.issuer, i.subject)] = i
 
-    def add_customer(self, customer: Customer) -> None:
-        with self._lock:
-            self._customers[customer.customer_id] = customer
-
-    def add_identity(self, identity: CustomerIdentity) -> None:
-        with self._lock:
-            self._identities[(identity.issuer, identity.subject)] = identity
-
     def resolve(self, issuer: str, subject: str) -> CustomerResolution:
         with self._lock:
             ident = self._identities.get((issuer, subject))

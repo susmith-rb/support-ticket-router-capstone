@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 try:
     from google.adk.agents.base_agent import BaseAgent
-    from google.adk.agents.invocation_context import InvocationContext
     from google.adk.events.event import Event
     _HAS_ADK = True
 except ImportError:
@@ -59,8 +58,6 @@ except ImportError:
             self.branch = branch
             self.content = content
             self.output = output
-
-    InvocationContext = Any
 
 
 def extract_text_from_context(ctx: Any) -> str:

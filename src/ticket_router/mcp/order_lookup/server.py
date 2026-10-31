@@ -33,7 +33,6 @@ from ticket_router.identity.customer_token import (
 )
 from ticket_router.mcp.order_lookup.schemas import (
     GetOrderResponse,
-    GetOrderToolRequest,
     ListOrdersResponse,
     ListOrdersToolRequest,
     get_tool_schemas,
@@ -209,14 +208,6 @@ class OrderLookupMcpServer:
 
     def __init__(self, repo: OrderRepository) -> None:
         self.repo = repo
-
-    def get_order_tool(self, customer_id: str, req: GetOrderToolRequest) -> GetOrderResponse:
-        if not customer_id or customer_id.startswith("anon:"):
-            raise PermissionError("Anonymous or unverified customer cannot access order lookup.")
-        order = self.repo.get_order(order_id=req.order_id, customer_id=customer_id)
-        if order is None:
-            raise LookupError(f"Order '{req.order_id}' not found for customer.")
-        return _order_to_response(order)
 
     def list_orders_tool(self, customer_id: str, req: ListOrdersToolRequest) -> ListOrdersResponse:
         if not customer_id or customer_id.startswith("anon:"):

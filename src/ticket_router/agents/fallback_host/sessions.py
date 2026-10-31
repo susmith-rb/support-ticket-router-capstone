@@ -18,7 +18,7 @@ import logging
 import threading
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger("ticket_router.agents.fallback_host.sessions")
 
@@ -121,11 +121,6 @@ class InMemorySessionStore:
         """Remove a session from memory."""
         with self._lock:
             return self._sessions.pop(session_id, None) is not None
-
-    def list_sessions(self) -> List[Dict[str, Any]]:
-        """List active in-memory sessions."""
-        with self._lock:
-            return [dict(s) for s in self._sessions.values()]
 
     def clear(self) -> None:
         """Clear all sessions (useful for test resets)."""

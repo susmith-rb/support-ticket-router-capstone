@@ -71,19 +71,6 @@ def _compute_length_bucket(text: str) -> str:
     return "long (>80)"
 
 
-def _strip_code_fences(content: str) -> str:
-    """Strip markdown code block fences (e.g. ```json ... ```) from content."""
-    s = content.strip()
-    # Match ```json ... ``` or ``` ... ```
-    if s.startswith("```"):
-        first_newline = s.find("\n")
-        if first_newline != -1:
-            s = s[first_newline + 1 :]
-        if s.endswith("```"):
-            s = s[:-3]
-    return s.strip()
-
-
 def _parse_json_lines_or_block(raw_text: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Parse JSON objects from JSON-per-line, code-fenced blocks, or multiline JSON objects.
 
