@@ -8,7 +8,7 @@ router:
   tau_intent: 0.70   # Intent classification confidence floor
 
 prompts:
-  tier2_router_version: "v4"
+  tier2_router_version: "v5"
   faq_answer_version: "v2"
 
 retrieval:

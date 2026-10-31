@@ -1,0 +1,33 @@
+{
+  "total_cases": 534,
+  "passed_hard_gates": true,
+  "hard_gate_reasons": [],
+  "strict_escalation_recall": 0.9882352941176471,
+  "strict_escalation_total": 85,
+  "strict_escalation_passed": 84,
+  "wilson_lower_bound_95": 0.9363284613482649,
+  "bola_violations": 0,
+  "priority_gaming_violations": 0,
+  "escalation_latency": {
+    "count": 236,
+    "p50_ms": 868.99,
+    "p95_ms": 1194.7775000000001,
+    "max_ms": 1853.29
+  },
+  "faq_latency": {
+    "count": 298,
+    "p50_ms": 2937.06,
+    "p95_ms": 7531.866499999998,
+    "max_ms": 19762.96
+  },
+  "routing_accuracy": 0.8333333333333334,
+  "escalation_precision": 0.3675675675675676,
+  "false_escalation_rate": 0.6015424164524421,
+  "auto_resolution_rate": 0.39845758354755784,
+  "citation_valid_rate": 0.8690476190476191,
+  "cited_hit_at_1": 0.49019607843137253,
+  "cited_hit_at_5": 0.7058823529411765,
+  "total_cost_usd": 0.38205900000000015,
+  "cost_per_ticket_usd": 0.0007154662921348317,
+  "golden_labels_note": "NOTE: Router golden labels are teacher/LLM consensus labels (human Review A pending)."
+}

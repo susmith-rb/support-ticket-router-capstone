@@ -408,19 +408,24 @@ def test_tier2_system_instruction_wiring_and_legacy_compat(monkeypatch):
 
 
 def test_packaged_fallback_when_prompts_dir_missing(monkeypatch, tmp_path):
-    # REQ-AGENT-017: Fallback to built-in v4/v3 prompt/instruction when prompts dir is absent.
+    # REQ-AGENT-017: Fallback to built-in v5/v4/v3 prompt/instruction when prompts dir is absent.
     # REQ-AGENT-022: Out-of-Scope Query Refusal via Tier-2 System Prompt
     monkeypatch.setattr(
         "ticket_router.config.agent_tuning._resolve_prompt_file",
         lambda filename: None,
     )
 
-    # 1. v4 system instruction falls back to _V4_DEFAULT_SYSTEM_INSTRUCTION
+    # 1. Active default (v5) and explicit v4/v3 system instructions fall back cleanly
+    sys_inst_v5 = get_tier2_system_instruction("v5")
+    assert sys_inst_v5 is not None
+    assert "Global Retail Hub" in sys_inst_v5
+    assert "stock prices or financial market quotes" in sys_inst_v5
+    assert get_tier2_system_instruction() == sys_inst_v5
+
     sys_inst_v4 = get_tier2_system_instruction("v4")
     assert sys_inst_v4 is not None
     assert "Global Retail Hub" in sys_inst_v4
     assert "stock prices or financial market quotes" in sys_inst_v4
-    assert get_tier2_system_instruction() == sys_inst_v4
 
     # 1b. v3 system instruction falls back to _V3_DEFAULT_SYSTEM_INSTRUCTION
     sys_inst_v3 = get_tier2_system_instruction("v3")
@@ -428,12 +433,17 @@ def test_packaged_fallback_when_prompts_dir_missing(monkeypatch, tmp_path):
     assert "Global Retail Hub" in sys_inst_v3
     assert "stock prices or financial market quotes" in sys_inst_v3
 
-    # 2. v4 prompt template falls back to _V4_DEFAULT_TEMPLATE
+    # 2. Active default (v5) and explicit v4 prompt templates fall back cleanly
+    prompt_v5 = get_tier2_prompt("give me a stock price of google", version="v5")
+    assert "give me a stock price of google" in prompt_v5
+    assert "out_of_scope (bool)" in prompt_v5
+    assert "order_status/shipping_policy/returns_refunds/account_payment/other" in prompt_v5
+    assert get_tier2_prompt("give me a stock price of google") == prompt_v5
+
     prompt_v4 = get_tier2_prompt("give me a stock price of google", version="v4")
     assert "give me a stock price of google" in prompt_v4
     assert "out_of_scope (bool)" in prompt_v4
     assert "order_status/shipping_policy/returns_refunds/account_payment/other" in prompt_v4
-    assert get_tier2_prompt("give me a stock price of google") == prompt_v4
 
     # 2b. v3 prompt template falls back to _V3_DEFAULT_TEMPLATE
     prompt_v3 = get_tier2_prompt("give me a stock price of google", version="v3")

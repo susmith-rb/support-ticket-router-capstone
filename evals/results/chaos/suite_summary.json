@@ -1,0 +1,33 @@
+{
+  "experiments": [
+    {
+      "experiment": "gemini_429_exhaustion",
+      "status": "COMPLETED",
+      "live_execute": true,
+      "assertion_passed": true,
+      "post_restore_healthy": true,
+      "report_file": "/tmp/chaos_live/gemini_429_exhaustion_20261031_043804.json"
+    },
+    {
+      "experiment": "cloud_sql_restart",
+      "status": "COMPLETED",
+      "live_execute": true,
+      "assertion_passed": true,
+      "post_restore_healthy": true,
+      "report_file": "/tmp/chaos_live/cloud_sql_restart_20261031_043827.json"
+    },
+    {
+      "experiment": "router_s1_outage",
+      "status": "COMPLETED",
+      "live_execute": true,
+      "assertion_passed": true,
+      "post_restore_healthy": true,
+      "report_file": "/tmp/chaos_live/router_s1_outage_20261031_044758.json"
+    }
+  ],
+  "router_s1_predict_smoke": {
+    "status_code": 200,
+    "predictions_count": 1,
+    "healthy": true
+  }
+}

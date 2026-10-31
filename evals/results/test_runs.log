@@ -1,1 +1,2 @@
 2026-10-28T02:00:00Z | FINAL_TEST_RUN_PRE_REGISTERED | configs=agent_tuning_v1 | queries=evals/data/agent_e2e_v1/test.jsonl | n=534 | gates=recall>=0.98,bola==0,gaming==0,p95_esc<=3.0s,p95_faq<=20.0s,cost<=5.00 | operator=conductor
+2026-10-31T07:14:45Z | FINAL_TEST_RUN_EXECUTED | configs=agent_tuning.yaml@sha256:4a5ebaf6bf11+tier2_router_v5.yaml@sha256:d4f11807775a | queries=evals/data/agent_e2e_v1/test.jsonl | n=534 | commit=b255d0d | gates=recall>=0.98,bola==0,gaming==0,p95_esc<=3.0s,p95_faq<=20.0s,cost<=5.00 | operator=conductor

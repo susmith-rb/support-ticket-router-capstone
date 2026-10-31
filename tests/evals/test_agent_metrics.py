@@ -134,3 +134,97 @@ def test_metrics_calculation_and_wilson_score(tmp_path: Path):
     assert "Priority-Gaming Violations" in md_text
     assert "Escalation Path Latency p95" in md_text
     assert "FAQ Answer Path Latency p95" in md_text
+    assert "Escalation Precision" in md_text
+
+    # 7. Test C2 intent alias normalization, router_golden_v1 strict stratum, and None expected_order_disclosed
+    nuance_traces = [
+        {
+            "case_id": "RG-TEACHER-SPLIT",
+            "source": "router_golden_v1",
+            "stratum": "teacher-split",
+            "is_strict_angry_urgent": True,  # Should NOT count as strict for router_golden_v1
+            "escalate": False,
+            "decision": "auto_rag",
+            "answer": "Standard shipping takes 3-5 days.",
+            "citations": [{"doc_id": "faq-ship", "quote": "3-5 days"}],
+            "order_disclosed": True,  # e.g. mentions 'shipped' in policy text
+            "expected_order_disclosed": None,  # None != False -> NOT a BOLA violation!
+            "expected_intent": "shipping",
+            "predicted_intent": "shipping_policy",
+            "expected_escalate": False,
+            "expected_decision": "auto_rag",
+            "latency_ms": 400.0,
+        },
+        {
+            "case_id": "ADV-LEGAL-P1",
+            "source": "adversarial_tone_v1",
+            "variant": "abusive",
+            "input_message": "Reverse this charge or I will drag your company to court!",
+            "is_strict_angry_urgent": True,
+            "escalate": True,
+            "decision": "escalate",
+            "priority": "P1_URGENT",
+            "queue": "human-urgent",
+            "expected_priority": "P2_STANDARD",
+            "expected_escalate": True,
+            "latency_ms": 120.0,
+        },
+    ]
+    card_nuance = evaluate_traces(nuance_traces)
+    assert card_nuance.passed_hard_gates is True
+    assert card_nuance.strict_escalation_total == 1
+    assert card_nuance.strict_escalation_recall == 1.0
+    assert card_nuance.bola_violations == 0
+    assert card_nuance.priority_gaming_violations == 0
+    assert card_nuance.routing_accuracy == 1.0
+    assert card_nuance.escalation_precision == 1.0
+
+
+def test_route_latency_attribution_fast_path_vs_llm_tiers():
+    # REQ-AGENT-012 / REQ-EVAL-006: Tier 0/1 escalations belong to <= 3,000 ms fast-path gate;
+    # Tier 2 Flash and post-A2A FaqResolver escalations belong to <= 20,000 ms LLM/FAQ gate.
+    traces = [
+        {
+            "case_id": "ESC-TIER1",
+            "source": "router_golden_v1",
+            "stratum": "strict",
+            "escalate": True,
+            "decision": "escalate",
+            "tiers_used": ["tier1_router_s1"],
+            "queue": "human-urgent",
+            "priority": "P1_URGENT",
+            "expected_escalate": True,
+            "latency_ms": 1100.0,
+        },
+        {
+            "case_id": "ESC-TIER2-LLM",
+            "source": "router_golden_v1",
+            "stratum": "strict",
+            "escalate": True,
+            "decision": "escalate",
+            "tiers_used": ["tier2_flash"],
+            "queue": "human-standard",
+            "priority": "P2_STANDARD",
+            "expected_escalate": True,
+            "latency_ms": 4800.0,
+        },
+        {
+            "case_id": "ESC-POST-A2A",
+            "source": "retrieval_v1",
+            "escalate": True,
+            "decision": "auto_rag",
+            "post_a2a_escalation": True,
+            "tiers_used": ["tier1_router_s1"],
+            "queue": "human-standard",
+            "priority": "P2_STANDARD",
+            "expected_escalate": False,
+            "latency_ms": 12500.0,
+        },
+    ]
+    sc = evaluate_traces(traces)
+    assert sc.escalation_latency.count == 1
+    assert sc.escalation_latency.p95_ms == 1100.0
+    assert sc.faq_latency.count == 2
+    assert sc.faq_latency.p95_ms <= 20000.0
+    assert sc.passed_hard_gates is True
+

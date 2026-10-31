@@ -152,6 +152,168 @@ def compute_cohens_kappa(rater1: List[int], rater2: List[int]) -> float:
     return kappa
 
 
+def compute_krippendorffs_alpha(ratings_matrix: List[List[Optional[int]]]) -> float:
+    """Compute interval/ordinal Krippendorff's alpha across items x raters on {1, 3, 5}.
+
+    Args:
+        ratings_matrix: List of items, each a list of rater scores (int or None).
+    """
+    valid_units = [[int(v) for v in row if v is not None] for row in ratings_matrix]
+    valid_units = [u for u in valid_units if len(u) >= 2]
+    if not valid_units:
+        return 0.0
+
+    # Observed disagreement Do
+    num_do = 0.0
+    total_n = 0
+    all_values: List[int] = []
+    for u in valid_units:
+        m_u = len(u)
+        total_n += m_u
+        all_values.extend(u)
+        pair_sq = 0.0
+        for i in range(m_u):
+            for j in range(i + 1, m_u):
+                pair_sq += (u[i] - u[j]) ** 2
+        num_do += (2.0 * pair_sq) / (m_u - 1)
+
+    if total_n <= 1:
+        return 1.0
+    do = num_do / total_n
+
+    # Expected disagreement De across all paired values
+    from collections import Counter
+
+    counts = Counter(all_values)
+    distinct = sorted(counts.keys())
+    if len(distinct) <= 1:
+        return 1.0
+
+    pair_de = 0.0
+    for i, c_val in enumerate(distinct):
+        for k_val in distinct[i + 1 :]:
+            pair_de += counts[c_val] * counts[k_val] * ((c_val - k_val) ** 2)
+    de = (2.0 * pair_de) / (total_n * (total_n - 1))
+    if de == 0.0:
+        return 1.0
+    return 1.0 - (do / de)
+
+
+def ingest_multipass_judge_scores(pass_paths: List[Path]) -> Dict[str, Any]:
+    """Ingest k>=2 independent judge pass JSONL files, aggregate median/majority scores,
+    and compute Krippendorff's alpha + mean pairwise Cohen's kappa.
+    """
+    if not pass_paths:
+        raise ValueError("At least one judge pass file is required")
+
+    passes_by_pid: List[Dict[str, Dict[str, Any]]] = []
+    all_pids: List[str] = []
+    seen_pids: set[str] = set()
+
+    for p_path in pass_paths:
+        if not p_path.is_file():
+            raise FileNotFoundError(f"Judge pass file not found at {p_path}")
+        p_map: Dict[str, Dict[str, Any]] = {}
+        with open(p_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                item = json.loads(line)
+                pid = str(item.get("packet_id") or item.get("anchor_id") or "")
+                score_val = item.get("judge_score") if item.get("judge_score") is not None else item.get("score")
+                if pid and score_val is not None:
+                    p_map[pid] = {
+                        "dimension": str(item.get("dimension") or ""),
+                        "score": int(score_val),
+                    }
+                    if pid not in seen_pids:
+                        seen_pids.add(pid)
+                        all_pids.append(pid)
+        passes_by_pid.append(p_map)
+
+    scores_by_dim: Dict[str, List[int]] = {
+        "groundedness": [],
+        "helpfulness": [],
+        "calming_ack": [],
+    }
+    matrix_all: List[List[Optional[int]]] = []
+    matrix_by_dim: Dict[str, List[List[Optional[int]]]] = {
+        "groundedness": [],
+        "helpfulness": [],
+        "calming_ack": [],
+    }
+    unanimous_count = 0
+    multi_rated_count = 0
+
+    for pid in all_pids:
+        row_scores: List[Optional[int]] = []
+        dim = ""
+        for p_map in passes_by_pid:
+            rec = p_map.get(pid)
+            if rec is not None:
+                row_scores.append(rec["score"])
+                if not dim and rec["dimension"]:
+                    dim = rec["dimension"]
+            else:
+                row_scores.append(None)
+
+        present = sorted(s for s in row_scores if s is not None)
+        if not present:
+            continue
+        median_score = present[len(present) // 2]
+        if dim in scores_by_dim:
+            scores_by_dim[dim].append(median_score)
+            matrix_by_dim[dim].append(row_scores)
+        matrix_all.append(row_scores)
+        if len(present) >= 2:
+            multi_rated_count += 1
+            if len(set(present)) == 1:
+                unanimous_count += 1
+
+    # Pairwise Cohen's kappa across passes
+    pairwise_kappas: List[float] = []
+    k_passes = len(passes_by_pid)
+    for i in range(k_passes):
+        for j in range(i + 1, k_passes):
+            r_i: List[int] = []
+            r_j: List[int] = []
+            for pid in all_pids:
+                if pid in passes_by_pid[i] and pid in passes_by_pid[j]:
+                    r_i.append(passes_by_pid[i][pid]["score"])
+                    r_j.append(passes_by_pid[j][pid]["score"])
+            if r_i:
+                pairwise_kappas.append(compute_cohens_kappa(r_i, r_j))
+
+    summary: Dict[str, Any] = {
+        "num_passes": k_passes,
+        "total_packets": len(all_pids),
+        "krippendorffs_alpha": round(compute_krippendorffs_alpha(matrix_all), 4),
+        "mean_pairwise_cohens_kappa": (
+            round(sum(pairwise_kappas) / len(pairwise_kappas), 4) if pairwise_kappas else None
+        ),
+        "unanimous_agreement_rate": (
+            round(unanimous_count / multi_rated_count, 4) if multi_rated_count > 0 else 1.0
+        ),
+        "dimensions": {},
+    }
+
+    for dim, scores in scores_by_dim.items():
+        if scores:
+            mean_s = sum(scores) / len(scores)
+            summary["dimensions"][dim] = {
+                "count": len(scores),
+                "mean": round(mean_s, 3),
+                "share_5": round(sum(1 for s in scores if s == 5) / len(scores), 3),
+                "share_3": round(sum(1 for s in scores if s == 3) / len(scores), 3),
+                "share_1": round(sum(1 for s in scores if s == 1) / len(scores), 3),
+                "krippendorffs_alpha": round(compute_krippendorffs_alpha(matrix_by_dim[dim]), 4),
+            }
+        else:
+            summary["dimensions"][dim] = {"count": 0, "mean": 0.0, "krippendorffs_alpha": 0.0}
+
+    return summary
+
+
 def ingest_judge_scores(scored_packets_path: Path) -> Dict[str, Any]:
     """Ingest scored packets and compute aggregated qualitative metrics."""
     if not scored_packets_path.is_file():
@@ -308,16 +470,37 @@ def main() -> None:
     parser.add_argument("--export-from-traces", type=Path, help="Export packets from traces.jsonl")
     parser.add_argument("--output-packets", type=Path, help="Target packets.jsonl path")
     parser.add_argument("--ingest-scores", type=Path, help="Ingest scored packets")
+    parser.add_argument(
+        "--ingest-multipass",
+        type=Path,
+        nargs="+",
+        help="Ingest k>=2 independent judge pass JSONL files and compute Krippendorff's alpha",
+    )
+    parser.add_argument("--output-summary", type=Path, help="Optional JSON output path for ingested summary")
     parser.add_argument("--run-calibration", action="store_true", help="Run anchor calibration check")
+    parser.add_argument("--judge-scores", type=Path, default=None, help="Independent judge scores JSONL for calibration")
+    parser.add_argument("--output-report", type=Path, default=None, help="Optional JSON output path for calibration report")
     args = parser.parse_args()
 
     if args.export_from_traces and args.output_packets:
         export_judge_packets(args.export_from_traces, args.output_packets)
+    elif args.ingest_multipass:
+        summary = ingest_multipass_judge_scores(args.ingest_multipass)
+        if args.output_summary:
+            args.output_summary.parent.mkdir(parents=True, exist_ok=True)
+            args.output_summary.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps(summary, indent=2))
     elif args.ingest_scores:
         summary = ingest_judge_scores(args.ingest_scores)
+        if args.output_summary:
+            args.output_summary.parent.mkdir(parents=True, exist_ok=True)
+            args.output_summary.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
         print(json.dumps(summary, indent=2))
     elif args.run_calibration:
-        res = run_calibration_check()
+        res = run_calibration_check(judge_scores_path=args.judge_scores)
+        if args.output_report:
+            args.output_report.parent.mkdir(parents=True, exist_ok=True)
+            args.output_report.write_text(json.dumps(res, indent=2) + "\n", encoding="utf-8")
         print(json.dumps(res, indent=2))
     else:
         parser.print_help()

@@ -10,10 +10,13 @@ from pathlib import Path
 
 from evals.agent_judge_ingest import (
     CALIBRATION_ANCHORS_FILE,
+    JUDGE_DIR,
     RUBRICS,
     compute_cohens_kappa,
+    compute_krippendorffs_alpha,
     export_judge_packets,
     ingest_judge_scores,
+    ingest_multipass_judge_scores,
     run_calibration_check,
 )
 
@@ -107,3 +110,46 @@ def test_judge_packet_export_and_ingest(tmp_path: Path):
     assert summary["groundedness"]["mean"] == 5.0
     assert summary["helpfulness"]["mean"] == 4.0
     assert summary["calming_ack"]["mean"] == 5.0
+
+
+def test_calibration_with_independent_subagent_scores_and_multipass(tmp_path: Path):
+    scores_file = JUDGE_DIR / "calibration_judge_scores.jsonl"
+    assert scores_file.is_file(), f"Missing {scores_file}"
+
+    cal = run_calibration_check(CALIBRATION_ANCHORS_FILE, judge_scores_path=scores_file)
+    assert cal["status"] == "completed"
+    assert cal["total_anchors"] == 20
+    assert cal["passes_calibration"] is True
+    assert cal["cohens_kappa"] >= 0.70
+
+    # Test k=3 multi-pass Krippendorff's alpha ingestion
+    p1 = tmp_path / "pass1.jsonl"
+    p2 = tmp_path / "pass2.jsonl"
+    p3 = tmp_path / "pass3.jsonl"
+    rows_1 = [
+        {"packet_id": "P-1", "dimension": "groundedness", "score": 5},
+        {"packet_id": "P-2", "dimension": "groundedness", "score": 1},
+        {"packet_id": "P-3", "dimension": "helpfulness", "score": 5},
+        {"packet_id": "P-4", "dimension": "calming_ack", "score": 3},
+    ]
+    rows_2 = [
+        {"packet_id": "P-1", "dimension": "groundedness", "score": 5},
+        {"packet_id": "P-2", "dimension": "groundedness", "score": 1},
+        {"packet_id": "P-3", "dimension": "helpfulness", "score": 5},
+        {"packet_id": "P-4", "dimension": "calming_ack", "score": 3},
+    ]
+    rows_3 = [
+        {"packet_id": "P-1", "dimension": "groundedness", "score": 5},
+        {"packet_id": "P-2", "dimension": "groundedness", "score": 1},
+        {"packet_id": "P-3", "dimension": "helpfulness", "score": 3},
+        {"packet_id": "P-4", "dimension": "calming_ack", "score": 3},
+    ]
+    for path, rows in ((p1, rows_1), (p2, rows_2), (p3, rows_3)):
+        path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+
+    mp_summary = ingest_multipass_judge_scores([p1, p2, p3])
+    assert mp_summary["num_passes"] == 3
+    assert mp_summary["total_packets"] == 4
+    assert mp_summary["krippendorffs_alpha"] > 0.80
+    assert mp_summary["dimensions"]["groundedness"]["mean"] == 3.0
+    assert compute_krippendorffs_alpha([[5, 5, 5], [1, 1, 1]]) == 1.0

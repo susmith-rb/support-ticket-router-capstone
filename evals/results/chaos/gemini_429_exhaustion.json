@@ -1,0 +1,60 @@
+{
+  "experiment": "gemini_429_exhaustion",
+  "description": "Simulates Gemini 429 quota exhaustion; asserts degraded human escalation with calming ack",
+  "dry_run": false,
+  "live_execute": true,
+  "timestamp_start": "2026-10-31T04:38:03.838559+00:00",
+  "phases": {
+    "baseline": {
+      "component": "gemini-3.8-flash",
+      "role": "router_tier2 & answer",
+      "rate_limit_state": "HEALTHY",
+      "healthy": true,
+      "chaos_hook_env": "CHAOS_SIMULATE_GEMINI_429",
+      "hook_active": false
+    },
+    "fault_injection": {
+      "action": "inject_429_live_hook",
+      "fault_type": "HTTP 429 RESOURCE_EXHAUSTED",
+      "env_var": "CHAOS_SIMULATE_GEMINI_429",
+      "hook_value": "1",
+      "simulated_active": true
+    },
+    "probe": {
+      "probe_message": "I have a complex shipping dispute regarding customs duties.",
+      "turn_completed": true,
+      "decision": "escalate",
+      "assigned_queue": "human-standard",
+      "degraded": true,
+      "calming_ack_sent": true,
+      "error_handled": "429_quota_exhausted",
+      "tier": "fallback_degraded",
+      "reason": "degraded_fallback: s1=(endpoint_error: router-s1 service unavailable), t2=(tier2_error: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'Resource has been exhausted (e.g. check quota).', 'status': 'RESOURCE_EXHAUSTED'}})",
+      "latency_ms": 564.4,
+      "duration_s": 0.564
+    },
+    "assertion": {
+      "assertion": "REQ-AGENT-011_gemini_429_fallback",
+      "passed": true,
+      "decision": "escalate",
+      "queue": "human-standard",
+      "degraded": true,
+      "calming_ack": true,
+      "details": "Turn gracefully degraded to human escalation with calming acknowledgement under Gemini 429."
+    },
+    "restoration": {
+      "action": "clear_429_fault",
+      "env_cleared": "CHAOS_SIMULATE_GEMINI_429",
+      "simulated_active": false,
+      "status": "RESTORED"
+    },
+    "post_restore_verification": {
+      "status": "RESTORED",
+      "fault_active": false,
+      "env_set": false,
+      "healthy": true
+    }
+  },
+  "status": "COMPLETED",
+  "timestamp_end": "2026-10-31T04:38:04.403430+00:00"
+}

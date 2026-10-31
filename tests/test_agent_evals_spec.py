@@ -27,7 +27,7 @@ INDEX_FILE = REPO_ROOT / "specs" / "README.md"
 
 REQ_HEADER_PATTERN = re.compile(r"^###\s+(REQ-EVAL-\d{3})(?::\s*(.*))?$")
 EXPECTED_REQS = [f"REQ-EVAL-{i:03d}" for i in range(1, 12)]
-DONE_REQS = {"REQ-EVAL-011"}  # live latency benchmark (implemented)
+DONE_REQS = set(EXPECTED_REQS)  # all REQ-EVAL-001..011 implemented and executed
 
 
 def _read_spec_text() -> str:

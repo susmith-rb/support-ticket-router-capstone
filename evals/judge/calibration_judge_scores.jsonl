@@ -1,0 +1,20 @@
+{"anchor_id": "ANCHOR-GRD-01", "dimension": "groundedness", "score": 5, "reasoning": "All factual claims regarding return window, receipt requirement, and refund method are fully supported by the cited policy."}
+{"anchor_id": "ANCHOR-GRD-02", "dimension": "groundedness", "score": 3, "reasoning": "Return shipping terms are supported, but the two-day return processing timeline is an unsupported minor detail."}
+{"anchor_id": "ANCHOR-GRD-03", "dimension": "groundedness", "score": 1, "reasoning": "Directly contradicts the cited policy by claiming opened cosmetics can be returned within 60 days."}
+{"anchor_id": "ANCHOR-GRD-04", "dimension": "groundedness", "score": 5, "reasoning": "The shipping timeframe of 3 to 5 business days across the contiguous US is fully supported by the source."}
+{"anchor_id": "ANCHOR-GRD-05", "dimension": "groundedness", "score": 1, "reasoning": "Claims that cancellation fees can be waived upon request anytime, which is not present in the cited policy."}
+{"anchor_id": "ANCHOR-GRD-06", "dimension": "groundedness", "score": 3, "reasoning": "Core lost package claim rules are supported, but expediting replacement via overnight delivery is an unsupported detail."}
+{"anchor_id": "ANCHOR-GRD-07", "dimension": "groundedness", "score": 5, "reasoning": "Fully supported by the source, correctly applying the mainland Europe shipment suspension to Germany."}
+{"anchor_id": "ANCHOR-HLP-08", "dimension": "helpfulness", "score": 5, "reasoning": "Directly answers with concise empathetic acknowledgment, actionable step-by-step instructions, and an offer for human support."}
+{"anchor_id": "ANCHOR-HLP-09", "dimension": "helpfulness", "score": 5, "reasoning": "Directly answers in under 120 words with clear, actionable steps to track the package via account order history."}
+{"anchor_id": "ANCHOR-HLP-10", "dimension": "helpfulness", "score": 3, "reasoning": "Provides the necessary next step to check with neighbors, but buries it under formal legalistic policy language."}
+{"anchor_id": "ANCHOR-HLP-11", "dimension": "helpfulness", "score": 1, "reasoning": "Asks the customer to provide their order number despite it already being stated in the query."}
+{"anchor_id": "ANCHOR-HLP-12", "dimension": "helpfulness", "score": 1, "reasoning": "Offers an evasive, cheerful corporate greeting that completely ignores the customer's complaint about a late, cold delivery."}
+{"anchor_id": "ANCHOR-HLP-13", "dimension": "helpfulness", "score": 5, "reasoning": "Concise and actionable response providing concrete next steps for both pre-fulfillment and post-shipment address updates."}
+{"anchor_id": "ANCHOR-HLP-14", "dimension": "helpfulness", "score": 3, "reasoning": "Accurate but generic response that misses concrete navigation steps and fails to confirm whether the buyer will be notified."}
+{"anchor_id": "ANCHOR-CALM-15", "dimension": "calming_ack", "score": 5, "reasoning": "Empathetically names the problem in customer terms and provides specialist escalation with ticket ID #TICK-83921 and a 15-minute ETA."}
+{"anchor_id": "ANCHOR-CALM-16", "dimension": "calming_ack", "score": 5, "reasoning": "Directly acknowledges property damage in customer terms and provides ticket #TICK-49102 with a concrete 30-minute ETA."}
+{"anchor_id": "ANCHOR-CALM-17", "dimension": "calming_ack", "score": 3, "reasoning": "Appropriate but generic acknowledgement that lacks a specific ticket ID and provides an open-ended timeframe rather than an ETA."}
+{"anchor_id": "ANCHOR-CALM-18", "dimension": "calming_ack", "score": 1, "reasoning": "Dismissive canned response that inappropriately directs an angry customer alleging fraudulent charges to an FAQ page."}
+{"anchor_id": "ANCHOR-CALM-19", "dimension": "calming_ack", "score": 1, "reasoning": "Inappropriately over-promises outcomes by guaranteeing a 100% full refund and free gift cards before investigation."}
+{"anchor_id": "ANCHOR-CALM-20", "dimension": "calming_ack", "score": 3, "reasoning": "Provides a ticket ID and 15-minute ETA, but the acknowledgement is generic rather than naming the problem in customer terms."}

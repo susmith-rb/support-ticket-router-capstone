@@ -1,0 +1,7 @@
+{
+  "status": "completed",
+  "total_anchors": 20,
+  "accuracy": 0.95,
+  "cohens_kappa": 0.924,
+  "passes_calibration": true
+}

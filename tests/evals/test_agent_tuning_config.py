@@ -32,7 +32,7 @@ def test_agent_tuning_config_and_hill_climb_invariants():
     assert cfg.tau_esc == 0.50
     assert cfg.tau_low == 0.15
     assert cfg.tau_intent == 0.70
-    assert cfg.tier2_router_version == "v4"
+    assert cfg.tier2_router_version == "v5"
     assert cfg.faq_answer_version == "v2"
     assert cfg.search_config == "intent_soft_noisy_0.2"
     assert cfg.top_k == 5
@@ -40,11 +40,15 @@ def test_agent_tuning_config_and_hill_climb_invariants():
     assert cfg.citation_strictness == 0.70
     assert cfg.static_fallback_min_score == 0.50
 
-    # 1b. Verify system instruction retrieval for v4 and v3 vs legacy v1/v2
+    # 1b. Verify system instruction retrieval for v5, v4, and v3 vs legacy v1/v2
+    sys_inst_v5 = get_tier2_system_instruction("v5")
+    assert sys_inst_v5 is not None
+    assert "Global Retail Hub" in sys_inst_v5
+    assert get_tier2_system_instruction() == sys_inst_v5
+
     sys_inst_v4 = get_tier2_system_instruction("v4")
     assert sys_inst_v4 is not None
     assert "Global Retail Hub" in sys_inst_v4
-    assert get_tier2_system_instruction() == sys_inst_v4
 
     sys_inst_v3 = get_tier2_system_instruction("v3")
     assert sys_inst_v3 is not None

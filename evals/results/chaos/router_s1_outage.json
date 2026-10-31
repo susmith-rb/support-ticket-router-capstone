@@ -1,0 +1,68 @@
+{
+  "experiment": "router_s1_outage",
+  "description": "Undeploys router-s1 dedicated model; asserts Tier-2 Flash fallback with degraded=True",
+  "dry_run": false,
+  "live_execute": true,
+  "timestamp_start": "2026-10-31T04:38:27.824717+00:00",
+  "phases": {
+    "baseline": {
+      "endpoint": "projects/620485621180/locations/us-central1/endpoints/router-s1-dedicated",
+      "deployed_models_count": 1,
+      "deployed_model_id": "618895853821624320",
+      "captured_model": "projects/620485621180/locations/us-central1/models/980967231871516672",
+      "captured_machine_type": "n1-standard-4",
+      "captured_accelerator": "nvidia-tesla-t4x1",
+      "traffic_split": {
+        "618895853821624320": 100
+      },
+      "healthy": true
+    },
+    "fault_injection": {
+      "action": "undeploy_model",
+      "endpoint_id": "router-s1-dedicated",
+      "deployed_model_id": "618895853821624320",
+      "stdout": "",
+      "duration_s": 1.598
+    },
+    "probe": {
+      "probe_message": "What is your standard return policy?",
+      "turn_completed": true,
+      "decision": null,
+      "tier": null,
+      "degraded": true,
+      "raw_result": {
+        "text": "Our standard policy includes a 30-day return window. Exceptions to the standard return window may also be considered in extenuating circumstances (such as an allergic reaction). Once we receive your return, refunds are processed and issued to your original payment method.",
+        "answer": "Our standard policy includes a 30-day return window. Exceptions to the standard return window may also be considered in extenuating circumstances (such as an allergic reaction). Once we receive your return, refunds are processed and issued to your original payment method.",
+        "session_id": "chaos-s1-1793421510",
+        "ticket_fields": {},
+        "ticket_id": null,
+        "decision": null,
+        "queue": null,
+        "event_count": 1,
+        "status": "COMPLETED",
+        "dry_run": false
+      }
+    },
+    "assertion": {
+      "assertion": "REQ-AGENT-011_router_s1_fallback",
+      "passed": true,
+      "observed_tier": null,
+      "degraded_flag": true,
+      "details": "Customer request succeeded via Tier 2 Flash fallback without turn failure."
+    },
+    "restoration": {
+      "action": "deploy_model_restored",
+      "endpoint_id": "router-s1-dedicated",
+      "model": "projects/620485621180/locations/us-central1/models/980967231871516672",
+      "stdout": "",
+      "duration_s": 561.485
+    },
+    "post_restore_verification": {
+      "status": "RESTORED",
+      "healthy": true,
+      "endpoint": "projects/620485621180/locations/us-central1/endpoints/router-s1-dedicated"
+    }
+  },
+  "status": "COMPLETED",
+  "timestamp_end": "2026-10-31T04:47:58.373731+00:00"
+}

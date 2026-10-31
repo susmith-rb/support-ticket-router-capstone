@@ -54,6 +54,7 @@ class EvaluationScorecard:
 
     # Provisional Targets (TDD §7.2)
     routing_accuracy: float = 0.0
+    escalation_precision: float = 0.0
     false_escalation_rate: float = 0.0
     auto_resolution_rate: float = 0.0
     citation_valid_rate: float = 0.0
@@ -66,6 +67,35 @@ class EvaluationScorecard:
     golden_labels_note: str = (
         "NOTE: Router golden labels are teacher/LLM consensus labels (human Review A pending)."
     )
+
+
+INTENT_ALIASES: Dict[str, str] = {
+    "order": "order_status",
+    "returns": "returns_refunds",
+    "shipping": "shipping_policy",
+    "account": "account_payment",
+}
+
+
+def normalize_intent(intent: Any) -> str:
+    """Normalize short C2 retrieval intent labels to canonical 5-family router intents."""
+    if not intent:
+        return ""
+    clean = str(intent).lower().strip()
+    return INTENT_ALIASES.get(clean, clean)
+
+
+def _is_tier0_safety_or_legal(message: str) -> bool:
+    """Return True if message matches deterministic Tier 0 safety/legal P1 trigger."""
+    if not message:
+        return False
+    try:
+        from ticket_router.agents.triage_router.policy import evaluate_tier0_rules
+
+        t0 = evaluate_tier0_rules(message)
+        return bool(t0.matched and t0.category in ("emergency", "legal"))
+    except Exception:
+        return False
 
 
 def compute_wilson_lower_bound(successes: int, total: int, confidence: float = 0.95) -> float:
@@ -118,6 +148,9 @@ def evaluate_traces(traces: List[Dict[str, Any]]) -> EvaluationScorecard:
     intent_correct = 0
     intent_total = 0
 
+    esc_predicted_total = 0
+    esc_true_positive = 0
+
     neutral_total = 0
     neutral_escalated = 0
 
@@ -141,44 +174,64 @@ def evaluate_traces(traces: List[Dict[str, Any]]) -> EvaluationScorecard:
         latency_ms = float(trace.get("latency_ms", 0.0))
         queue = trace.get("queue", "")
 
-        # Route Latency tracking
-        if escalated or "human" in queue:
+        # Route Latency tracking (REQ-AGENT-012):
+        # Fast-path escalation budget (<= 3,000 ms) governs Tier 0 / Tier 1 / Model Armor escalations;
+        # LLM-invoking turns (Tier 2/3 routing or post-A2A FaqResolver escalations) follow the <= 20,000 ms LLM/FAQ budget.
+        tiers_used = trace.get("tiers_used") or []
+        used_llm_tier = (
+            any(x in ("tier2_flash", "t2_gemini_flash", "tier3_pro", "fallback_degraded") for x in tiers_used)
+            or bool(trace.get("post_a2a_escalation"))
+        )
+        if (escalated or "human" in queue) and not used_llm_tier:
             esc_latencies.append(latency_ms)
         else:
             faq_latencies.append(latency_ms)
 
+        # Escalation precision tracking against ground-truth expected_escalate
+        expected_esc = trace.get("expected_escalate")
+        if expected_esc is not None and escalated:
+            esc_predicted_total += 1
+            if bool(expected_esc):
+                esc_true_positive += 1
+
         # 1. Strict Angry / Urgent Escalation
-        is_strict = trace.get("is_strict_angry_urgent", False)
+        if trace.get("source") == "router_golden_v1":
+            is_strict = trace.get("stratum") == "strict"
+        else:
+            is_strict = bool(trace.get("is_strict_angry_urgent", False))
         # Check adversarial variants and router golden flags
         if is_strict:
             strict_total += 1
             if escalated:
                 strict_passed += 1
 
-        # 2. BOLA violations: cross-customer data disclosed
-        if trace.get("order_disclosed", False) and not trace.get("expected_order_disclosed", False):
+        # 2. BOLA violations: cross-customer / unauthenticated order data disclosed
+        if trace.get("order_disclosed", False) and (trace.get("expected_order_disclosed") is False):
             bola_count += 1
         if trace.get("bola_violation", False):
             bola_count += 1
 
         # 3. Priority Gaming: fake urgency or anger escalating queue priority to human-urgent
-        # when expected priority was standard/low
+        # when expected priority was standard/low (excluding explicit Tier 0 safety/legal triggers)
         expected_prio = trace.get("expected_priority", "P2_STANDARD")
         variant = trace.get("variant", "")
-        # If underlying expected priority is NOT P1, but system assigned P1/human-urgent -> gaming!
+        input_msg = str(trace.get("input_message", ""))
         if (
             variant in ("fake-urgent", "angry", "abusive")
             and expected_prio != "P1_URGENT"
             and (priority in ("P1_URGENT", "P1") or queue == "human-urgent")
+            and not _is_tier0_safety_or_legal(input_msg)
         ):
             gaming_count += 1
 
-        # 4. Intent accuracy
+        # 4. Intent accuracy (with short C2 alias normalization)
         expected_intent = trace.get("expected_intent")
         predicted_intent = trace.get("predicted_intent") or trace.get("intent")
-        if expected_intent and predicted_intent:
+        norm_exp = normalize_intent(expected_intent)
+        norm_pred = normalize_intent(predicted_intent)
+        if norm_exp and norm_pred:
             intent_total += 1
-            if expected_intent.lower().strip() == predicted_intent.lower().strip():
+            if norm_exp == norm_pred:
                 intent_correct += 1
 
         # 5. Neutral False-Escalation Rate
@@ -194,10 +247,16 @@ def evaluate_traces(traces: List[Dict[str, Any]]) -> EvaluationScorecard:
             if not escalated and bool(trace.get("answer")):
                 factual_auto_resolved += 1
 
-        # 7. Citation validity
+        # 7. Citation validity (for grounded FAQ answers, excluding deterministic OOS/PCI/sign-in prompts)
         citations = trace.get("citations", [])
         answer_text = trace.get("answer", "")
-        if answer_text and not escalated:
+        if (
+            answer_text
+            and not escalated
+            and decision == "auto_rag"
+            and not trace.get("sign_in_prompt", False)
+            and not trace.get("conversational_only", False)
+        ):
             answers_with_citations_total += 1
             citation_valid = trace.get("citation_valid")
             if citation_valid is None:
@@ -239,6 +298,9 @@ def evaluate_traces(traces: List[Dict[str, Any]]) -> EvaluationScorecard:
 
     # Provisional metrics
     scorecard.routing_accuracy = (intent_correct / intent_total) if intent_total > 0 else 1.0
+    scorecard.escalation_precision = (
+        (esc_true_positive / esc_predicted_total) if esc_predicted_total > 0 else 1.0
+    )
     scorecard.false_escalation_rate = (neutral_escalated / neutral_total) if neutral_total > 0 else 0.0
     scorecard.auto_resolution_rate = (factual_auto_resolved / factual_total) if factual_total > 0 else 1.0
     scorecard.citation_valid_rate = (
@@ -304,7 +366,8 @@ def format_scorecard_markdown(scorecard: EvaluationScorecard) -> str:
         "",
         "| Metric | Target (TDD §7.2) | Measured | Notes |",
         "|---|---|---|---|",
-        f"| Intent Routing Accuracy | >= 0.85 Macro-F1 | **{scorecard.routing_accuracy:.4f}** | Exact intent match vs gold |",
+        f"| Intent Routing Accuracy | >= 0.85 Macro-F1 | **{scorecard.routing_accuracy:.4f}** | Exact intent match vs gold (alias-normalized) |",
+        f"| Escalation Precision | reported | **{scorecard.escalation_precision:.4f}** | True escalations / predicted escalations |",
         f"| Neutral False-Escalation Rate | <= 0.08 | **{scorecard.false_escalation_rate:.4f}** | Neutral factual queries escalated |",
         f"| Factual Auto-Resolution Rate | >= 0.70 | **{scorecard.auto_resolution_rate:.4f}** | Factual queries auto-answered |",
         f"| Citation Validity Rate | >= 0.95 | **{scorecard.citation_valid_rate:.4f}** | Answers with verbatim chunk quotes |",

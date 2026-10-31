@@ -1,0 +1,52 @@
+{
+  "experiment": "cloud_sql_restart",
+  "description": "Restarts zonal Cloud SQL instance; asserts ticket-db-mcp 503 fast and agent fail-open",
+  "dry_run": false,
+  "live_execute": true,
+  "timestamp_start": "2026-10-31T04:38:04.403996+00:00",
+  "phases": {
+    "baseline": {
+      "instance": "ticket-store",
+      "project": "susmith-fde-ticket-router",
+      "availability_type": "ZONAL",
+      "state": "RUNNABLE",
+      "healthy": true
+    },
+    "fault_injection": {
+      "action": "restart_zonal_cloud_sql",
+      "instance": "ticket-store",
+      "stdout": "insertTime: '2026-10-31T04:38:06.110Z'\nkind: sql#operation\nname: c9e65c6a-8567-42c4-af58-2de300000032\noperationType: RESTART\nselfLink: https://sqladmin.googleapis.com/sql/v1beta4/projects/susmith-fde-ticket-router/operations/c9e65c6a-8567-42c4-af58-2de300000032\nstatus: PENDING\ntargetId: ticket-store\ntargetLink: https://sqladmin.googleapis.com/sql/v1beta4/projects/susmith-fde-ticket-router/instances/ticket-store\ntargetProject: susmith-fde-ticket-router\nuser: susmith@gcp.altostrat.com",
+      "duration_s": 0.921
+    },
+    "probe": {
+      "mcp_status_code": 500,
+      "mcp_error": "Internal Server Error",
+      "mcp_failed_fast": true,
+      "turn_completed": true,
+      "decision": null,
+      "agent_failed_open": true,
+      "duration_s": 8.94
+    },
+    "assertion": {
+      "assertion": "REQ-AGENT-027_fail_open_persistence",
+      "passed": true,
+      "mcp_failed_fast": true,
+      "agent_failed_open": true,
+      "details": "ticket-db-mcp returned 503 fast while TriageRouter completed turn successfully."
+    },
+    "restoration": {
+      "action": "wait_runnable",
+      "state": "RUNNABLE",
+      "wait_s": 10,
+      "status": "RESTORED"
+    },
+    "post_restore_verification": {
+      "status": "RESTORED",
+      "state": "RUNNABLE",
+      "db_status_code": 200,
+      "healthy": true
+    }
+  },
+  "status": "COMPLETED",
+  "timestamp_end": "2026-10-31T04:38:27.823918+00:00"
+}

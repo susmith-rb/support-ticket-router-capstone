@@ -1,0 +1,33 @@
+{
+  "num_passes": 3,
+  "total_packets": 685,
+  "krippendorffs_alpha": 0.6704,
+  "mean_pairwise_cohens_kappa": 0.481,
+  "unanimous_agreement_rate": 0.8715,
+  "dimensions": {
+    "groundedness": {
+      "count": 151,
+      "mean": 4.576,
+      "share_5": 0.874,
+      "share_3": 0.04,
+      "share_1": 0.086,
+      "krippendorffs_alpha": 0.9357
+    },
+    "helpfulness": {
+      "count": 151,
+      "mean": 4.47,
+      "share_5": 0.775,
+      "share_3": 0.185,
+      "share_1": 0.04,
+      "krippendorffs_alpha": 0.3904
+    },
+    "calming_ack": {
+      "count": 383,
+      "mean": 4.99,
+      "share_5": 0.995,
+      "share_3": 0.005,
+      "share_1": 0.0,
+      "krippendorffs_alpha": 0.198
+    }
+  }
+}
