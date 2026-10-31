@@ -32,6 +32,7 @@ def record_pii_reidentification_event(
     now_iso = datetime.now(timezone.utc).isoformat()
     payload = {
         "operator_id": operator_id,
+        "rep_id": operator_id,
         "ticket_id": str(ticket_id),
         "timestamp": now_iso,
         "fields_unmasked": sorted(fields_unmasked),

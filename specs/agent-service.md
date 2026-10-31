@@ -47,34 +47,7 @@ Inbound Support Ticket (Session-authenticated)
 | `ticket-db-mcp` | **Cloud Run** | Min 1 warm replica, concurrency 100 | `sa-ticket-mcp@` (Cloud SQL client) | `ticket_rw` *(CRUD tickets, ticket_events)* |
 
 ### Package Directory Structure
-
-```
-src/ticket_router/
-├── agents/
-│   ├── triage_router/    # Tier 0 rules, Tier 1/2 routing policy, calming ack templates
-│   │   ├── __init__.py
-│   │   ├── agent.py
-│   │   ├── policy.py
-│   │   └── templates.py
-│   ├── faq_resolver/     # Bounded ReAct, Agent Search + Laya rerank, citation validation
-│   │   ├── __init__.py
-│   │   ├── agent.py
-│   │   ├── search.py
-│   │   └── validator.py
-│   └── human_queue/      # Ticket claiming, list/inspect, audited PII re-identification
-│       ├── __init__.py
-│       ├── agent.py
-│       └── audit.py
-└── mcp/
-    ├── ticket_db/        # Ticket persistence, lifecycle events, pgcrypto redaction map
-    │   ├── __init__.py
-    │   ├── server.py
-    │   └── schemas.py
-    └── order_lookup/     # Read-only order mock repository with Postgres RLS
-        ├── __init__.py
-        ├── server.py
-        └── schemas.py
-```
+The package is structured as `src/ticket_router/agents/{triage_router,faq_resolver,human_queue}/` and `src/ticket_router/mcp/{ticket_db,order_lookup}/`.
 
 ---
 
@@ -114,7 +87,8 @@ src/ticket_router/
 | `REQ-AGENT-030` | Shared HumanHandoff Workflow | `done` | `tests/handoff/test_human_handoff.py::test_escalate_persists_publishes_and_acks` |
 | `REQ-AGENT-031` | Escalation Event Consumer | `done` | `tests/agents/test_human_queue_push.py::test_push_requires_valid_oidc_and_is_idempotent` |
 | `REQ-AGENT-032` | Ingress Payment Card Data Block & PCI Scope Isolation | `done` | `tests/agents/test_card_data_blocked.py::test_agent_blocks_card_data_returns_400_and_zero_calls` |
-
+| `REQ-AGENT-033` | Multi-Turn Conversation Holding and Customer Follow-up Attachment | `done` | `tests/agents/test_conversation_holding.py::test_followup_attaches_to_holding_ticket_with_zero_model_calls` |
+| `REQ-AGENT-034` | Human Review UI with Cloud Run IAP and Verified Rep Identity | `done` | `tests/agents/test_review_ui.py::test_review_ui_full_workflow` |
 
 ---
 
@@ -177,7 +151,7 @@ src/ticket_router/
 - **Owner**: agent-service
 
 ### REQ-AGENT-009: HumanQueue Workflow and Audited PII Re-Identification
-- **Statement**: `HumanQueueAgent` MUST provide operations to list queue depths, claim tickets, and resolve tickets. Customer PII unmasking from `redaction_maps` MUST be executed by `HumanQueueAgent` under dedicated identity `sa-queue` holding Cloud SQL database role `queue_rw` (with `SELECT` grant on `redaction_maps`), and MUST be restricted exclusively to the human operator who has actively claimed the ticket. Every re-identification call MUST emit an immutable audit event to `ticket_events` logging `operator_id`, `ticket_id`, timestamp, and fields unmasked.
+- **Statement**: `HumanQueueAgent` MUST provide operations to list queue depths, claim tickets, and resolve tickets. Customer PII unmasking from `redaction_maps` MUST be executed by `HumanQueueAgent` under dedicated identity `sa-queue` holding Cloud SQL database role `queue_rw` (with `SELECT` grant on `redaction_maps`), and MUST be restricted exclusively to the human operator who has actively claimed the ticket. Caller identity MUST be asserted via verified OIDC authentication from the review UI caller service account (`sa-review-ui`) and `X-Rep-Id` header (REQ-AGENT-034, REQ-AUTH-010); requests supplying `operator_id` or `agent_id` in the request body MUST be rejected with HTTP 400 Bad Request. Every re-identification call MUST emit an immutable audit event to `ticket_events` logging `rep_id`/`operator_id`, `ticket_id`, timestamp, and fields unmasked.
 - **Rationale**: Enforces strict customer data privacy and role separation: only `queue_rw` (`sa-queue`) has access to `redaction_maps`; `ticket_rw` (`sa-ticket-mcp`) has NO access to `redaction_maps`, preventing unauthorized data browsing and satisfying C3 confidential compliance (TDD §3.5, §5.2).
 - **Acceptance**: `tests/agents/test_human_queue.py::test_queue_claim_and_pii_reid`
 - **Status**: done
@@ -239,11 +213,8 @@ src/ticket_router/
 
 ## 4. Open Questions / Deltas
 - **GKE Autopilot vs. Cloud Run for FaqResolverAgent**: TDD §3.5 establishes GKE Autopilot as the primary target for `FaqResolverAgent` to support HPA autoscaling (2–10 pods) under high-throughput RAG search. In early dev/staging environments, deploying `FaqResolverAgent` to Cloud Run as a secondary target is permitted until GKE cluster provisioning is completed.
-- **Cloud SQL Ticket Store Implementation Sync**: The Cloud SQL tables (`tickets`, `ticket_events`, `orders_mock`, `redaction_maps`) and Postgres IAM roles (`orders_ro`, `ticket_rw`, `queue_rw`) are being provisioned by worker T. `ticket-db-mcp` and `order-lookup-mcp` will initially test against in-memory SQLite mocks before binding to Cloud SQL Auth Proxy.
-- **Endpoint Client Latency Headroom & Connection Pooling**: In-region live measurements from `laya-tune` (150 requests): unpooled HTTPS/urllib connection setup incurs ~185 ms p95 overhead. Persistent keep-alive HTTPS connections reduce shared endpoint latency to p50 96 ms / p95 134 ms, and dedicated endpoint latency to p50 54 ms / p95 77 ms / p99 135 ms. To satisfy customer SLAs while providing safe headroom against network jitter, client-side HTTP timeouts are set to 500 ms for route and 600 ms for rerank, and clients MUST maintain persistent pooled keep-alive connections via `requests.Session` with `HTTPAdapter`.
----
-
-## Deployment (Terraform)
+- **Cloud SQL Ticket Store Implementation Sync**: The Cloud SQL tables (`tickets`, `ticket_events`, `orders_mock`, `redaction_maps`) and Postgres IAM roles (`orders_ro`, `ticket_rw`, `queue_rw`) are provisioned via Cloud SQL Auth Proxy.
+- **Endpoint Client Latency Headroom & Connection Pooling**: Client-side HTTP timeouts are set to 500 ms for route and 600 ms for rerank, and clients MUST maintain persistent pooled keep-alive connections via `requests.Session` with `HTTPAdapter`.
 
 ### REQ-AGENT-016: Dedicated Agent Service Accounts and Least-Privilege IAM
 - **Statement**: The agent tier MUST use dedicated Google Cloud Service Accounts: `sa-triage` for TriageRouter and `sa-faq` for FaqResolver (via GKE Workload Identity `ksa-faq` in namespace `faq-resolver`). Permissions MUST follow strict least privilege: resource-level `roles/aiplatform.predictionUser` on `router-s1` endpoint, `roles/aiplatform.user` for Gemini calls, `roles/discoveryengine.viewer` for Agent Search (FaqResolver only), `roles/pubsub.publisher` on `human-queue` for TriageRouter, and `roles/pubsub.subscriber` on `human-queue-sub` for `sa-queue`. Neither agent SA may be granted database roles directly; all database access occurs via Cloud Run MCP microservices.
@@ -313,8 +284,6 @@ src/ticket_router/
 - **Status**: done
 - **Owner**: agent-service
 
-
-
 ### REQ-AGENT-025: Gemini Call Deadlines, Hedged Requests, and Router Thinking Cap
 - **Statement**: Every live `gemini-3.8-flash` call on the customer path (Tier 2 routing in `invoke_tier2_gemini` and FAQ answer synthesis in `GeminiAnswerClient.generate_answer`) MUST run through a shared hedged-call helper `ticket_router.common.hedging.hedged_call(fn, hedge_after_s, deadline_s, max_attempts=2)`:
   1. **Hedging**: start attempt 1; if it has not completed after `hedge_after_s`, start one identical attempt 2 in parallel and return whichever succeeds first. If an attempt fails with an exception before the hedge point, the hedge starts immediately. At most `max_attempts` calls are in flight, and losing or stale attempts are abandoned with `executor.shutdown(wait=False, cancel_futures=True)` so a hung call never blocks the turn.
@@ -376,5 +345,19 @@ src/ticket_router/
 - **Statement**: `TriageRouterAgent` MUST block inbound prompts containing payment card data (`CREDIT_CARD_NUMBER`) detected by Model Armor SDP inspect findings at ingress (TDD §4.2 C4, `REQ-MA-003`): (1) For `decision == "blocked"`, `TriageRouterAgent.triage` MUST NOT upsert tickets via `ticket-db-mcp`, MUST NOT save a redaction map envelope, MUST NOT trigger A2A handoff to `FaqResolverAgent`, MUST NOT publish to `HumanHandoff` / Pub/Sub, and MUST NOT store customer message text in session state; (2) The response MUST return a deterministic customer-facing security guidance message directing the user to remove card numbers and utilize secure payment channels (`render_card_data_blocked_reply`), with structured metadata containing `status_code: 400` and `error: "card_data_blocked"`; (3) Triage policy evaluation MUST log a structured `card_data_blocked` event recording the blocked info types without raw message text or card digits.
 - **Rationale**: TDD §4.2 C4. Enforces PCI boundary isolation at the ingress API gateway, guaranteeing payment card data never enters ticket persistence.
 - **Acceptance**: `tests/agents/test_card_data_blocked.py::test_agent_blocks_card_data_returns_400_and_zero_calls`
+- **Status**: done
+- **Owner**: agent-service
+
+### REQ-AGENT-033: Multi-Turn Conversation Holding and Customer Follow-up Attachment
+- **Statement**: Once a ticket is escalated to a human queue (`assigned_queue != None`), follow-up customer messages in the same conversation session (`session_id`) MUST remain attached to that active ticket, assigned to the human queue, until explicitly resolved or reopened: (1) `TriageRouterAgent.triage` MUST query `ticket-db-mcp` for active holding tickets (`get_active_ticket_for_session`) before routing; (2) Holding statuses include `escalated`, `queued_for_review`, `claimed`, `assigned`, `in_progress`, and `open`; releasing statuses include `resolved`, `resolved_auto`, `closed`, and `returned_to_automation`; (3) While held, follow-up messages MUST NOT trigger model inference (zero calls to `router-s1`, `gemini-3.8-flash`, or `FaqResolverAgent`) or re-publish escalation events to Pub/Sub; instead, the sanitized/tokenized message is appended to the ticket audit trail via `append_customer_followup`, and the agent returns a deterministic calming acknowledgement (`render_followup_calming_reply`); (4) If active ticket lookup fails, the agent MUST fail open to standard tiered routing; (5) Ingress card data blocks (`REQ-AGENT-032`) take precedence over ticket holding.
+- **Rationale**: TDD §1.1, §5.1. Prevents automated systems from answering or re-routing tickets once a customer conversation is already transferred to human support specialists.
+- **Acceptance**: `tests/agents/test_conversation_holding.py::test_followup_attaches_to_holding_ticket_with_zero_model_calls`
+- **Status**: done
+- **Owner**: agent-service
+
+### REQ-AGENT-034: Human Review UI with Cloud Run IAP and Verified Rep Identity
+- **Statement**: The human review web portal (`human-review-ui`) MUST run as a minimal server-rendered Cloud Run service behind direct Cloud Run Identity-Aware Proxy (IAP) (beta launch stage). Human support specialists authenticate through corporate Google accounts via IAP. The service extracts and cryptographically verifies the IAP assertion header (`X-Goog-IAP-JWT-Assertion`) to establish verified reviewer identity (`rep_id = email`). The UI communicates with `human-queue` via an authenticated client using Google-signed OIDC ID tokens minted by dedicated service account `sa-review-ui`, asserting reviewer identity via the `X-Rep-Id` HTTP header. Direct client modification of `operator_id` in request bodies is rejected (HTTP 400). Unmasked PII is rendered exclusively to the claiming rep upon audited re-identification.
+- **Rationale**: TDD §3.3, §4.1: Human review portal for escalated tickets requires zero-trust rep identity verification, least-privilege service-to-service communication, and strictly audited PII restoration.
+- **Acceptance**: `tests/agents/test_review_ui.py::test_review_ui_full_workflow`
 - **Status**: done
 - **Owner**: agent-service

@@ -125,4 +125,16 @@ variable "purge_invoker_email" {
   default     = ""
 }
 
+variable "review_ui_reps" {
+  description = "List of IAM principals granted roles/iap.httpsResourceAccessor on human-review-ui"
+  type        = list(string)
+  default     = ["user:susmith@gcp.altostrat.com"]
+}
+
+variable "human_queue_url" {
+  description = "Fallback URL of human-queue service (used when service_count == 0)"
+  type        = string
+  default     = ""
+}
+
 

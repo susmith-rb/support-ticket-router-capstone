@@ -38,6 +38,7 @@ module "project_services" {
     "telemetry.googleapis.com",
     "cloudkms.googleapis.com",
     "dlp.googleapis.com"
+    # iap.googleapis.com is owned by deploy/terraform/agent-gateway (do not manage it in two roots).
   ]
 }
 
@@ -215,6 +216,7 @@ module "cloud_run_services" {
   redaction_kms_key         = module.kms_identity.redaction_map_wrapper_key_id
   purge_audience            = "${var.human_queue_url}/internal/purge-expired-redaction-maps"
   purge_invoker_email       = "sa-redaction-purge@${var.project_id}.iam.gserviceaccount.com"
+  review_ui_reps            = var.review_ui_reps
   labels                    = var.labels
 
   depends_on = [module.project_services, module.cloud_sql, module.agents_iam, module.kms_identity]

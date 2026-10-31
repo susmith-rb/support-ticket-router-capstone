@@ -112,6 +112,63 @@ class SaveRedactionMapResponse(BaseModel):
     saved: bool = Field(default=True, description="True if redaction map saved successfully")
 
 
+class GetActiveTicketRequest(BaseModel):
+    """Input payload for get_active_ticket_for_session tool (REQ-AGENT-033)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str = Field(..., description="Dialogue session identifier")
+    customer_id: Optional[str] = Field(
+        default=None, description="Optional customer identifier for tenant scoping"
+    )
+
+
+class GetActiveTicketResponse(BaseModel):
+    """Output payload for get_active_ticket_for_session tool (REQ-AGENT-033)."""
+
+    ticket_id: Optional[str] = Field(
+        default=None, description="Active holding ticket ID or null if none active"
+    )
+    status: Optional[str] = Field(default=None, description="Ticket status")
+    assigned_queue: Optional[str] = Field(
+        default=None, description="Assigned human queue"
+    )
+    customer_id: Optional[str] = Field(
+        default=None, description="Customer identifier"
+    )
+    ticket: Optional[Dict[str, Any]] = Field(
+        default=None, description="Full ticket payload or null"
+    )
+
+
+class AppendCustomerFollowupRequest(BaseModel):
+    """Input payload for append_customer_followup tool (REQ-AGENT-033)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ticket_id: str = Field(..., description="Target ticket identifier")
+    body_redacted: str = Field(..., description="Sanitized/redacted follow-up message body")
+    customer_id: Optional[str] = Field(
+        default=None, description="Customer identifier for tenant scoping"
+    )
+    traceparent: Optional[str] = Field(
+        default=None, description="Distributed trace context"
+    )
+    message_hash: Optional[str] = Field(
+        default=None, description="Optional precomputed message hash for idempotency"
+    )
+
+
+class AppendCustomerFollowupResponse(BaseModel):
+    """Output payload for append_customer_followup tool (REQ-AGENT-033)."""
+
+    success: bool = Field(default=True, description="True if followup event was recorded")
+    event_id: str = Field(..., description="Audit event identifier")
+    deduplicated: bool = Field(
+        default=False, description="True if followup was deduplicated"
+    )
+
+
 def get_tool_schemas() -> Dict[str, Any]:
     """Return JSON schemas for ticket-db-mcp tools per REQ-AGENT-010."""
     return {
@@ -150,5 +207,17 @@ def get_tool_schemas() -> Dict[str, Any]:
             "description": "Resolve an IdP (issuer, subject) identity pair to an internal customer ID.",
             "parameters": ResolveCustomerRequest.model_json_schema(),
             "returns": ResolveCustomerResponse.model_json_schema(),
+        },
+        "get_active_ticket_for_session": {
+            "name": "get_active_ticket_for_session",
+            "description": "Retrieve the most recent active holding ticket for a conversation session (REQ-AGENT-033).",
+            "parameters": GetActiveTicketRequest.model_json_schema(),
+            "returns": GetActiveTicketResponse.model_json_schema(),
+        },
+        "append_customer_followup": {
+            "name": "append_customer_followup",
+            "description": "Append a customer follow-up audit event to an active ticket (REQ-AGENT-033).",
+            "parameters": AppendCustomerFollowupRequest.model_json_schema(),
+            "returns": AppendCustomerFollowupResponse.model_json_schema(),
         },
     }

@@ -55,19 +55,99 @@ class PubSubPushEnvelope(BaseModel):
 
 
 class ClaimPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     ticket_id: str = Field(..., description="Ticket UUID to claim")
-    operator_id: str = Field(..., description="Operator LDAP or ID")
 
 
 class ResolvePayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     ticket_id: str = Field(..., description="Ticket UUID to resolve")
-    operator_id: str = Field(..., description="Operator LDAP or ID")
     resolution_notes: str = Field(default="", description="Operator resolution notes")
 
 
 class ReidentifyPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     ticket_id: str = Field(..., description="Ticket UUID to unmask")
-    operator_id: str = Field(..., description="Operator LDAP or ID (must be active claimer)")
+
+
+async def require_no_body_operator_id(request: Request) -> None:
+    """Forbid caller-supplied operator_id or agent_id in request bodies (REQ-AGENT-009 / REQ-AGENT-034)."""
+    try:
+        body_bytes = await request.body()
+        if body_bytes:
+            data = json.loads(body_bytes.decode("utf-8"))
+            if isinstance(data, dict) and ("operator_id" in data or "agent_id" in data):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Caller-supplied operator_id/agent_id is forbidden; identity must come from verified X-Rep-Id header",
+                )
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+
+def verify_review_ui_caller(request: Request) -> str:
+    """Verify inbound OIDC authentication for sa-review-ui and extract rep_id from X-Rep-Id."""
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or malformed Authorization header (expected 'Bearer <token>')",
+        )
+    token = auth_header[7:].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Empty Bearer token in Authorization header")
+
+    expected_aud = os.environ.get("HUMAN_QUEUE_AUDIENCE")
+    verifier = getattr(request.app.state, "caller_token_verifier", None) or getattr(
+        request.app.state, "token_verifier", None
+    )
+
+    claims: Dict[str, Any]
+    if verifier is not None:
+        try:
+            claims = verifier(token, expected_aud)
+        except Exception as exc:
+            raise HTTPException(status_code=401, detail=f"OIDC verification failed: {exc}") from exc
+    else:
+        from google.auth.transport.requests import Request as GoogleAuthRequest
+        from google.oauth2 import id_token as google_id_token
+
+        try:
+            claims = google_id_token.verify_oauth2_token(
+                token,
+                GoogleAuthRequest(),
+                audience=expected_aud if expected_aud else None,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=401, detail=f"OIDC verification failed: {exc}") from exc
+
+    iss = claims.get("iss", "")
+    if iss not in ("accounts.google.com", "https://accounts.google.com"):
+        raise HTTPException(status_code=401, detail=f"Invalid OIDC issuer: {iss}")
+
+    caller_email = claims.get("email", "")
+    allowed_raw = os.environ.get("REVIEW_UI_CALLER_EMAILS", "")
+    allowed_callers = {e.strip() for e in allowed_raw.split(",") if e.strip()}
+    if not allowed_callers:
+        project_id = os.environ.get("PROJECT_ID", "susmith-fde-ticket-router")
+        allowed_callers = {f"sa-review-ui@{project_id}.iam.gserviceaccount.com"}
+
+    if caller_email not in allowed_callers:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Caller '{caller_email}' is not authorized to act as review UI (allowed: {allowed_callers})",
+        )
+
+    rep_id = request.headers.get("x-rep-id", "").strip().lower()
+    if not rep_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required 'X-Rep-Id' header for human review operations",
+        )
+
+    return rep_id
 
 
 def get_agent(request: Request) -> HumanQueueAgent:
@@ -213,12 +293,55 @@ def queue_depths(agent: HumanQueueAgent = Depends(get_agent)) -> Dict[str, int]:
     return agent.queue_depths()
 
 
+@router.get("/tickets/{ticket_id}")
+def get_ticket_detail(
+    ticket_id: str,
+    agent: HumanQueueAgent = Depends(get_agent),
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+) -> Dict[str, Any]:
+    """Retrieve ticket details and event history for human review UI (redacted only)."""
+    try:
+        target_uuid = UUID(str(ticket_id))
+    except (ValueError, TypeError) as err:
+        raise HTTPException(status_code=404, detail=f"Ticket '{ticket_id}' not found.") from err
+
+    ticket = ticket_repo.get_ticket(target_uuid)
+    if ticket is None:
+        raise HTTPException(status_code=404, detail=f"Ticket '{ticket_id}' not found.")
+
+    events = ticket_repo.list_events(target_uuid)
+    return {
+        "ticket": {
+            "ticket_id": str(ticket.ticket_id),
+            "customer_id": ticket.customer_id,
+            "assigned_queue": ticket.assigned_queue,
+            "status": ticket.status,
+            "assigned_to": ticket.assigned_to,
+            "body_redacted": ticket.body_redacted,
+            "created_at": ticket.created_at.isoformat() if ticket.created_at else "",
+            "updated_at": ticket.updated_at.isoformat() if ticket.updated_at else "",
+        },
+        "events": [
+            {
+                "event_id": str(e.event_id),
+                "event_type": e.event_type,
+                "actor": e.actor,
+                "created_at": e.created_at.isoformat() if e.created_at else "",
+                "payload": e.payload,
+            }
+            for e in events
+        ],
+    }
+
+
 @router.post("/claim")
 def claim(
     payload: ClaimPayload,
+    _no_body_op: None = Depends(require_no_body_operator_id),
+    rep_id: str = Depends(verify_review_ui_caller),
     agent: HumanQueueAgent = Depends(get_agent),
 ) -> Dict[str, Any]:
-    result = agent.claim_ticket(ticket_id=payload.ticket_id, operator_id=payload.operator_id)
+    result = agent.claim_ticket(ticket_id=payload.ticket_id, operator_id=rep_id)
     if not result.get("success"):
         err = result.get("error", "claim_failed")
         if err == "not_found":
@@ -230,11 +353,13 @@ def claim(
 @router.post("/resolve")
 def resolve(
     payload: ResolvePayload,
+    _no_body_op: None = Depends(require_no_body_operator_id),
+    rep_id: str = Depends(verify_review_ui_caller),
     agent: HumanQueueAgent = Depends(get_agent),
 ) -> Dict[str, Any]:
     result = agent.resolve_ticket(
         ticket_id=payload.ticket_id,
-        operator_id=payload.operator_id,
+        operator_id=rep_id,
         resolution_notes=payload.resolution_notes,
     )
     if result.get("status") == "not_found":
@@ -245,12 +370,14 @@ def resolve(
 @router.post("/reidentify")
 def reidentify(
     payload: ReidentifyPayload,
+    _no_body_op: None = Depends(require_no_body_operator_id),
+    rep_id: str = Depends(verify_review_ui_caller),
     agent: HumanQueueAgent = Depends(get_agent),
 ) -> Dict[str, Any]:
     try:
         return agent.reidentify_pii(
             ticket_id=payload.ticket_id,
-            operator_id=payload.operator_id,
+            operator_id=rep_id,
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc

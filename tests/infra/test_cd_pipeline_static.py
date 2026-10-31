@@ -147,6 +147,7 @@ def test_cd_deploys_cloud_run():
     assert "ticket-db-mcp" in script
     assert "order-lookup-mcp" in script
     assert "human-queue" in script
+    assert "human-review-ui" in script
     assert "--image" in script
 
 
@@ -371,13 +372,14 @@ def test_terraform_ignores_cd_owned_fields():
     assert 'resource "google_cloud_run_v2_service" "ticket_db_mcp"' in cr_main
     assert 'resource "google_cloud_run_v2_service" "order_lookup_mcp"' in cr_main
     assert 'resource "google_cloud_run_v2_service" "human_queue"' in cr_main
+    assert 'resource "google_cloud_run_v2_service" "human_review_ui"' in cr_main
 
-    # Verify each of the 3 services ignores the container image
+    # Verify each of the 4 services ignores the container image
     occurrences = [
         line for line in cr_main.splitlines()
         if "ignore_changes" in line and "template[0].containers[0].image" in line
     ]
-    assert len(occurrences) == 3, f"Expected 3 Cloud Run services to ignore image, found {len(occurrences)}"
+    assert len(occurrences) == 4, f"Expected 4 Cloud Run services to ignore image, found {len(occurrences)}"
 
     runbook = RUNBOOKS_DIR / "deploy.md"
     assert runbook.is_file(), f"Missing deployment runbook: {runbook}"

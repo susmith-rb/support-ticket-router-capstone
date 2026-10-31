@@ -7,7 +7,7 @@ from storage backends (in-memory fakes vs Cloud SQL PostgreSQL).
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from ticket_router.store.models import (
@@ -90,6 +90,34 @@ class TicketRepository(ABC):
     @abstractmethod
     def purge_expired_redaction_maps(self) -> int:
         """Purge expired redaction maps (expires_at < now). Returns count of deleted maps."""
+
+    @abstractmethod
+    def get_active_ticket_for_session(
+        self, session_id: str, customer_id: Optional[str] = None
+    ) -> Optional[Ticket]:
+        """Fetch the most recent active holding ticket for a conversation session (REQ-AGENT-033).
+
+        Returns the ticket if its status is a holding status (e.g. escalated,
+        queued_for_review, claimed/assigned/in_progress, or open with human queue).
+        Returns None if no ticket exists or if the most recent ticket is in a
+        releasing status (resolved, resolved_auto, closed, returned_to_automation).
+        """
+
+    @abstractmethod
+    def append_customer_followup(
+        self,
+        ticket_id: UUID | str,
+        body_redacted: str,
+        customer_id: Optional[str] = None,
+        traceparent: Optional[str] = None,
+        message_hash: Optional[str] = None,
+    ) -> Tuple[TicketEvent, bool]:
+        """Append a customer follow-up audit event to an active ticket (REQ-AGENT-033).
+
+        Idempotent on (ticket_id, message_hash).
+        Returns (event, created) where created is True if new event was inserted,
+        or False if deduplicated.
+        """
 
 
 class OrderRepository(ABC):

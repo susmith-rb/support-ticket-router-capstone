@@ -167,6 +167,21 @@ output "cloud_run_human_queue_url" {
   value       = module.cloud_run_services.human_queue_url
 }
 
+output "cloud_run_human_review_ui_url" {
+  description = "Service URL for human-review-ui Cloud Run service"
+  value       = module.cloud_run_services.human_review_ui_url
+}
+
+output "human_review_ui_url" {
+  description = "Service URL for human-review-ui Cloud Run service"
+  value       = module.cloud_run_services.human_review_ui_url
+}
+
+output "sa_review_ui_email" {
+  description = "Email of the service account running human-review-ui"
+  value       = module.cloud_run_services.sa_review_ui_email
+}
+
 output "vpc_network_name" {
   description = "Name of the VPC network"
   value       = module.network.network_name

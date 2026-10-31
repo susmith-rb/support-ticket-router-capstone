@@ -6,6 +6,7 @@ without live Cloud SQL PostgreSQL dependencies.
 
 from __future__ import annotations
 
+import hashlib
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -27,6 +28,7 @@ from ticket_router.store.models import (
     Ticket,
     TicketCreate,
     TicketEvent,
+    is_holding_ticket,
 )
 
 
@@ -58,6 +60,9 @@ class FakeTicketRepo(TicketRepository):
 
             now = datetime.now(timezone.utc)
             t_id = ticket_create.ticket_id or uuid4()
+            sess_id = ticket_create.session_id
+            if not sess_id and isinstance(ticket_create.decision, dict):
+                sess_id = ticket_create.decision.get("session_id")
             ticket = Ticket(
                 ticket_id=t_id,
                 customer_id=ticket_create.customer_id,
@@ -69,6 +74,7 @@ class FakeTicketRepo(TicketRepository):
                 assigned_queue=ticket_create.assigned_queue,
                 created_at=now,
                 updated_at=now,
+                session_id=sess_id,
             )
             self._tickets[t_id] = ticket
             self._events[t_id] = [
@@ -226,6 +232,79 @@ class FakeTicketRepo(TicketRepository):
                 else:
                     self._redaction_maps.pop(t_id, None)
         return deleted_count
+
+    def get_active_ticket_for_session(
+        self, session_id: str, customer_id: Optional[str] = None
+    ) -> Optional[Ticket]:
+        """Fetch the most recent active holding ticket for a conversation session (REQ-AGENT-033)."""
+        with self._lock:
+            matching: List[Ticket] = []
+            for t in self._tickets.values():
+                t_session = t.session_id
+                if not t_session and isinstance(t.decision, dict):
+                    t_session = t.decision.get("session_id")
+                if t_session == session_id:
+                    if customer_id and t.customer_id != customer_id:
+                        continue
+                    matching.append(t)
+
+            if not matching:
+                return None
+
+            # Sort by created_at descending (most recent first)
+            matching.sort(key=lambda x: x.created_at, reverse=True)
+            latest = matching[0]
+
+            if is_holding_ticket(latest.status, latest.assigned_queue):
+                return latest
+            return None
+
+    def append_customer_followup(
+        self,
+        ticket_id: UUID | str,
+        body_redacted: str,
+        customer_id: Optional[str] = None,
+        traceparent: Optional[str] = None,
+        message_hash: Optional[str] = None,
+    ) -> Tuple[TicketEvent, bool]:
+        """Append a customer follow-up audit event to an active ticket (REQ-AGENT-033)."""
+        t_id = self._normalize_uuid(ticket_id)
+        with self._lock:
+            if t_id not in self._tickets:
+                raise KeyError(f"Ticket not found: {t_id}")
+            ticket = self._tickets[t_id]
+            if customer_id and ticket.customer_id != customer_id:
+                raise PermissionError(f"Customer mismatch for ticket {t_id}")
+
+            msg_hash = (
+                message_hash
+                or hashlib.sha256(body_redacted.encode("utf-8")).hexdigest()
+            )
+            # Idempotency check on (ticket_id, message_hash)
+            events = self._events.get(t_id, [])
+            for ev in events:
+                if ev.event_type == "customer_followup" and isinstance(ev.payload, dict):
+                    ev_body = ev.payload.get("body_redacted", "")
+                    ev_hash = hashlib.sha256(ev_body.encode("utf-8")).hexdigest()
+                    if ev_hash == msg_hash or ev_body == body_redacted:
+                        return ev, False
+
+            now = datetime.now(timezone.utc)
+            payload = {
+                "body_redacted": body_redacted,
+                "traceparent": traceparent,
+            }
+            event = TicketEvent(
+                event_id=uuid4(),
+                ticket_id=t_id,
+                event_type="customer_followup",
+                actor="customer",
+                payload=payload,
+                created_at=now,
+            )
+            self._events.setdefault(t_id, []).append(event)
+            ticket.updated_at = now
+            return event, True
 
 
 class FakeOrderRepo(OrderRepository):

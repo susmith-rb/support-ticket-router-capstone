@@ -24,8 +24,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 
 from ticket_router.mcp.ticket_db.schemas import (
+    AppendCustomerFollowupRequest,
+    AppendCustomerFollowupResponse,
     ClaimTicketRequest,
     ClaimTicketResponse,
+    GetActiveTicketRequest,
+    GetActiveTicketResponse,
     ReidentifyPiiRequest,
     ReidentifyPiiResponse,
     ResolveCustomerRequest,
@@ -342,6 +346,90 @@ async def resolve_customer(
         status=res.status,
         linked=res.linked,
     )
+
+
+@router.post("/tools/get_active_ticket_for_session", response_model=GetActiveTicketResponse)
+@router.post("/get_active_ticket_for_session", response_model=GetActiveTicketResponse)
+async def get_active_ticket_for_session(
+    req: GetActiveTicketRequest,
+    authorization: Optional[str] = Header(None),
+    x_serverless_authorization: Optional[str] = Header(None),
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+) -> GetActiveTicketResponse:
+    caller = _extract_caller_identity(authorization, x_serverless_authorization)
+    logger.info(
+        "get_active_ticket_for_session called by caller=%s session=%s",
+        caller,
+        req.session_id,
+    )
+
+    ticket = ticket_repo.get_active_ticket_for_session(
+        session_id=req.session_id,
+        customer_id=req.customer_id,
+    )
+    if ticket is None:
+        return GetActiveTicketResponse(
+            ticket_id=None,
+            status=None,
+            assigned_queue=None,
+            customer_id=None,
+            ticket=None,
+        )
+
+    ticket_dict = {
+        "ticket_id": str(ticket.ticket_id),
+        "customer_id": ticket.customer_id,
+        "channel": ticket.channel,
+        "body_redacted": ticket.body_redacted,
+        "decision": ticket.decision,
+        "status": ticket.status,
+        "assigned_to": ticket.assigned_to,
+        "assigned_queue": ticket.assigned_queue,
+        "created_at": ticket.created_at.isoformat(),
+        "updated_at": ticket.updated_at.isoformat(),
+        "session_id": getattr(ticket, "session_id", None) or req.session_id,
+    }
+    return GetActiveTicketResponse(
+        ticket_id=str(ticket.ticket_id),
+        status=ticket.status,
+        assigned_queue=ticket.assigned_queue,
+        customer_id=ticket.customer_id,
+        ticket=ticket_dict,
+    )
+
+
+@router.post("/tools/append_customer_followup", response_model=AppendCustomerFollowupResponse)
+@router.post("/append_customer_followup", response_model=AppendCustomerFollowupResponse)
+async def append_customer_followup(
+    req: AppendCustomerFollowupRequest,
+    authorization: Optional[str] = Header(None),
+    x_serverless_authorization: Optional[str] = Header(None),
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+) -> AppendCustomerFollowupResponse:
+    caller = _extract_caller_identity(authorization, x_serverless_authorization)
+    logger.info(
+        "append_customer_followup called by caller=%s ticket=%s",
+        caller,
+        req.ticket_id,
+    )
+
+    try:
+        event, created = ticket_repo.append_customer_followup(
+            ticket_id=req.ticket_id,
+            body_redacted=req.body_redacted,
+            customer_id=req.customer_id,
+            traceparent=req.traceparent,
+            message_hash=req.message_hash,
+        )
+        return AppendCustomerFollowupResponse(
+            success=True,
+            event_id=str(event.event_id),
+            deduplicated=not created,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="ticket_not_found") from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="customer_mismatch") from exc
 
 
 def create_app(

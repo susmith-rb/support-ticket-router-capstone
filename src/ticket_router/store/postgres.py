@@ -6,10 +6,11 @@ enforcing idempotent creation, atomic claims, and Postgres RLS for order isolati
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from ticket_router.store.interfaces import CustomerRepository, OrderRepository, TicketRepository
@@ -22,6 +23,7 @@ from ticket_router.store.models import (
     Ticket,
     TicketCreate,
     TicketEvent,
+    is_holding_ticket,
 )
 
 logger = logging.getLogger(__name__)
@@ -522,6 +524,145 @@ class PostgresTicketRepo(TicketRepository):
             deleted_count = cursor.rowcount if cursor.rowcount is not None else 0
             conn.commit()
             return deleted_count
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_active_ticket_for_session(
+        self, session_id: str, customer_id: Optional[str] = None
+    ) -> Optional[Ticket]:
+        """Fetch the most recent active holding ticket for a conversation session (REQ-AGENT-033)."""
+        query = """
+        SELECT ticket_id, customer_id, channel, body_redacted, decision,
+               status, assigned_to, assigned_queue, answer_text, citations,
+               resolution_notes, created_at, updated_at
+        FROM tickets
+        WHERE (session_id = %s OR decision->>'session_id' = %s)
+        """
+        params: List[Any] = [session_id, session_id]
+        if customer_id:
+            query += " AND customer_id = %s"
+            params.append(customer_id)
+        query += " ORDER BY created_at DESC;"
+
+        conn = self._connection_factory()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall()
+            if not rows:
+                return None
+
+            latest_row = rows[0]
+            if is_holding_ticket(
+                str(latest_row[5]) if latest_row[5] else None,
+                str(latest_row[7]) if latest_row[7] else None,
+            ):
+                return Ticket(
+                    ticket_id=UUID(str(latest_row[0])),
+                    customer_id=str(latest_row[1]),
+                    channel=str(latest_row[2]),
+                    body_redacted=str(latest_row[3]),
+                    decision=_decode_json(latest_row[4]),
+                    status=str(latest_row[5]),
+                    assigned_to=str(latest_row[6]) if latest_row[6] else None,
+                    assigned_queue=str(latest_row[7]) if latest_row[7] else None,
+                    answer_text=str(latest_row[8]) if latest_row[8] else None,
+                    citations=_decode_json(latest_row[9]),
+                    resolution_notes=str(latest_row[10]) if latest_row[10] else None,
+                    created_at=_parse_datetime(latest_row[11]),
+                    updated_at=_parse_datetime(latest_row[12]),
+                    session_id=session_id,
+                )
+            return None
+        finally:
+            cursor.close()
+            conn.close()
+
+    def append_customer_followup(
+        self,
+        ticket_id: UUID | str,
+        body_redacted: str,
+        customer_id: Optional[str] = None,
+        traceparent: Optional[str] = None,
+        message_hash: Optional[str] = None,
+    ) -> Tuple[TicketEvent, bool]:
+        """Append a customer follow-up audit event to an active ticket (REQ-AGENT-033)."""
+        t_id = self._normalize_uuid(ticket_id)
+        msg_hash = (
+            message_hash
+            or hashlib.sha256(body_redacted.encode("utf-8")).hexdigest()
+        )
+
+        conn = self._connection_factory()
+        cursor = conn.cursor()
+        try:
+            # Verify ticket existence and customer scoping
+            ticket_query = "SELECT ticket_id, customer_id FROM tickets WHERE ticket_id = %s;"
+            cursor.execute(ticket_query, (t_id,))
+            t_row = cursor.fetchone()
+            if not t_row:
+                raise KeyError(f"Ticket not found: {t_id}")
+            if customer_id and str(t_row[1]) != customer_id:
+                raise PermissionError(f"Customer mismatch for ticket {t_id}")
+
+            # Idempotency check: scan existing customer_followup events for this ticket
+            check_events_query = """
+            SELECT event_id, ticket_id, event_type, actor, payload, created_at
+            FROM ticket_events
+            WHERE ticket_id = %s AND event_type = 'customer_followup';
+            """
+            cursor.execute(check_events_query, (t_id,))
+            for ev_row in cursor.fetchall():
+                ev_payload = _decode_json(ev_row[4]) or {}
+                if isinstance(ev_payload, dict):
+                    ev_body = ev_payload.get("body_redacted", "")
+                    ev_hash = hashlib.sha256(ev_body.encode("utf-8")).hexdigest()
+                    if ev_hash == msg_hash or ev_body == body_redacted:
+                        return (
+                            TicketEvent(
+                                event_id=UUID(str(ev_row[0])),
+                                ticket_id=UUID(str(ev_row[1])),
+                                event_type=str(ev_row[2]),
+                                actor=str(ev_row[3]),
+                                payload=ev_payload,
+                                created_at=_parse_datetime(ev_row[5]),
+                            ),
+                            False,
+                        )
+
+            # Insert new customer_followup event
+            event_id = uuid4()
+            payload = {
+                "body_redacted": body_redacted,
+                "traceparent": traceparent,
+            }
+            insert_query = """
+            INSERT INTO ticket_events (event_id, ticket_id, event_type, actor, payload, created_at)
+            VALUES (%s, %s, 'customer_followup', 'customer', %s::jsonb, CURRENT_TIMESTAMP)
+            RETURNING event_id, ticket_id, event_type, actor, payload, created_at;
+            """
+            cursor.execute(insert_query, (str(event_id), t_id, json.dumps(payload)))
+            ins_row = cursor.fetchone()
+
+            # Update ticket updated_at
+            cursor.execute("UPDATE tickets SET updated_at = CURRENT_TIMESTAMP WHERE ticket_id = %s;", (t_id,))
+            conn.commit()
+
+            return (
+                TicketEvent(
+                    event_id=UUID(str(ins_row[0])),
+                    ticket_id=UUID(str(ins_row[1])),
+                    event_type=str(ins_row[2]),
+                    actor=str(ins_row[3]),
+                    payload=_decode_json(ins_row[4]),
+                    created_at=_parse_datetime(ins_row[5]),
+                ),
+                True,
+            )
         except Exception:
             conn.rollback()
             raise

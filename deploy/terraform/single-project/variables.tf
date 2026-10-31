@@ -186,6 +186,12 @@ variable "cct_mode" {
   }
 }
 
+variable "review_ui_reps" {
+  description = "List of IAM principals (users/groups) granted IAP access to the human review UI."
+  type        = list(string)
+  default     = ["user:susmith@gcp.altostrat.com"]
+}
+
 variable "triage_agent_principal" {
   description = "SPIFFE IAM principal (principal://...) for TriageRouter Agent Runtime identity (REQ-AUTH-004). Empty string grants nothing."
   type        = string

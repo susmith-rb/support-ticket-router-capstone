@@ -39,11 +39,13 @@ from ticket_router.agents.triage_router.policy import (
     RouterThresholds,
     TriagePolicy,
     VerifiedFacts,
+    _extract_blocked_card_info_types,
 )
 from ticket_router.agents.triage_router.templates import (
     render_calming_acknowledgement,
     render_card_data_blocked_reply,
     render_conversational_reply,
+    render_followup_calming_reply,
     render_out_of_scope_refusal,
 )
 from ticket_router.common.hedging import hedged_call
@@ -69,6 +71,7 @@ from ticket_router.security.envelope import RedactionSealer
 from ticket_router.security.model_armor import (
     ModelArmorClient,
     ModelArmorClientProtocol,
+    ModelArmorVerdict,
 )
 from ticket_router.store.ids import canonical_ticket_uuid
 
@@ -643,10 +646,189 @@ class TriageRouterAgent:
             attributes={"session_id": session_id, "ticket_id": t_id, "channel": channel},
             traceparent=traceparent,
         ) as turn_span:
-            # REQ-AGENT-027: Run identity resolution concurrently with policy evaluation
             mcp_client = self.mcp_client
             policy = self.policy
             placeholder_cid = f"anon:{session_id}"
+
+            # Ingress Guard: Model Armor payment card check before any persistence or models (REQ-MA-007, REQ-AGENT-032)
+            ma_verdict: Optional[ModelArmorVerdict] = None
+            sanitized_text: Optional[str] = None
+            tokenized_text: Optional[str] = None
+            pii_mapping: Dict[str, str] = {}
+            ma_client = getattr(policy, "model_armor_client", None)
+            if ma_client is not None and hasattr(policy, "_run_model_armor"):
+                ma_verdict, sanitized_text, tokenized_text, pii_mapping = policy._run_model_armor(message_text)
+                blocked_card_types = _extract_blocked_card_info_types(ma_verdict)
+                if blocked_card_types:
+                    blocked_reply = render_card_data_blocked_reply()
+                    turn_span.set_attribute("decision", "blocked")
+                    turn_span.set_attribute("tier", "ingress_guard")
+                    turn_span.set_attribute("queue", "none")
+                    turn_span.set_attribute("degraded", False)
+                    turn_span.set_attribute("predicted_intent", "other")
+                    logger.warning(
+                        json.dumps(
+                            {
+                                "event": "card_data_blocked",
+                                "ticket_id": t_id,
+                                "session_id": session_id,
+                                "blocked_info_types": blocked_card_types,
+                            },
+                            separators=(",", ":"),
+                        )
+                    )
+                    decision = RouterDecision(
+                        ticket_id=t_id,
+                        session_id=session_id,
+                        decision="blocked",
+                        tier="ingress_guard",
+                        queue="none",
+                        predicted_intent="other",
+                        escalate=False,
+                        sentiment="neutral",
+                        urgency="normal",
+                        reason="card_data_blocked",
+                        degraded=False,
+                        details={"blocked_info_types": blocked_card_types},
+                        tokenized_text=None,
+                        pii_mapping={},
+                    )
+                    elapsed_ms = (time.monotonic() - start_time) * 1000.0
+                    return TriageResult(
+                        ticket_id=t_id,
+                        session_id=session_id,
+                        decision=decision,
+                        calming_ack=blocked_reply,
+                        handoff_response={
+                            "status": "BLOCKED",
+                            "route": "blocked",
+                            "answer": blocked_reply,
+                            "status_code": 400,
+                            "error": "card_data_blocked",
+                        },
+                        idempotency_key=idempotency_key,
+                        latency_ms=elapsed_ms,
+                        status_code=400,
+                        error="card_data_blocked",
+                    )
+
+            # REQ-AGENT-033: Check for active ticket holding human queue for this session
+            active_ticket: Optional[Dict[str, Any]] = None
+            try:
+                active_ticket = mcp_client.get_active_ticket_for_session(session_id=session_id)
+            except Exception as exc:
+                logger.warning(
+                    json.dumps(
+                        {
+                            "event": "get_active_ticket_failed",
+                            "session_id": session_id,
+                            "error_type": type(exc).__name__,
+                        },
+                        separators=(",", ":"),
+                    )
+                )
+
+            if (
+                isinstance(active_ticket, dict)
+                and (active_ticket.get("ticket_id") or active_ticket.get("id"))
+            ):
+                holding_tid = str(active_ticket.get("ticket_id") or active_ticket.get("id"))
+                holding_queue = str(
+                    active_ticket.get("assigned_queue")
+                    or active_ticket.get("queue")
+                    or "human-standard"
+                )
+                ticket_customer_id = str(active_ticket.get("customer_id") or placeholder_cid)
+                body_to_persist = (
+                    tokenized_text
+                    if tokenized_text
+                    else (sanitized_text if sanitized_text else message_text)
+                )
+                if pii_mapping:
+                    self._save_redaction_map_if_needed(
+                        ticket_id=holding_tid,
+                        ticket_uuid=holding_tid,
+                        customer_id=ticket_customer_id,
+                        mapping=pii_mapping,
+                    )
+                try:
+                    mcp_client.append_customer_followup(
+                        ticket_id=holding_tid,
+                        body_redacted=body_to_persist,
+                        customer_id=ticket_customer_id,
+                        traceparent=traceparent,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        json.dumps(
+                            {
+                                "event": "append_customer_followup_failed",
+                                "ticket_id": holding_tid,
+                                "error_type": type(exc).__name__,
+                            },
+                            separators=(",", ":"),
+                        )
+                    )
+
+                calming_ack = render_followup_calming_reply(ticket_id=holding_tid)
+                elapsed_ms = (time.monotonic() - start_time) * 1000.0
+
+                turn_span.set_attribute("decision", "escalate")
+                turn_span.set_attribute("tier", "human_holding")
+                turn_span.set_attribute("queue", holding_queue)
+                turn_span.set_attribute("degraded", False)
+                turn_span.set_attribute("predicted_intent", "followup")
+
+                followup_decision = RouterDecision(
+                    ticket_id=holding_tid,
+                    session_id=session_id,
+                    decision="escalate",
+                    tier="human_holding",
+                    queue=holding_queue,
+                    predicted_intent="followup",
+                    escalate=True,
+                    sentiment="neutral",
+                    urgency="normal",
+                    reason="multi_turn_holding",
+                    degraded=False,
+                    calming_ack=calming_ack,
+                    latency_ms=elapsed_ms,
+                    details={"holding_ticket_id": holding_tid, "queue": holding_queue},
+                    customer_verified=bool(active_ticket.get("customer_verified", False)),
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
+                )
+                self.logger.log_decision(
+                    ticket_id=holding_tid,
+                    session_id=session_id,
+                    decision="escalate",
+                    tier="human_holding",
+                    queue=holding_queue,
+                    degraded=False,
+                    latency_ms=elapsed_ms,
+                    traceparent=traceparent,
+                    predicted_intent="followup",
+                )
+                return TriageResult(
+                    ticket_id=holding_tid,
+                    session_id=session_id,
+                    decision=followup_decision,
+                    calming_ack=calming_ack,
+                    handoff_response={
+                        "status": "ESCALATED",
+                        "route": "followup",
+                        "answer": calming_ack,
+                        "ticket_id": holding_tid,
+                        "queue": holding_queue,
+                        "handoff_done": True,
+                    },
+                    idempotency_key=idempotency_key,
+                    latency_ms=elapsed_ms,
+                    status_code=200,
+                    error=None,
+                )
+
+            # REQ-AGENT-027: Run identity resolution concurrently with policy evaluation
             id_ctx = contextvars.copy_context()
             pol_ctx = contextvars.copy_context()
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as step1_pool:

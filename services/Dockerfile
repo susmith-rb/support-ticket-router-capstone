@@ -46,7 +46,7 @@ COPY training/ /app/training/
 RUN pip install --no-cache-dir --no-deps .
 
 # Build-time import check: fail image build immediately if any service import is broken
-RUN python -c "import ticket_router.serve, ticket_router.mcp.ticket_db, ticket_router.mcp.order_lookup, ticket_router.agents.human_queue, ticket_router.agents.faq_resolver.app; print('All agent & MCP services import cleanly')"
+RUN python -c "import ticket_router.serve, ticket_router.mcp.ticket_db, ticket_router.mcp.order_lookup, ticket_router.agents.human_queue, ticket_router.agents.review_ui, ticket_router.agents.faq_resolver.app; print('All agent & MCP services import cleanly')"
 
 # Switch to non-root user
 USER appuser

@@ -113,3 +113,16 @@ def render_card_data_blocked_reply() -> str:
     """Render a deterministic security response for customer prompts containing payment card data."""
     return CARD_DATA_BLOCKED_REPLY
 
+
+# REQ-AGENT-033: Multi-Turn Conversation Holding and Customer Follow-up Calming Reply
+FOLLOWUP_CALMING_REPLY_TEMPLATE = (
+    "Your request is already with a support specialist (ticket #{ticket_id}). "
+    "We've added your message to it."
+)
+
+
+def render_followup_calming_reply(ticket_id: str) -> str:
+    """Render a deterministic calming reply for customer follow-up on an active holding ticket."""
+    return FOLLOWUP_CALMING_REPLY_TEMPLATE.format(ticket_id=ticket_id)
+
+

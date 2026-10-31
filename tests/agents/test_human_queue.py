@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, Optional
 from uuid import uuid4
 
 import pytest
@@ -198,8 +199,32 @@ def test_human_queue_cloud_run_service():
         )
     )
 
-    app = create_human_queue_app(ticket_repo=repo)
+    def fake_verifier(token: str, aud: Optional[str] = None) -> Dict[str, Any]:
+        if token == "valid-ui-token":
+            return {
+                "iss": "https://accounts.google.com",
+                "email": "sa-review-ui@susmith-fde-ticket-router.iam.gserviceaccount.com",
+                "email_verified": True,
+            }
+        if token == "non-ui-token":
+            return {
+                "iss": "https://accounts.google.com",
+                "email": "unauthorized-caller@example.com",
+                "email_verified": True,
+            }
+        raise ValueError("Invalid OIDC token")
+
+    app = create_human_queue_app(ticket_repo=repo, token_verifier=fake_verifier)
     client = TestClient(app)
+
+    ui_headers_eva = {
+        "Authorization": "Bearer valid-ui-token",
+        "X-Rep-Id": "operator-eva",
+    }
+    ui_headers_frank = {
+        "Authorization": "Bearer valid-ui-token",
+        "X-Rep-Id": "operator-frank",
+    }
 
     # 1. Healthz probe
     assert client.get("/healthz").status_code == 200
@@ -216,35 +241,82 @@ def test_human_queue_cloud_run_service():
     assert depths_resp.status_code == 200
     assert depths_resp.json()["human-urgent"] == 1
 
-    # 4. Claim endpoint
+    # 4. Detail endpoint
+    detail_resp = client.get(f"/tickets/{t.ticket_id}")
+    assert detail_resp.status_code == 200
+    assert detail_resp.json()["ticket"]["ticket_id"] == str(t.ticket_id)
+
+    # 5. Rejection: Body operator_id forbidden (REQ-AGENT-009 / REQ-AGENT-034)
+    body_op_resp = client.post(
+        "/claim",
+        headers=ui_headers_eva,
+        json={"ticket_id": str(t.ticket_id), "operator_id": "operator-eva"},
+    )
+    assert body_op_resp.status_code == 400
+    assert "forbidden" in body_op_resp.json()["detail"].lower()
+
+    # 6. Rejection: Non-UI caller rejected with 403
+    non_ui_resp = client.post(
+        "/claim",
+        headers={"Authorization": "Bearer non-ui-token", "X-Rep-Id": "operator-eva"},
+        json={"ticket_id": str(t.ticket_id)},
+    )
+    assert non_ui_resp.status_code == 403
+
+    # 7. Rejection: Missing Authorization header rejected with 401
+    no_auth_resp = client.post(
+        "/claim",
+        headers={"X-Rep-Id": "operator-eva"},
+        json={"ticket_id": str(t.ticket_id)},
+    )
+    assert no_auth_resp.status_code == 401
+
+    # 8. Rejection: Missing X-Rep-Id header rejected with 400
+    no_rep_resp = client.post(
+        "/claim",
+        headers={"Authorization": "Bearer valid-ui-token"},
+        json={"ticket_id": str(t.ticket_id)},
+    )
+    assert no_rep_resp.status_code == 400
+
+    # 9. Successful claim endpoint with X-Rep-Id
     claim_resp = client.post(
         "/claim",
-        json={"ticket_id": str(t.ticket_id), "operator_id": "operator-eva"},
+        headers=ui_headers_eva,
+        json={"ticket_id": str(t.ticket_id)},
     )
     assert claim_resp.status_code == 200
     assert claim_resp.json()["success"] is True
 
-    # 5. Unauthorized re-identification rejected with 403
+    # 10. Unauthorized re-identification rejected with 403 (operator-frank did not claim)
     unauth_resp = client.post(
         "/reidentify",
-        json={"ticket_id": str(t.ticket_id), "operator_id": "operator-frank"},
+        headers=ui_headers_frank,
+        json={"ticket_id": str(t.ticket_id)},
     )
     assert unauth_resp.status_code == 403
 
-    # 6. Authorized re-identification returns 200
+    # 11. Authorized re-identification returns 200 and audits rep_id
     auth_resp = client.post(
         "/reidentify",
-        json={"ticket_id": str(t.ticket_id), "operator_id": "operator-eva"},
+        headers=ui_headers_eva,
+        json={"ticket_id": str(t.ticket_id)},
     )
     assert auth_resp.status_code == 200
     assert "email" in auth_resp.json()["unmasked_fields"]
 
-    # 7. Resolve endpoint
+    # Verify rep_id in audit events
+    events = repo.list_events(t.ticket_id)
+    reid_ev = next(e for e in events if e.event_type == "pii_reidentified")
+    assert reid_ev.actor == "operator-eva"
+    assert reid_ev.payload["rep_id"] == "operator-eva"
+
+    # 12. Resolve endpoint
     resolve_resp = client.post(
         "/resolve",
+        headers=ui_headers_eva,
         json={
             "ticket_id": str(t.ticket_id),
-            "operator_id": "operator-eva",
             "resolution_notes": "All resolved.",
         },
     )

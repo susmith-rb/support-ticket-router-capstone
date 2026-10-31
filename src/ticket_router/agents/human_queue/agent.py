@@ -155,7 +155,7 @@ class HumanQueueAgent:
             ticket_id=target_uuid,
             event_type="resolved",
             actor=operator_id,
-            payload={"resolution_notes": resolution_notes},
+            payload={"resolution_notes": resolution_notes, "rep_id": operator_id},
         )
         return {"status": "RESOLVED"}
 

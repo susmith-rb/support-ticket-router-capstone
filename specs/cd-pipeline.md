@@ -57,13 +57,13 @@ CD never runs `terraform`.
 ---
 
 ### REQ-CD-004: Deploy Cloud Run microservices
-- **Statement**: The CD pipeline MUST update Cloud Run services `ticket-db-mcp`, `order-lookup-mcp`, and `human-queue` with the new image tag in region `us-central1`, waiting for a ready revision while preserving environment variables and IAM policies managed by Terraform.
+- **Statement**: The CD pipeline MUST update Cloud Run services `ticket-db-mcp`, `order-lookup-mcp`, `human-queue`, and `human-review-ui` with the new image tag in region `us-central1`, waiting for a ready revision while preserving environment variables and IAM policies managed by Terraform.
 - **Rationale**: REQ-AGENT-017, TDD §12.6: Microservice revision lifecycle updates container images independently of infrastructure declarations.
 - **Acceptance**: `tests/infra/test_cd_pipeline_static.py::test_cd_deploys_cloud_run`
 - **Status**: done
 - **Owner**: platform
 
-- `gcloud run services update {ticket-db-mcp,order-lookup-mcp,human-queue} --image <tag> --region us-central1` (image only; env/IAM stay in Terraform). Wait for ready revision.
+- `gcloud run services update {ticket-db-mcp,order-lookup-mcp,human-queue,human-review-ui} --image <tag> --region us-central1` (image only; env/IAM stay in Terraform). Wait for ready revision.
 
 ---
 
@@ -104,7 +104,7 @@ CD never runs `terraform`.
 ---
 
 ### REQ-CD-008: Rollback on failure and last-good record on success
-- **Statement**: On complete success, the pipeline MUST write `{sha, image, build_id, time}` to `gs://$PROJECT_ID-laya/cd/last_good.json`. On any deployment or smoke failure, the pipeline MUST roll back Cloud Run and GKE deployments to the image recorded in `last_good.json`, output instructions for Agent Engine re-run, and exit with code 1.
+- **Statement**: On complete success, the pipeline MUST write `{sha, image, build_id, time}` to `gs://$PROJECT_ID-laya/cd/last_good.json`. On any deployment or smoke failure, the pipeline MUST roll back Cloud Run (including `human-review-ui`) and GKE deployments to the image recorded in `last_good.json`, output instructions for Agent Engine re-run, and exit with code 1.
 - **Rationale**: TDD §12.6: Automatic rollback minimizes blast radius and downtime for customer-facing services upon bad deployments.
 - **Acceptance**: `tests/infra/test_cd_pipeline_static.py::test_cd_rollback_and_last_good`
 - **Status**: done
@@ -116,13 +116,13 @@ CD never runs `terraform`.
 ---
 
 ### REQ-CD-009: Least-privilege CD service account
-- **Statement**: The CD pipeline service account (`sa-cd-deployer@${PROJECT_ID}.iam.gserviceaccount.com`) MUST be granted only minimal required deployment roles without project Owner or Editor: `roles/run.developer`, `roles/container.developer`, `roles/aiplatform.user`, `roles/artifactregistry.writer` (serving repo), `roles/cloudbuild.builds.viewer`, `roles/logging.logWriter`, `roles/storage.objectAdmin` (corpus/laya bucket), `roles/secretmanager.secretAccessor` (3 identity secrets), `roles/modelarmor.user`, `roles/run.invoker` (3 Cloud Run services), and `roles/iam.serviceAccountUser` strictly on runtime service accounts.
+- **Statement**: The CD pipeline service account (`sa-cd-deployer@${PROJECT_ID}.iam.gserviceaccount.com`) MUST be granted only minimal required deployment roles without project Owner or Editor: `roles/run.developer`, `roles/container.developer`, `roles/aiplatform.user`, `roles/artifactregistry.writer` (serving repo), `roles/cloudbuild.builds.viewer`, `roles/logging.logWriter`, `roles/storage.objectAdmin` (corpus/laya bucket), `roles/secretmanager.secretAccessor` (3 identity secrets), `roles/modelarmor.user`, `roles/run.invoker` (4 Cloud Run services including human-review-ui), and `roles/iam.serviceAccountUser` strictly on runtime service accounts.
 - **Rationale**: TDD §12.6, REQ-CD-009: Least privilege security boundary prevents privilege escalation from automated build environments.
 - **Acceptance**: `tests/infra/test_cd_pipeline_static.py::test_cd_service_account_roles`
 - **Status**: done
 - **Owner**: platform
 
-- `sa-cd-deployer@`: `roles/run.developer`, `roles/container.developer`, `roles/aiplatform.user`, `roles/artifactregistry.writer` (serving repo), `roles/cloudbuild.builds.viewer`, `roles/logging.logWriter`, `roles/storage.objectAdmin` on the laya bucket (staging + last_good), `roles/secretmanager.secretAccessor` on the 3 identity secrets only, `roles/modelarmor.user`, `roles/run.invoker` on the 3 services (smoke), and `roles/iam.serviceAccountUser` **only** on the runtime SAs it deploys as (Cloud Run SAs, sa-triage). No owner/editor.
+- `sa-cd-deployer@`: `roles/run.developer`, `roles/container.developer`, `roles/aiplatform.user`, `roles/artifactregistry.writer` (serving repo), `roles/cloudbuild.builds.viewer`, `roles/logging.logWriter`, `roles/storage.objectAdmin` on the laya bucket (staging + last_good), `roles/secretmanager.secretAccessor` on the 3 identity secrets only, `roles/modelarmor.user`, `roles/run.invoker` on the 4 services (smoke), and `roles/iam.serviceAccountUser` **only** on the runtime SAs it deploys as (Cloud Run SAs, sa-triage). No owner/editor.
 
 ---
 

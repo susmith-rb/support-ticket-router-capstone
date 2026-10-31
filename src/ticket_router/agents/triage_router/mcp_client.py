@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional, Protocol, Tuple, runtime_checkable
 
 import requests
@@ -78,6 +80,25 @@ class TicketDbMcpClientProtocol(Protocol):
 
     def resolve_customer(self, issuer: str, subject: str) -> Dict[str, Any]:
         """Resolve IdP identity (issuer, subject) to customer record."""
+        ...
+
+    def get_active_ticket_for_session(
+        self,
+        session_id: str,
+        customer_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Retrieve active holding ticket for a conversation session (REQ-AGENT-033)."""
+        ...
+
+    def append_customer_followup(
+        self,
+        ticket_id: str,
+        body_redacted: str,
+        customer_id: Optional[str] = None,
+        traceparent: Optional[str] = None,
+        message_hash: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Append a customer follow-up audit event to an active ticket (REQ-AGENT-033)."""
         ...
 
 
@@ -202,6 +223,93 @@ class InMemoryTicketDbMcpClient:
             return {"unmasked_fields": {}, "error": "unauthorized_not_claimed"}
         return {"unmasked_fields": {"email": "customer@example.com", "phone": "+15551234567"}}
 
+    def get_active_ticket_for_session(
+        self,
+        session_id: str,
+        customer_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        matching = []
+        for ticket in self.tickets.values():
+            t_sess = ticket.get("session_id")
+            if not t_sess:
+                dec = ticket.get("decision")
+                if isinstance(dec, dict):
+                    t_sess = dec.get("session_id")
+            if not t_sess and ":" in ticket.get("idempotency_key", ""):
+                t_sess = ticket["idempotency_key"].split(":", 1)[0]
+
+            if t_sess == session_id:
+                if (
+            customer_id
+            and ticket.get("customer_id")
+            and ticket.get("customer_id") != customer_id
+        ):
+                    continue
+                matching.append(ticket)
+
+        if not matching:
+            return None
+
+        latest = matching[-1]
+        st = (latest.get("status") or "").lower()
+        if st in ("resolved", "resolved_auto", "closed", "returned_to_automation"):
+            return None
+
+        if st in ("escalated", "queued_for_review", "claimed", "assigned", "in_progress", "open"):
+            return dict(latest)
+
+        return None
+
+    def append_customer_followup(
+        self,
+        ticket_id: str,
+        body_redacted: str,
+        customer_id: Optional[str] = None,
+        traceparent: Optional[str] = None,
+        message_hash: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if ticket_id not in self.tickets:
+            raise KeyError(f"Ticket {ticket_id} not found")
+        ticket = self.tickets[ticket_id]
+        if (
+            customer_id
+            and ticket.get("customer_id")
+            and ticket.get("customer_id") != customer_id
+        ):
+            raise PermissionError(f"Customer mismatch for ticket {ticket_id}")
+
+        msg_hash = (
+            message_hash
+            or hashlib.sha256(body_redacted.encode("utf-8")).hexdigest()
+        )
+
+        for ev in self.events:
+            if ev.get("ticket_id") == ticket_id and ev.get("event_type") == "customer_followup":
+                p = ev.get("payload", {})
+                ev_body = p.get("body_redacted", "")
+                ev_hash = hashlib.sha256(ev_body.encode("utf-8")).hexdigest()
+                if ev_hash == msg_hash or ev_body == body_redacted:
+                    return {
+                        "success": True,
+                        "event_id": ev.get("event_id", ""),
+                        "deduplicated": True,
+                    }
+
+        event_id = str(uuid.uuid4())
+        event = {
+            "event_id": event_id,
+            "ticket_id": ticket_id,
+            "event_type": "customer_followup",
+            "actor": "customer",
+            "payload": {
+                "body_redacted": body_redacted,
+                "traceparent": traceparent,
+            },
+        }
+        self.events.append(event)
+        ticket["updated_at"] = datetime.now(timezone.utc).isoformat()
+        return {"success": True, "event_id": event_id, "deduplicated": False}
+
 
 class HttpTicketDbMcpClient:
     """HTTP client calling ticket-db-mcp server on Cloud Run (REQ-AGENT-010)."""
@@ -304,3 +412,35 @@ class HttpTicketDbMcpClient:
 
     def resolve_customer(self, issuer: str, subject: str) -> Dict[str, Any]:
         return self._post_tool("resolve_customer", {"issuer": issuer, "subject": subject})
+
+    def get_active_ticket_for_session(
+        self,
+        session_id: str,
+        customer_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        resp = self._post_tool(
+            "get_active_ticket_for_session",
+            {"session_id": session_id, "customer_id": customer_id},
+        )
+        if resp and resp.get("ticket_id"):
+            return resp
+        return None
+
+    def append_customer_followup(
+        self,
+        ticket_id: str,
+        body_redacted: str,
+        customer_id: Optional[str] = None,
+        traceparent: Optional[str] = None,
+        message_hash: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return self._post_tool(
+            "append_customer_followup",
+            {
+                "ticket_id": ticket_id,
+                "body_redacted": body_redacted,
+                "customer_id": customer_id,
+                "traceparent": traceparent,
+                "message_hash": message_hash,
+            },
+        )

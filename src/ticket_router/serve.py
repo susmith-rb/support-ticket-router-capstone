@@ -190,8 +190,14 @@ def get_app(service_name: Optional[str] = None) -> FastAPI:
         raw_app = create_fastapi_app()
         return _instrument_fastapi_app(raw_app, svc)
 
+    if svc in ("review_ui", "human_review_ui"):
+        from ticket_router.agents.review_ui.server import create_app as create_review_ui_app
+
+        raw_app = create_review_ui_app()
+        return _instrument_fastapi_app(raw_app, svc)
+
     raise ValueError(
-        f"Unknown SERVICE '{svc}'. Must be one of: ticket_db, order_lookup, human_queue, faq_resolver"
+        f"Unknown SERVICE '{svc}'. Must be one of: ticket_db, order_lookup, human_queue, faq_resolver, review_ui"
     )
 
 

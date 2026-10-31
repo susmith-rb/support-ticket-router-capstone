@@ -144,7 +144,7 @@ steps:
 
         if [ -n "$${LAST_IMAGE}" ]; then
           echo "Rolling back Cloud Run services to last-good image: $${LAST_IMAGE}"
-          for svc in ticket-db-mcp order-lookup-mcp human-queue; do
+          for svc in ticket-db-mcp order-lookup-mcp human-queue human-review-ui; do
             echo "Rolling back Cloud Run service: $${svc}..."
             gcloud run services update "$${svc}" --image "$${LAST_IMAGE}" --region "${_REGION}" --quiet || true
           done
@@ -197,7 +197,12 @@ steps:
           # the long pole once Agent Engine updates are skipped). `wait PID` returns each
           # job's exit status, so any failure trips the ERR trap.
           PIDS=""
-          for svc in ticket-db-mcp order-lookup-mcp human-queue; do
+          for svc in ticket-db-mcp order-lookup-mcp human-queue human-review-ui; do
+            # Services are created by Terraform; skip one that does not exist yet (bootstrap) instead of failing.
+            if ! gcloud run services describe "$${svc}" --region "${_REGION}" --format="value(name)" >/dev/null 2>&1; then
+              echo "Cloud Run service $${svc} not found (created by Terraform on first apply); skipping"
+              continue
+            fi
             echo "Updating Cloud Run service $${svc} -> $${IMAGE_TAG}"
             gcloud run services update "$${svc}" --image "$${IMAGE_TAG}" --region "${_REGION}" --quiet &
             PIDS="$${PIDS} $$!"

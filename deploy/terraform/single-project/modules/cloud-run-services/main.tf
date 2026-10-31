@@ -318,6 +318,10 @@ resource "google_cloud_run_v2_service" "human_queue" {
         name  = "PURGE_INVOKER_EMAIL"
         value = var.purge_invoker_email
       }
+      env {
+        name  = "REVIEW_UI_CALLER_EMAILS"
+        value = google_service_account.sa_review_ui.email
+      }
 
       ports {
         container_port = 8080
@@ -362,5 +366,121 @@ resource "google_cloud_run_v2_service_iam_member" "human_queue_push_invoker" {
   name     = google_cloud_run_v2_service.human_queue[0].name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${var.sa_queue_push_email}"
+}
+
+# -----------------------------------------------------------------------------
+# 4. Human Review UI Service (IAP-protected web interface)
+# -----------------------------------------------------------------------------
+
+resource "google_service_account" "sa_review_ui" {
+  account_id   = "sa-review-ui"
+  display_name = "Human Review UI Service Account"
+  project      = var.project_id
+}
+
+# Invoker for human-queue: sa-review-ui ONLY (REQ-AUTH-010)
+resource "google_cloud_run_v2_service_iam_member" "human_queue_invoker_review_ui" {
+  count    = local.service_count
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.human_queue[0].name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.sa_review_ui.email}"
+}
+
+data "google_project" "project" {
+  project_id = var.project_id
+}
+
+resource "google_cloud_run_v2_service" "human_review_ui" {
+  provider = google-beta
+
+  lifecycle {
+    ignore_changes = [template[0].containers[0].image, client, client_version, scaling]
+  }
+
+  count        = local.service_count
+  name         = "human-review-ui"
+  location     = var.region
+  project      = var.project_id
+  ingress      = "INGRESS_TRAFFIC_ALL"
+  launch_stage = "BETA"
+  iap_enabled  = true
+
+  template {
+    service_account = google_service_account.sa_review_ui.email
+
+    scaling {
+      min_instance_count = var.min_instance_count
+      max_instance_count = var.max_instance_count
+    }
+
+    containers {
+      image = var.agents_image
+
+      env {
+        name  = "SERVICE"
+        value = "review_ui"
+      }
+      env {
+        name  = "PROJECT_ID"
+        value = var.project_id
+      }
+      env {
+        name  = "REGION"
+        value = var.region
+      }
+      env {
+        name  = "HUMAN_QUEUE_URL"
+        value = length(google_cloud_run_v2_service.human_queue) > 0 ? google_cloud_run_v2_service.human_queue[0].uri : var.human_queue_url
+      }
+      env {
+        name  = "IAP_EXPECTED_AUDIENCE"
+        value = "/projects/${data.google_project.project.number}/locations/${var.region}/services/human-review-ui"
+      }
+      env {
+        name  = "ENABLE_CLOUD_TRACE"
+        value = "1"
+      }
+      env {
+        name  = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
+        value = "NO_CONTENT"
+      }
+
+      ports {
+        container_port = 8080
+      }
+
+      resources {
+        limits = {
+          cpu    = "1"
+          memory = "512Mi"
+        }
+      }
+    }
+  }
+
+  labels = var.labels
+}
+
+# Invoker for human-review-ui: IAP service agent (required by Cloud Run direct IAP)
+resource "google_cloud_run_v2_service_iam_member" "human_review_ui_iap_invoker" {
+  count    = local.service_count
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.human_review_ui[0].name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-iap.iam.gserviceaccount.com"
+}
+
+# Reps authorized to access review UI through IAP
+resource "google_iap_web_cloud_run_service_iam_member" "review_ui_reps" {
+  provider               = google-beta
+  for_each               = local.service_count > 0 ? toset(var.review_ui_reps) : toset([])
+  project                = var.project_id
+  location               = var.region
+  cloud_run_service_name = google_cloud_run_v2_service.human_review_ui[0].name
+  role                   = "roles/iap.httpsResourceAccessor"
+  member                 = each.value
 }
 
