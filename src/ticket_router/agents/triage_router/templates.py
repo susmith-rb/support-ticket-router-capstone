@@ -121,8 +121,36 @@ FOLLOWUP_CALMING_REPLY_TEMPLATE = (
 )
 
 
-def render_followup_calming_reply(ticket_id: str) -> str:
-    """Render a deterministic calming reply for customer follow-up on an active holding ticket."""
-    return FOLLOWUP_CALMING_REPLY_TEMPLATE.format(ticket_id=ticket_id)
+def render_followup_calming_reply(
+    ticket_id: str,
+    session_id: Optional[str] = None,
+) -> str:
+    """Render a deterministic calming reply for customer follow-up on an active holding ticket.
+
+    Guarantees:
+    - Never displays a database UUID to customers.
+    - If a UUID is passed, derives human-readable TICK-<...> from session_id or ticket_id.
+    """
+    import uuid
+
+    display_id = str(ticket_id)
+    is_uuid = False
+    try:
+        uuid.UUID(display_id)
+        is_uuid = True
+    except (ValueError, AttributeError, TypeError):
+        is_uuid = False
+
+    if is_uuid:
+        if session_id:
+            display_id = f"TICK-{str(session_id)[:8]}"
+        else:
+            clean_hex = display_id.replace("-", "")
+            display_id = f"TICK-{clean_hex[:8]}"
+    elif not display_id.startswith("TICK-") and session_id:
+        display_id = f"TICK-{str(session_id)[:8]}"
+
+    return FOLLOWUP_CALMING_REPLY_TEMPLATE.format(ticket_id=display_id)
+
 
 

@@ -6,12 +6,26 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Sequence, Tuple
+import re
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
 
 WITHHELD_VALUE = "<withheld>"
 WITHHELD_INFO_TYPES = frozenset({"CREDIT_CARD_NUMBER"})
+
+NEUTRAL_PHRASES: Dict[str, str] = {
+    "EMAIL_ADDRESS": "your email address",
+    "PHONE_NUMBER": "your phone number",
+    "PERSON_NAME": "your name",
+    "CREDIT_CARD_NUMBER": "your card",
+    "STREET_ADDRESS": "your address",
+    "US_SOCIAL_SECURITY_NUMBER": "your social security number",
+    "IBAN_CODE": "your account number",
+    "ORDER_ID": "your order number",
+}
+
+TOKEN_PATTERN = re.compile(r"\[([A-Z_]+)(?:_\d+)?\]")
 
 
 def tokenize_pii(
@@ -120,3 +134,43 @@ def tokenize_pii(
     tokenized_text = "".join(chunks)
 
     return tokenized_text, mapping
+
+
+def restore_pii_tokens(
+    text: Optional[str],
+    pii_mapping: Optional[Dict[str, str]] = None,
+) -> str:
+    """Restore in-memory PII tokens for customer-facing presentation in the same turn.
+
+    # REQ-STORE-009:
+    # 1. Tokens matching in-memory pii_mapping are replaced with original values.
+    # 2. Exception: Mapping values '<withheld>' must NOT be inserted; drop/neutralize instead
+    #    (e.g. replace [CREDIT_CARD_NUMBER_1] with 'your card').
+    # 3. Any token without a mapping is replaced with a neutral phrase
+    #    (e.g. '[EMAIL_ADDRESS_1]' -> 'your email address').
+    # 4. Clean duplicate 'your your' phrasing if a token was preceded by 'your'.
+    """
+    if not text:
+        return "" if text is None else text
+
+    mapping = pii_mapping or {}
+
+    def _replace_token(match: re.Match[str]) -> str:
+        token = match.group(0)
+        info_type = match.group(1).upper()
+        neutral = NEUTRAL_PHRASES.get(info_type, f"your {info_type.lower().replace('_', ' ')}")
+
+        if token in mapping:
+            val = mapping[token]
+            if val == WITHHELD_VALUE or val == "<withheld>":
+                return neutral
+            return str(val)
+
+        # Unmapped token -> neutral phrase
+        return neutral
+
+    restored = TOKEN_PATTERN.sub(_replace_token, text)
+    # Deduplicate any 'your your' / 'Your your' resulting from replacement
+    restored = re.sub(r"\b([Yy]our)\s+your\b", r"\1", restored)
+    return restored
+

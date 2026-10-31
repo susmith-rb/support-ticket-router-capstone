@@ -22,6 +22,7 @@ from typing import Any, Dict, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from ticket_router.mcp.ticket_db.schemas import (
     AppendCustomerFollowupRequest,
@@ -465,6 +466,15 @@ def create_app(
         version="0.1.0",
         description="MCP server for ticket persistence, lifecycle events, and audited PII re-identification.",
     )
+
+    @application.exception_handler(TimeoutError)
+    async def timeout_error_handler(request: Request, exc: TimeoutError) -> JSONResponse:
+        logger.error("Database connection timeout: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "database_timeout", "error": str(exc)},
+        )
+
     application.state.ticket_repo = repo
     application.state.customer_repo = customer_repo
     application.state.pii_store = redaction_store if redaction_store is not None else {}

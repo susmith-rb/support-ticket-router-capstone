@@ -108,11 +108,14 @@ class FakeModelArmorWithSdp:
 
 def _fake_tier2_invoker(text: str) -> RouterPrediction:
     return RouterPrediction(
-        intent="returns_refunds",
+        escalate=False,
         escalate_prob=0.1,
-        intent_prob=0.95,
         sentiment="neutral",
+        sentiment_prob=0.9,
         urgency="normal",
+        urgency_prob=0.9,
+        intent="returns_refunds",
+        intent_prob=0.95,
         latency_ms=15.0,
     )
 
@@ -341,6 +344,7 @@ def test_triage_redaction_tier0_urgent_policy_tokenizes_pii():
     policy = TriagePolicy(
         thresholds=RouterThresholds(),
         model_armor_client=fake_ma,
+        tier2_invoker=_fake_tier2_invoker,
     )
     decision = policy.evaluate(
         text=user_msg,
@@ -375,6 +379,7 @@ def test_triage_redaction_tier0_urgent_agent_persists_redacted_body_and_envelope
     policy = TriagePolicy(
         thresholds=RouterThresholds(),
         model_armor_client=fake_ma,
+        tier2_invoker=_fake_tier2_invoker,
     )
     mcp_client = InMemoryTicketDbMcpClient()
     handoff = HumanHandoff(ticket_db_client=mcp_client, publisher=FakePublisher())
@@ -439,3 +444,112 @@ def test_triage_redaction_tier0_urgent_model_armor_raising_still_escalates():
     assert decision.escalate is True
     assert decision.tokenized_text is None
     assert decision.pii_mapping == {}
+
+
+# REQ-STORE-009
+def test_customer_reply_restores_tokens_while_persistence_and_logs_keep_tokens():
+    """Verify that text returned to customer restores that turn's in-memory tokens,
+
+    while persisted ticket bodies and decision records strictly retain tokens.
+    """
+    mcp_client = InMemoryTicketDbMcpClient()
+    email = "bob.builder@customer.example"
+    user_msg = f"Can you send tracking info to {email}?"
+
+    fake_ma = FakeModelArmorWithSdp(targets=[email])
+
+    class A2AWithTokens:
+        def handoff(self, payload):
+            # FaqResolver echoes the tokenized placeholder in its generated answer
+            return {
+                "status": "AUTO_RESOLVED",
+                "answer": "We sent your tracking details to registered email ([EMAIL_ADDRESS_1]).",
+                "citations": [{"id": "faq_1"}],
+            }
+
+    policy = TriagePolicy(
+        thresholds=RouterThresholds(),
+        model_armor_client=fake_ma,
+        tier2_invoker=_fake_tier2_invoker,
+    )
+
+    agent = TriageRouterAgent(
+        policy=policy,
+        mcp_client=mcp_client,
+        a2a_client=A2AWithTokens(),
+        lazy_init=False,
+    )
+
+    res = agent.triage(
+        session_id="sess-token-restore-1",
+        message_text=user_msg,
+    )
+
+    assert res.status_code == 200
+    # 1. Customer-facing reply restored [EMAIL_ADDRESS_1] to raw email
+    assert res.handoff_response is not None
+    customer_answer = res.handoff_response.get("answer", "")
+    assert email in customer_answer
+    assert "[EMAIL_ADDRESS_1]" not in customer_answer
+    assert customer_answer == f"We sent your tracking details to registered email ({email})."
+    assert res.to_dict()["answer"] == customer_answer
+
+    # 2. Persisted ticket body strictly keeps tokenized placeholder
+    assert len(mcp_client.tickets) > 0
+    ticket_row = list(mcp_client.tickets.values())[0]
+    assert "[EMAIL_ADDRESS_1]" in ticket_row["body_redacted"]
+    assert email not in ticket_row["body_redacted"]
+
+
+# REQ-STORE-009
+def test_customer_reply_withheld_and_unmapped_token_neutralization():
+    """Verify that '<withheld>' is never exposed to customers and unmapped tokens use neutral phrasing."""
+    mcp_client = InMemoryTicketDbMcpClient()
+    email = "diana@customer.example"
+    user_msg = f"Check my order with {email}"
+
+    fake_ma = FakeModelArmorWithSdp(targets=[email])
+
+    class A2AWithMultipleTokens:
+        def handoff(self, payload):
+            # Contains mapped email, withheld card, and unmapped phone token
+            return {
+                "status": "AUTO_RESOLVED",
+                "answer": "Sent to [EMAIL_ADDRESS_1]. We charged [CREDIT_CARD_NUMBER_1]. Confirmation sent to [PHONE_NUMBER_1].",
+            }
+
+    policy = TriagePolicy(
+        thresholds=RouterThresholds(),
+        model_armor_client=fake_ma,
+        tier2_invoker=_fake_tier2_invoker,
+    )
+
+    agent = TriageRouterAgent(
+        policy=policy,
+        mcp_client=mcp_client,
+        a2a_client=A2AWithMultipleTokens(),
+        lazy_init=False,
+    )
+
+    res = agent.triage(
+        session_id="sess-token-neutral-1",
+        message_text=user_msg,
+    )
+
+    assert res.status_code == 200
+    assert res.handoff_response is not None
+    customer_answer = res.handoff_response.get("answer", "")
+
+    # Mapped token is restored
+    assert email in customer_answer
+    assert "[EMAIL_ADDRESS_1]" not in customer_answer
+
+    # Withheld token is neutralized (never '<withheld>')
+    assert "<withheld>" not in customer_answer
+    assert "[CREDIT_CARD_NUMBER_1]" not in customer_answer
+    assert "your card" in customer_answer
+
+    # Unmapped token is replaced with neutral phrase
+    assert "[PHONE_NUMBER_1]" not in customer_answer
+    assert "your phone number" in customer_answer
+

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional, Protocol, Tuple, runtime_checkable
@@ -17,8 +18,13 @@ from requests.adapters import HTTPAdapter
 
 from ticket_router.common.idtoken import get_id_token
 from ticket_router.common.observability import get_current_traceparent, start_span
-from ticket_router.common.resilience import TICKET_DB_MCP_TIMEOUT_S
+from ticket_router.common.resilience import (
+    TICKET_DB_HOLD_LOOKUP_TIMEOUT_S,
+    TICKET_DB_MCP_TIMEOUT_S,
+)
 from ticket_router.store.ids import canonical_ticket_uuid
+
+logger = logging.getLogger(__name__)
 
 
 def _create_pooled_session() -> requests.Session:
@@ -321,14 +327,21 @@ class HttpTicketDbMcpClient:
         token_provider: Optional[Callable[[str], Optional[str]]] = None,
         session: Optional[Any] = None,
         audience: Optional[str] = None,
+        hold_lookup_timeout_s: float = TICKET_DB_HOLD_LOOKUP_TIMEOUT_S,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.audience = audience or self.base_url
         self.timeout_s = timeout_s
+        self.hold_lookup_timeout_s = hold_lookup_timeout_s
         self.token_provider = token_provider or get_id_token
         self.session = session if session is not None else _create_pooled_session()
 
-    def _post_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    def _post_tool(
+        self,
+        tool_name: str,
+        arguments: Dict[str, Any],
+        timeout_s: Optional[float] = None,
+    ) -> Dict[str, Any]:
         url = f"{self.base_url}/tools/{tool_name}"
         headers = {"Content-Type": "application/json"}
         token = None
@@ -341,15 +354,17 @@ class HttpTicketDbMcpClient:
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
+        effective_timeout = timeout_s if timeout_s is not None else self.timeout_s
+
         with start_span(f"mcp.ticket_db.{tool_name}", attributes={"mcp.tool": tool_name}) as span:
             if tp := (getattr(span, "traceparent", None) or get_current_traceparent()):
                 headers["traceparent"] = tp
 
             data_bytes = json.dumps(arguments).encode("utf-8")
             if hasattr(self.session, "app"):
-                resp = self.session.post(url, content=data_bytes, headers=headers, timeout=self.timeout_s)
+                resp = self.session.post(url, content=data_bytes, headers=headers, timeout=effective_timeout)
             else:
-                resp = self.session.post(url, data=data_bytes, headers=headers, timeout=self.timeout_s)
+                resp = self.session.post(url, data=data_bytes, headers=headers, timeout=effective_timeout)
             resp.raise_for_status()
             return resp.json()
 
@@ -418,13 +433,27 @@ class HttpTicketDbMcpClient:
         session_id: str,
         customer_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        resp = self._post_tool(
-            "get_active_ticket_for_session",
-            {"session_id": session_id, "customer_id": customer_id},
-        )
-        if resp and resp.get("ticket_id"):
-            return resp
-        return None
+        try:
+            resp = self._post_tool(
+                "get_active_ticket_for_session",
+                {"session_id": session_id, "customer_id": customer_id},
+                timeout_s=self.hold_lookup_timeout_s,
+            )
+            if resp and resp.get("ticket_id"):
+                return resp
+            return None
+        except Exception as exc:
+            logger.warning(
+                json.dumps(
+                    {
+                        "event": "get_active_ticket_failed_open",
+                        "session_id": session_id,
+                        "error_type": type(exc).__name__,
+                    },
+                    separators=(",", ":"),
+                )
+            )
+            return None
 
     def append_customer_followup(
         self,

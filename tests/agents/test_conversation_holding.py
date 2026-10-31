@@ -196,17 +196,20 @@ def test_followup_attaches_to_holding_ticket_with_zero_model_calls():
     assert len(publisher.published_messages) == 1, "Should not re-publish escalation event on follow-up"
 
     # Verifications on decision and response
-    assert res2.ticket_id == holding_tid
+    expected_human_tid = res1.ticket_id
+    assert res2.ticket_id == expected_human_tid
     assert res2.decision.decision == "escalate"
     assert res2.decision.tier == "human_holding"
     assert res2.decision.predicted_intent == "followup"
-    assert res2.calming_ack == render_followup_calming_reply(holding_tid)
-    assert f"ticket #{holding_tid}" in res2.calming_ack
+    assert res2.calming_ack == render_followup_calming_reply(expected_human_tid)
+    assert f"ticket #{expected_human_tid}" in res2.calming_ack
+    assert holding_tid not in res2.calming_ack, "DB UUID must never be exposed to customers"
 
     assert res2.handoff_response is not None
     assert res2.handoff_response["status"] == "ESCALATED"
     assert res2.handoff_response["route"] == "followup"
-    assert res2.handoff_response["ticket_id"] == holding_tid
+    assert res2.handoff_response["ticket_id"] == expected_human_tid
+    assert res2.handoff_response["holding_ticket_uuid"] == holding_tid
     assert res2.handoff_response["handoff_done"] is True
 
     # Audit event appended to ticket
@@ -220,8 +223,9 @@ def test_followup_attaches_to_holding_ticket_with_zero_model_calls():
         session_id=session_id,
         message_text="Also, please check on my refund status while you review this.",
     )
-    assert res3.ticket_id == holding_tid
-    assert res3.calming_ack == render_followup_calming_reply(holding_tid)
+    assert res3.ticket_id == expected_human_tid
+    assert res3.calming_ack == render_followup_calming_reply(expected_human_tid)
+    assert holding_tid not in res3.calming_ack, "DB UUID must never be exposed to customers"
     followup_events_after = [e for e in mcp_client.events if e.get("event_type") == "customer_followup"]
     assert len(followup_events_after) == 1, "Duplicate message should be deduplicated"
 

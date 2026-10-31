@@ -112,3 +112,50 @@ def test_tokenize_edge_cases():
     res_txt, res_map = tokenize_pii(txt, malformed)
     assert res_txt == txt
     assert res_map == {}
+
+
+# REQ-STORE-009
+def test_restore_pii_tokens_mapped_unmapped_withheld():
+    """Verify restoring tokens: mapped values inserted, withheld neutralized, unmapped neutralized."""
+    from ticket_router.security.pii_tokens import restore_pii_tokens
+
+    mapping = {
+        "[EMAIL_ADDRESS_1]": "alice@customer.example",
+        "[CREDIT_CARD_NUMBER_1]": "<withheld>",
+        "[PHONE_NUMBER_1]": "+1-555-0199",
+    }
+
+    # 1. Mapped token is restored to original customer value
+    text1 = "A confirmation was sent to [EMAIL_ADDRESS_1] and call [PHONE_NUMBER_1]."
+    restored1 = restore_pii_tokens(text1, mapping)
+    assert restored1 == "A confirmation was sent to alice@customer.example and call +1-555-0199."
+
+    # 2. Withheld card number is NEVER inserted into customer-facing text
+    text2 = "We billed [CREDIT_CARD_NUMBER_1] for order ORD-123."
+    restored2 = restore_pii_tokens(text2, mapping)
+    assert "<withheld>" not in restored2
+    assert "your card" in restored2
+    assert restored2 == "We billed your card for order ORD-123."
+
+    # With 'your [CREDIT_CARD_NUMBER_1]' phrasing, duplicate 'your your' is cleaned up
+    text2b = "We charged your [CREDIT_CARD_NUMBER_1] for this order."
+    restored2b = restore_pii_tokens(text2b, mapping)
+    assert "<withheld>" not in restored2b
+    assert "your your" not in restored2b
+    assert restored2b == "We charged your card for this order."
+
+    # 3. Unmapped token is replaced with neutral phrasing (e.g. "[EMAIL_ADDRESS_1]" -> "your email address")
+    text3 = "A confirmation has been sent to your registered email address ([EMAIL_ADDRESS_1])."
+    restored3 = restore_pii_tokens(text3, {})
+    assert "[EMAIL_ADDRESS_1]" not in restored3
+    assert restored3 == "A confirmation has been sent to your registered email address (your email address)."
+
+    # 4. Unmapped tokens for other types use clean neutral phrases
+    assert restore_pii_tokens("Call [PHONE_NUMBER_2].", {}) == "Call your phone number."
+    assert restore_pii_tokens("Hello [PERSON_NAME_1]!", {}) == "Hello your name!"
+    assert restore_pii_tokens("Sent to [STREET_ADDRESS_1].", {}) == "Sent to your address."
+
+    # 5. Empty or None input handled cleanly
+    assert restore_pii_tokens("") == ""
+    assert restore_pii_tokens(None) == ""
+

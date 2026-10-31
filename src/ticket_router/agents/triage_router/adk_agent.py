@@ -18,6 +18,7 @@ from pydantic import PrivateAttr
 from ticket_router.agents.triage_router.agent import TriageResult, TriageRouterAgent
 from ticket_router.agents.triage_router.templates import render_card_data_blocked_reply
 from ticket_router.common.observability import configure_tracing, flush_traces
+from ticket_router.security.pii_tokens import restore_pii_tokens
 
 # Invariant: Force GenAI auto-instrumentation to never capture raw message content
 os.environ.setdefault("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "NO_CONTENT")
@@ -219,26 +220,27 @@ def extract_oauth_access_token(ctx: Any, auth_id: Optional[str] = None) -> Optio
 
 def extract_answer_from_result(result: TriageResult) -> str:
     """Extract final user-facing text from TriageResult for response event."""
+    ans = ""
     if result.decision.decision == "blocked":
-        return result.calming_ack or render_card_data_blocked_reply()
-    if result.decision.decision == "escalate":
-        return result.calming_ack or "Your request has been routed to our specialist team."
-    if result.decision.decision == "reject_oos":
-        return result.calming_ack or "I can only assist with Global Retail Hub customer support inquiries."
-    if result.handoff_response:
-        ans = result.handoff_response.get("answer")
-        if ans:
-            return str(ans)
-        calming = result.handoff_response.get("calming_ack")
-        if calming:
-            return str(calming)
-        msg = result.handoff_response.get("message")
-        if msg:
-            return str(msg)
-        status = result.handoff_response.get("status")
-        if status:
-            return f"Your request has been routed for automated resolution (status: {status})."
-    return "Your request has been received and processed."
+        ans = result.calming_ack or render_card_data_blocked_reply()
+    elif result.decision.decision == "escalate":
+        ans = result.calming_ack or "Your request has been routed to our specialist team."
+    elif result.decision.decision == "reject_oos":
+        ans = result.calming_ack or "I can only assist with Global Retail Hub customer support inquiries."
+    elif result.handoff_response:
+        if result.handoff_response.get("answer"):
+            ans = str(result.handoff_response.get("answer"))
+        elif result.handoff_response.get("calming_ack"):
+            ans = str(result.handoff_response.get("calming_ack"))
+        elif result.handoff_response.get("message"):
+            ans = str(result.handoff_response.get("message"))
+        elif result.handoff_response.get("status"):
+            ans = f"Your request has been routed for automated resolution (status: {result.handoff_response.get('status')})."
+    if not ans:
+        ans = "Your request has been received and processed."
+
+    pii_map = getattr(result.decision, "pii_mapping", None) or {}
+    return restore_pii_tokens(ans, pii_map)
 
 
 def create_event(

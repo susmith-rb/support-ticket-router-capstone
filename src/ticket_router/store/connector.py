@@ -36,6 +36,7 @@ class CloudSqlConnectionManager:
         password: Optional[str] = None,
         enable_iam_auth: bool = True,
         ip_type: Optional[Any] = None,
+        connect_timeout_s: float = 10.0,
     ) -> None:
         if not _HAS_CONNECTOR:
             raise ImportError(
@@ -48,12 +49,18 @@ class CloudSqlConnectionManager:
         self.user = user
         self.password = password
         self.enable_iam_auth = enable_iam_auth
-        self.ip_type = ip_type or IPTypes.PUBLIC
+        if ip_type is not None:
+            self.ip_type = ip_type
+        elif IPTypes is not None:
+            self.ip_type = IPTypes.PUBLIC
+        else:
+            self.ip_type = "PUBLIC"
+        self.connect_timeout_s = connect_timeout_s
         self._connector: Optional[Connector] = None
 
     def _get_connector(self) -> Connector:
         if self._connector is None:
-            self._connector = Connector()
+            self._connector = Connector(timeout=int(self.connect_timeout_s))
         return self._connector
 
     def get_connection(self):
@@ -65,6 +72,7 @@ class CloudSqlConnectionManager:
             "db": self.database,
             "ip_type": self.ip_type,
             "enable_iam_auth": self.enable_iam_auth,
+            "timeout": int(self.connect_timeout_s),
         }
         if self.user:
             connect_args["user"] = self.user

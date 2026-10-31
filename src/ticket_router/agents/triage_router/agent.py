@@ -19,6 +19,7 @@ import logging
 import os
 import threading
 import time
+import uuid
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Callable, Dict, Optional
 
@@ -73,6 +74,7 @@ from ticket_router.security.model_armor import (
     ModelArmorClientProtocol,
     ModelArmorVerdict,
 )
+from ticket_router.security.pii_tokens import restore_pii_tokens
 from ticket_router.store.ids import canonical_ticket_uuid
 
 logger = logging.getLogger(__name__)
@@ -744,9 +746,44 @@ class TriageRouterAgent:
                     if tokenized_text
                     else (sanitized_text if sanitized_text else message_text)
                 )
+
+                # REQ-AGENT-033: Derive human-readable ticket reference (never leak DB UUID to customers)
+                held_decision = active_ticket.get("decision")
+                if isinstance(held_decision, str):
+                    try:
+                        held_decision = json.loads(held_decision)
+                    except Exception:
+                        held_decision = None
+
+                stored_tid = None
+                if isinstance(held_decision, dict):
+                    stored_tid = held_decision.get("ticket_id")
+
+                held_sess = (
+                    active_ticket.get("session_id")
+                    or (isinstance(held_decision, dict) and held_decision.get("session_id"))
+                    or session_id
+                )
+
+                def _is_uuid_str(val: Any) -> bool:
+                    try:
+                        uuid.UUID(str(val))
+                        return True
+                    except (ValueError, AttributeError, TypeError):
+                        return False
+
+                if not _is_uuid_str(holding_tid):
+                    customer_ticket_id = holding_tid
+                elif stored_tid and not _is_uuid_str(stored_tid):
+                    customer_ticket_id = str(stored_tid)
+                elif held_sess:
+                    customer_ticket_id = f"TICK-{str(held_sess)[:8]}"
+                else:
+                    customer_ticket_id = f"TICK-{session_id[:8]}"
+
                 if pii_mapping:
                     self._save_redaction_map_if_needed(
-                        ticket_id=holding_tid,
+                        ticket_id=customer_ticket_id,
                         ticket_uuid=holding_tid,
                         customer_id=ticket_customer_id,
                         mapping=pii_mapping,
@@ -770,7 +807,11 @@ class TriageRouterAgent:
                         )
                     )
 
-                calming_ack = render_followup_calming_reply(ticket_id=holding_tid)
+                calming_ack = render_followup_calming_reply(
+                    ticket_id=customer_ticket_id,
+                    session_id=session_id,
+                )
+                calming_ack = restore_pii_tokens(calming_ack, pii_mapping)
                 elapsed_ms = (time.monotonic() - start_time) * 1000.0
 
                 turn_span.set_attribute("decision", "escalate")
@@ -780,7 +821,7 @@ class TriageRouterAgent:
                 turn_span.set_attribute("predicted_intent", "followup")
 
                 followup_decision = RouterDecision(
-                    ticket_id=holding_tid,
+                    ticket_id=customer_ticket_id,
                     session_id=session_id,
                     decision="escalate",
                     tier="human_holding",
@@ -793,13 +834,17 @@ class TriageRouterAgent:
                     degraded=False,
                     calming_ack=calming_ack,
                     latency_ms=elapsed_ms,
-                    details={"holding_ticket_id": holding_tid, "queue": holding_queue},
+                    details={
+                        "holding_ticket_id": customer_ticket_id,
+                        "holding_ticket_uuid": holding_tid,
+                        "queue": holding_queue,
+                    },
                     customer_verified=bool(active_ticket.get("customer_verified", False)),
                     tokenized_text=tokenized_text,
                     pii_mapping=pii_mapping,
                 )
                 self.logger.log_decision(
-                    ticket_id=holding_tid,
+                    ticket_id=customer_ticket_id,
                     session_id=session_id,
                     decision="escalate",
                     tier="human_holding",
@@ -810,7 +855,7 @@ class TriageRouterAgent:
                     predicted_intent="followup",
                 )
                 return TriageResult(
-                    ticket_id=holding_tid,
+                    ticket_id=customer_ticket_id,
                     session_id=session_id,
                     decision=followup_decision,
                     calming_ack=calming_ack,
@@ -818,7 +863,8 @@ class TriageRouterAgent:
                         "status": "ESCALATED",
                         "route": "followup",
                         "answer": calming_ack,
-                        "ticket_id": holding_tid,
+                        "ticket_id": customer_ticket_id,
+                        "holding_ticket_uuid": holding_tid,
                         "queue": holding_queue,
                         "handoff_done": True,
                     },
@@ -1131,6 +1177,18 @@ class TriageRouterAgent:
                 traceparent=traceparent,
                 predicted_intent=decision.predicted_intent,
             )
+
+            # Restore in-memory PII tokens for customer-facing reply paths (REQ-STORE-009)
+            if calming_ack:
+                calming_ack = restore_pii_tokens(calming_ack, pii_mapping)
+            if isinstance(handoff_resp, dict):
+                handoff_resp = dict(handoff_resp)
+                if handoff_resp.get("answer"):
+                    handoff_resp["answer"] = restore_pii_tokens(str(handoff_resp["answer"]), pii_mapping)
+                if handoff_resp.get("calming_ack"):
+                    handoff_resp["calming_ack"] = restore_pii_tokens(str(handoff_resp["calming_ack"]), pii_mapping)
+                if handoff_resp.get("message"):
+                    handoff_resp["message"] = restore_pii_tokens(str(handoff_resp["message"]), pii_mapping)
 
             return TriageResult(
                 ticket_id=t_id,
