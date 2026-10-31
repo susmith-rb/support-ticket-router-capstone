@@ -1,0 +1,13 @@
+# deploy/k8s/faq-resolver/ksa-agent.yaml
+# REQ-AUTH-008: Dedicated Kubernetes ServiceAccount for FaqResolver GKE Agent Identity.
+# MUST NOT carry the iam.gke.io/gcp-service-account annotation: if annotated,
+# the GKE metadata server intercepts token requests and impersonates sa-faq
+# instead of issuing agent-identity SPIFFE tokens, causing 403 on Google API calls.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ksa-faq-agent
+  namespace: faq-resolver
+  labels:
+    app.kubernetes.io/part-of: support-ticket-router
+    app.kubernetes.io/name: faq-resolver

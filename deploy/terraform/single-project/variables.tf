@@ -209,3 +209,9 @@ variable "human_queue_url" {
   type        = string
   default     = "https://human-queue-34mwh7k34a-uc.a.run.app"
 }
+
+variable "faq_agent_identity" {
+  description = "FaqResolver identity mode passed to CD as _FAQ_AGENT_IDENTITY (\"1\" = SPIFFE agent identity, \"0\" = Workload Identity rollback) (REQ-AUTH-008)"
+  type        = string
+  default     = "0"
+}

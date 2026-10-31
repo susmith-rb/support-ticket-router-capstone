@@ -11,6 +11,7 @@ spec:
         iam.gke.io/inject-podcertificates: null
         iam.gke.io/spiffe-identity-type: null
     spec:
+      serviceAccountName: ksa-faq
       containers:
       - name: faq-resolver
         env:

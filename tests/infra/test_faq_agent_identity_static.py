@@ -9,7 +9,7 @@ Verifies:
      - iam.gke.io/identity: "spiffe://agents.global.org-349636765856.system.id.goog/*"
      - iam.gke.io/inject-podcertificates: "true"
      - iam.gke.io/spiffe-identity-type: "agent-identity"
-   - spec.serviceAccountName: ksa-faq
+   - spec.serviceAccountName: ksa-faq (base manifest); ksa-agent.yaml defines ksa-faq-agent without GCP SA annotation
    - Container env:
      - FAQ_AGENT_IDENTITY == "1"
      - GOOGLE_API_ENABLE_RUNTIME_BOUND_TOKEN == "false"
@@ -17,8 +17,10 @@ Verifies:
    - agents-iam: router predictionUser (standard + dedicated), ticketRouterAgentInference custom role,
      discoveryengine.viewer, pubsub.publisher, cloudtrace.agent
    - model-armor: modelarmor.user
-   - cloud-run-services: run.invoker on order-lookup-mcp, ALLOWED_CALLER_SPIFFE_IDS env var,
+   - cloud-run-services: run.invoker on order-lookup-mcp and ticket-db-mcp, ALLOWED_CALLER_SPIFFE_IDS env var,
      and variables for redaction_kms_key, purge_audience, purge_invoker_email
+3. agents.auto.tfvars:
+   - faq_agent_principal ends with /sa/ksa-faq-agent
 """
 
 from __future__ import annotations
@@ -83,7 +85,9 @@ def test_faq_deployment_requests_spiffe_agent_identity() -> None:
     assert patch_annotations.get("iam.gke.io/identity") == "spiffe://agents.global.org-349636765856.system.id.goog/*"
     assert patch_annotations.get("iam.gke.io/inject-podcertificates") == "true"
     assert patch_annotations.get("iam.gke.io/spiffe-identity-type") == "agent-identity"
-    patch_env = {e["name"]: e["value"] for e in patch["spec"]["template"]["spec"]["containers"][0]["env"]}
+    patch_spec = patch["spec"]["template"]["spec"]
+    assert patch_spec.get("serviceAccountName") == "ksa-faq-agent"
+    patch_env = {e["name"]: e["value"] for e in patch_spec["containers"][0]["env"]}
     assert patch_env.get("FAQ_AGENT_IDENTITY") == "1"
     cd_yaml = (REPO_ROOT / "cicd" / "cloudbuild-deploy.yaml").read_text(encoding="utf-8")
     assert "faq-resolver-patches/agent-identity.patch.yaml" in cd_yaml
@@ -96,8 +100,20 @@ def test_faq_deployment_requests_spiffe_agent_identity() -> None:
     revert_annotations = revert["spec"]["template"]["metadata"]["annotations"]
     for key in patch_annotations:
         assert key in revert_annotations and revert_annotations[key] is None
-    revert_env = {e["name"]: e["value"] for e in revert["spec"]["template"]["spec"]["containers"][0]["env"]}
+    revert_spec = revert["spec"]["template"]["spec"]
+    assert revert_spec.get("serviceAccountName") == "ksa-faq"
+    revert_env = {e["name"]: e["value"] for e in revert_spec["containers"][0]["env"]}
     assert revert_env.get("FAQ_AGENT_IDENTITY") == "0"
+
+    # REQ-AUTH-008: ksa-agent.yaml exists and defines ksa-faq-agent without gcp-service-account annotation
+    ksa_agent_path = K8S_DEPLOYMENT.parent / "ksa-agent.yaml"
+    assert ksa_agent_path.is_file(), f"Missing ksa-agent.yaml: {ksa_agent_path}"
+    ksa_agent_doc = yaml.safe_load(ksa_agent_path.read_text(encoding="utf-8"))
+    assert ksa_agent_doc.get("kind") == "ServiceAccount"
+    assert ksa_agent_doc.get("metadata", {}).get("name") == "ksa-faq-agent"
+    assert ksa_agent_doc.get("metadata", {}).get("namespace") == "faq-resolver"
+    ksa_agent_annotations = ksa_agent_doc.get("metadata", {}).get("annotations") or {}
+    assert "iam.gke.io/gcp-service-account" not in ksa_agent_annotations
 
     spec = template.get("spec", {})
     assert spec.get("serviceAccountName") == "ksa-faq"
@@ -162,6 +178,9 @@ def test_agents_iam_module_faq_agent_principal_grants() -> None:
     assert "roles/cloudtrace.agent" in trace_block
     assert "var.faq_agent_principal" in trace_block
 
+    # 7. Invariant: deleted transitional workloadIdentityUser binding on sa-faq
+    assert "faq_agent_wi_user_on_sa_faq" not in main_tf
+
 
 # REQ-AUTH-008
 def test_model_armor_module_faq_agent_principal_grant() -> None:
@@ -185,6 +204,13 @@ def test_cloud_run_services_module_order_lookup_spiffe_grants() -> None:
     assert "roles/run.invoker" in inv_block
     assert "var.faq_agent_principal" in inv_block
 
+    # Ticket DB invoker grant for FaqResolver agent principal (REQ-AUTH-008 HumanHandoff)
+    assert 'resource "google_cloud_run_v2_service_iam_member" "ticket_db_invoker_faq_agent"' in main_tf
+    tdb_block = _extract_block(main_tf, r'resource\s+"google_cloud_run_v2_service_iam_member"\s+"ticket_db_invoker_faq_agent"')
+    assert "roles/run.invoker" in tdb_block
+    assert "var.faq_agent_principal" in tdb_block
+    assert "google_cloud_run_v2_service.ticket_db_mcp" in tdb_block
+
     # Order lookup env ALLOWED_CALLER_SPIFFE_IDS
     assert "ALLOWED_CALLER_SPIFFE_IDS" in main_tf
     assert "var.allowed_caller_spiffe_ids" in main_tf
@@ -194,3 +220,13 @@ def test_cloud_run_services_module_order_lookup_spiffe_grants() -> None:
     assert 'variable "redaction_kms_key"' in vars_tf
     assert 'variable "purge_audience"' in vars_tf
     assert 'variable "purge_invoker_email"' in vars_tf
+
+
+# REQ-AUTH-008
+def test_faq_agent_principal_tfvars() -> None:
+    """Verify faq_agent_principal in agents.auto.tfvars ends with /sa/ksa-faq-agent."""
+    tfvars = (TF_DIR / "agents.auto.tfvars").read_text(encoding="utf-8")
+    m = re.search(r'faq_agent_principal\s*=\s*"([^"]+)"', tfvars)
+    assert m is not None, "faq_agent_principal not found in agents.auto.tfvars"
+    assert m.group(1).endswith("/sa/ksa-faq-agent")
+

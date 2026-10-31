@@ -93,3 +93,13 @@ variable "triage_resource_name" {
   default     = "projects/620485621180/locations/us-central1/reasoningEngines/2170218524805431296"
 }
 
+
+variable "faq_agent_identity" {
+  description = "CD substitution _FAQ_AGENT_IDENTITY: \"1\" runs FaqResolver as ksa-faq-agent with GKE Agent Identity (SPIFFE), \"0\" = Workload Identity rollback (REQ-AUTH-008)"
+  type        = string
+  default     = "0"
+  validation {
+    condition     = contains(["0", "1"], var.faq_agent_identity)
+    error_message = "faq_agent_identity must be \"0\" or \"1\"."
+  }
+}

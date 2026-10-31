@@ -111,6 +111,17 @@ resource "google_cloud_run_v2_service_iam_member" "ticket_db_invoker_triage_agen
   member   = var.triage_agent_principal
 }
 
+# REQ-AUTH-008: Invoker for ticket-db-mcp: FaqResolver GKE Agent Identity SPIFFE principal
+# FaqResolver's HumanHandoff persists tickets via ticket-db-mcp.
+resource "google_cloud_run_v2_service_iam_member" "ticket_db_invoker_faq_agent" {
+  count    = local.service_count > 0 && var.faq_agent_principal != "" ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.ticket_db_mcp[0].name
+  role     = "roles/run.invoker"
+  member   = var.faq_agent_principal
+}
+
 # -----------------------------------------------------------------------------
 # 2. Order Lookup MCP Server
 # -----------------------------------------------------------------------------

@@ -33,7 +33,7 @@ from ticket_router.store.models import Order
 
 FAQ_SPIFFE_ID = (
     "spiffe://agents.global.org-349636765856.system.id.goog/resources/container/"
-    "projects/620485621180/locations/us-central1/clusters/support-agents/ns/faq-resolver/sa/ksa-faq"
+    "projects/620485621180/locations/us-central1/clusters/support-agents/ns/faq-resolver/sa/ksa-faq-agent"
 )
 UNAUTHORIZED_SPIFFE_ID = (
     "spiffe://agents.global.org-349636765856.system.id.goog/resources/container/"
