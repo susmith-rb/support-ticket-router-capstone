@@ -277,6 +277,12 @@ output "redaction_purge_sa_email" {
   value       = module.redaction_purge.service_account_email
 }
 
+output "triage_fallback_url" {
+  description = "Service URI for the warm Cloud Run fallback agent host (triage-fallback)"
+  value       = module.cloud_run_services.triage_fallback_url
+}
+
+
 
 
 

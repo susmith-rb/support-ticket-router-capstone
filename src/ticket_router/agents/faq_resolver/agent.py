@@ -224,6 +224,9 @@ class GeminiAnswerClient(LLMClientProtocol):
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Synthesize answer with mandatory citations based strictly on retrieved docs."""
+        from ticket_router.models.tier2_gemini import check_gemini_429_hook
+
+        check_gemini_429_hook()
         client = self._get_client()
         docs_context = json.dumps(list(retrieved_docs), indent=2)
         order_context = json.dumps(order_info or {}, indent=2)

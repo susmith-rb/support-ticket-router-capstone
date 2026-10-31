@@ -26,20 +26,15 @@ Resilience and fault-injection validation for TriageRouter and supporting micros
 - **Restoration**: Redeploys the model back to the dedicated endpoint with original traffic split (`0=100`) and min/max replicas.
 
 ### 2. `gemini_429_exhaustion` (Gemini API 429 Quota Exhaustion)
-- **Target**: Gemini 3.8 Flash (`router_tier2` and `answer` generation)
-- **Code Hook Gap Analysis**:
-  - `src/ticket_router/models/tier2_gemini.py` and `src/ticket_router/retrieval/answer_client.py` currently have no in-process fault-injection flag (such as `SIMULATE_GEMINI_429=1`).
-  - Because `src/ticket_router/**` must not be edited during load and chaos tasks per BOUNDARY rules, this experiment runs in safe dry-run simulation mode and documents the required code hook.
-  - **Required Code Hook**:
-    ```python
-    if os.environ.get("SIMULATE_GEMINI_429") == "1":
-        raise google.genai.errors.APIError(code=429, message="Resource Exhausted: Quota exceeded")
-    ```
+- **Target**: Gemini 3.8 Flash (`router_tier2`, `router_tier3`, and `answer` generation)
+- **Live Fault Injection Hook (`CHAOS_SIMULATE_GEMINI_429=1`)**:
+  - Call-time environment gate `check_gemini_429_hook()` (`src/ticket_router/models/tier2_gemini.py`) wired into `TriageRouterAgent` (`invoke_tier2_gemini`, `invoke_tier3_gemini`) and `FaqResolverAgent` (`GeminiAnswerClient.generate_answer`).
+  - Defaults off (`0` / unset); when `CHAOS_SIMULATE_GEMINI_429=1` is set in `--execute --confirm-destructive` mode, every Gemini invocation raises `google.genai.errors.APIError(429, {"error": {"code": 429, "message": "Resource Exhausted: Quota exceeded", "status": "RESOURCE_EXHAUSTED"}})`.
 - **Expected Degraded Behavior (`REQ-AGENT-011`, `REQ-AGENT-025`)**:
-  - Hedged call initiates attempt 1, attempts retry/hedge, and exceeds deadline.
-  - TriageRouter degrades to human escalation (`human-standard`, `degraded=True`).
+  - Hedged call initiates attempt 1, attempts retry/hedge, and exhausts retries/deadline.
+  - TriageRouter degrades to human escalation (`human-standard`, `degraded=True`) without raising an unhandled 500 error.
   - Sends a deterministic calming acknowledgement with SLA expectations to the user.
-- **Restoration**: Clears simulated fault state in `finally:`.
+- **Restoration**: Clears `CHAOS_SIMULATE_GEMINI_429` in `finally:` and verifies healthy post-restoration state.
 
 ### 3. `cloud_sql_restart` (Cloud SQL Zonal Database Outage)
 - **Target**: `ticket-store` in `susmith-fde-ticket-router` (PostgreSQL 16)

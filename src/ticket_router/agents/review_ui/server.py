@@ -2,6 +2,7 @@
 
 # REQ-AGENT-034: Human Review UI with Cloud Run IAP and Verified Rep Identity
 # REQ-AUTH-010: Human Review UI Rep Identity Assertion and sa-review-ui Least Privilege
+# REQ-AGENT-033: Multi-Turn Conversation Holding and Customer Follow-up Attachment
 """
 
 from __future__ import annotations
@@ -97,6 +98,7 @@ tr:hover {
 .badge-open { background: #e6f4ea; color: #137333; }
 .badge-assigned { background: #fef7e0; color: #b06000; }
 .badge-resolved { background: #f1f3f4; color: #5f6368; }
+.badge-returned_to_automation { background: #e8eaed; color: #3c4043; }
 .btn {
     display: inline-block;
     padding: 0.5rem 1rem;
@@ -358,7 +360,7 @@ def create_app(
         # Action forms
         actions_html = ""
         is_claimed_by_me = assigned == rep_id
-        if st_name != "resolved":
+        if st_name not in ("resolved", "returned_to_automation"):
             if not is_claimed_by_me:
                 actions_html = f"""
                 <form method="post" action="/tickets/{t_id}/claim">
@@ -375,10 +377,27 @@ def create_app(
                         <textarea name="resolution_notes" placeholder="Enter resolution notes..." required></textarea>
                         <button type="submit" class="btn btn-success">Resolve Ticket</button>
                     </form>
+                    <form method="post" action="/tickets/{t_id}/reopen" style="flex:1; min-width:300px;">
+                        <input type="hidden" name="target_status" value="returned_to_automation">
+                        <textarea name="reason" placeholder="Optional reason for returning to automation..."></textarea>
+                        <button type="submit" class="btn btn-secondary">Return to Automation (Reopen Bot)</button>
+                    </form>
                 </div>
                 """
         else:
-            actions_html = '<div class="alert alert-success">Ticket is resolved.</div>'
+            status_banner = (
+                '<div class="alert alert-success">Ticket is resolved.</div>'
+                if st_name == "resolved"
+                else '<div class="alert alert-info">Ticket is returned to automation.</div>'
+            )
+            reopen_form = f"""
+            <form method="post" action="/tickets/{t_id}/reopen" style="margin-top:1rem;">
+                <input type="hidden" name="target_status" value="open">
+                <textarea name="reason" placeholder="Optional reason for reopening to human queue..."></textarea>
+                <button type="submit" class="btn btn-primary">Reopen to Human Queue</button>
+            </form>
+            """
+            actions_html = f"{status_banner}\n{reopen_form}"
 
         # Events table
         event_rows = []
@@ -512,6 +531,33 @@ def create_app(
             logger.warning("Resolve failed for ticket %s: %s", ticket_id, exc)
             return RedirectResponse(
                 url=f"/tickets/{ticket_id}?error_msg=Failed+to+resolve+ticket",
+                status_code=303,
+            )
+
+    @app.post("/tickets/{ticket_id}/reopen", response_class=HTMLResponse)
+    async def reopen_ticket_action(
+        ticket_id: str,
+        request: Request,
+        rep_id: str = Depends(get_current_rep),
+        client: HumanQueueClient = Depends(get_queue_client),
+    ) -> RedirectResponse:
+        """Reopen ticket or return it to automation."""
+        body_bytes = await request.body()
+        form_data = parse_qs(body_bytes.decode("utf-8"))
+        target_status = form_data.get("target_status", ["returned_to_automation"])[0]
+        reason = form_data.get("reason", [""])[0]
+        try:
+            client.reopen_ticket(
+                ticket_id=ticket_id,
+                rep_id=rep_id,
+                reason=reason,
+                target_status=target_status,
+            )
+            return RedirectResponse(url=f"/tickets/{ticket_id}", status_code=303)
+        except Exception as exc:
+            logger.warning("Reopen failed for ticket %s: %s", ticket_id, exc)
+            return RedirectResponse(
+                url=f"/tickets/{ticket_id}?error_msg=Failed+to+reopen+ticket",
                 status_code=303,
             )
 

@@ -27,6 +27,13 @@ EXPECTED_TRIAGE_PERMISSIONS = {
     "aiplatform.sessions.run",
     "aiplatform.sessionEvents.append",
     "aiplatform.sessionEvents.list",
+    "aiplatform.memories.create",
+    "aiplatform.memories.delete",
+    "aiplatform.memories.generate",
+    "aiplatform.memories.get",
+    "aiplatform.memories.list",
+    "aiplatform.memories.retrieve",
+    "aiplatform.memories.update",
 }
 
 

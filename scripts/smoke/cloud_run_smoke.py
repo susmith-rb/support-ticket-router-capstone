@@ -35,6 +35,7 @@ logger = logging.getLogger("cloud_run_smoke")
 DEFAULT_TICKET_DB_URL = "https://ticket-db-mcp-34mwh7k34a-uc.a.run.app"
 DEFAULT_ORDER_LOOKUP_URL = "https://order-lookup-mcp-34mwh7k34a-uc.a.run.app"
 DEFAULT_HUMAN_QUEUE_URL = "https://human-queue-34mwh7k34a-uc.a.run.app"
+DEFAULT_TRIAGE_FALLBACK_URL = "https://triage-fallback-34mwh7k34a-uc.a.run.app"
 
 
 @dataclass
@@ -65,6 +66,7 @@ def run_smoke_checks(
     ticket_db_url: str,
     order_lookup_url: str,
     human_queue_url: str,
+    triage_fallback_url: str = DEFAULT_TRIAGE_FALLBACK_URL,
     timeout_s: float = 30.0,
 ) -> list[SmokeCheck]:
     """Execute all Cloud Run MCP service smoke checks."""
@@ -84,7 +86,9 @@ def run_smoke_checks(
             resp = session.get(f"{base_url}/health", timeout=timeout_s)
             latency = (time.perf_counter() - t0) * 1000
             passed = resp.status_code == 200
-            details = f"HTTP {resp.status_code}" if passed else f"Expected 200, got {resp.status_code}: {resp.text[:100]}"
+            details = (
+                f"HTTP {resp.status_code}" if passed else f"Expected 200, got {resp.status_code}: {resp.text[:100]}"
+            )
             results.append(SmokeCheck(f"{name} /health (authenticated)", passed, resp.status_code, details, latency))
         except Exception as exc:
             latency = (time.perf_counter() - t0) * 1000
@@ -96,8 +100,14 @@ def run_smoke_checks(
         unauth_resp = requests.get(f"{ticket_db_url}/health", timeout=timeout_s)
         latency = (time.perf_counter() - t0) * 1000
         passed = unauth_resp.status_code == 403
-        details = f"HTTP {unauth_resp.status_code} (access denied as expected)" if passed else f"Expected 403, got {unauth_resp.status_code}"
-        results.append(SmokeCheck("ticket-db-mcp unauthenticated /health", passed, unauth_resp.status_code, details, latency))
+        details = (
+            f"HTTP {unauth_resp.status_code} (access denied as expected)"
+            if passed
+            else f"Expected 403, got {unauth_resp.status_code}"
+        )
+        results.append(
+            SmokeCheck("ticket-db-mcp unauthenticated /health", passed, unauth_resp.status_code, details, latency)
+        )
     except Exception as exc:
         latency = (time.perf_counter() - t0) * 1000
         results.append(SmokeCheck("ticket-db-mcp unauthenticated /health", False, 0, str(exc), latency))
@@ -166,8 +176,14 @@ def run_smoke_checks(
             for marker in ("unverified_customer", "invalid_customer_context", "caller_not_authorized")
         )
         passed = resp_own.status_code == 403 and refused
-        details = "HTTP 403 (asserted id refused)" if passed else f"Expected 403 unverified_customer/invalid_customer_context/caller_not_authorized, got {resp_own.status_code}: {resp_own.text[:100]}"
-        results.append(SmokeCheck("order-lookup-mcp asserted-id own order refused", passed, resp_own.status_code, details, latency))
+        details = (
+            "HTTP 403 (asserted id refused)"
+            if passed
+            else f"Expected 403 unverified_customer/invalid_customer_context/caller_not_authorized, got {resp_own.status_code}: {resp_own.text[:100]}"
+        )
+        results.append(
+            SmokeCheck("order-lookup-mcp asserted-id own order refused", passed, resp_own.status_code, details, latency)
+        )
     except Exception as exc:
         latency = (time.perf_counter() - t0) * 1000
         results.append(SmokeCheck("order-lookup-mcp asserted-id own order refused", False, 0, str(exc), latency))
@@ -184,8 +200,20 @@ def run_smoke_checks(
         )
         latency = (time.perf_counter() - t0) * 1000
         passed = resp_other.status_code == 403
-        details = f"HTTP {resp_other.status_code} denied (no verified identity)" if passed else f"Expected 403, got {resp_other.status_code}"
-        results.append(SmokeCheck("order-lookup-mcp get_order other customer (cust_1002)", passed, resp_other.status_code, details, latency))
+        details = (
+            f"HTTP {resp_other.status_code} denied (no verified identity)"
+            if passed
+            else f"Expected 403, got {resp_other.status_code}"
+        )
+        results.append(
+            SmokeCheck(
+                "order-lookup-mcp get_order other customer (cust_1002)",
+                passed,
+                resp_other.status_code,
+                details,
+                latency,
+            )
+        )
     except Exception as exc:
         latency = (time.perf_counter() - t0) * 1000
         results.append(SmokeCheck("order-lookup-mcp get_order other customer (cust_1002)", False, 0, str(exc), latency))
@@ -201,8 +229,20 @@ def run_smoke_checks(
         )
         latency = (time.perf_counter() - t0) * 1000
         passed = resp_body_cid.status_code == 400
-        details = f"HTTP {resp_body_cid.status_code} rejected body customer_id" if passed else f"Expected 400, got {resp_body_cid.status_code}"
-        results.append(SmokeCheck("order-lookup-mcp get_order body customer_id rejected", passed, resp_body_cid.status_code, details, latency))
+        details = (
+            f"HTTP {resp_body_cid.status_code} rejected body customer_id"
+            if passed
+            else f"Expected 400, got {resp_body_cid.status_code}"
+        )
+        results.append(
+            SmokeCheck(
+                "order-lookup-mcp get_order body customer_id rejected",
+                passed,
+                resp_body_cid.status_code,
+                details,
+                latency,
+            )
+        )
     except Exception as exc:
         latency = (time.perf_counter() - t0) * 1000
         results.append(SmokeCheck("order-lookup-mcp get_order body customer_id rejected", False, 0, str(exc), latency))
@@ -214,11 +254,79 @@ def run_smoke_checks(
         resp_hq = hq_session.get(f"{human_queue_url}/queue", timeout=timeout_s)
         latency = (time.perf_counter() - t0) * 1000
         passed = resp_hq.status_code == 200
-        details = "HTTP 200 queue listing retrieved" if passed else f"Expected 200, got {resp_hq.status_code}: {resp_hq.text[:100]}"
+        details = (
+            "HTTP 200 queue listing retrieved"
+            if passed
+            else f"Expected 200, got {resp_hq.status_code}: {resp_hq.text[:100]}"
+        )
         results.append(SmokeCheck("human-queue /queue listing", passed, resp_hq.status_code, details, latency))
     except Exception as exc:
         latency = (time.perf_counter() - t0) * 1000
         results.append(SmokeCheck("human-queue /queue listing", False, 0, str(exc), latency))
+
+    # 8. triage-fallback /health, benign message, unauth check (REQ-AGENT-035, REQ-CD-007)
+    if triage_fallback_url:
+        t0 = time.perf_counter()
+        try:
+            fb_session = get_authenticated_session(triage_fallback_url)
+            resp_health = fb_session.get(f"{triage_fallback_url}/health", timeout=timeout_s)
+            latency = (time.perf_counter() - t0) * 1000
+            passed = resp_health.status_code == 200
+            details = (
+                f"HTTP {resp_health.status_code} (status={resp_health.json().get('status', 'ok')})"
+                if passed
+                else f"Expected 200, got {resp_health.status_code}: {resp_health.text[:100]}"
+            )
+            results.append(
+                SmokeCheck("triage-fallback /health (authenticated)", passed, resp_health.status_code, details, latency)
+            )
+        except Exception as exc:
+            latency = (time.perf_counter() - t0) * 1000
+            results.append(SmokeCheck("triage-fallback /health (authenticated)", False, 0, str(exc), latency))
+
+        t0 = time.perf_counter()
+        try:
+            fb_session = get_authenticated_session(triage_fallback_url)
+            body = {
+                "message": "Hello, I would like to check the status of my order",
+                "session_id": f"smoke-fallback-{int(time.time())}",
+                "user_id": "cust_1001",
+            }
+            resp_msg = fb_session.post(f"{triage_fallback_url}/", json=body, timeout=timeout_s)
+            latency = (time.perf_counter() - t0) * 1000
+            data = resp_msg.json() if resp_msg.status_code == 200 else {}
+            reply = data.get("reply") or data.get("response") or data.get("output") or ""
+            passed = resp_msg.status_code == 200 and bool(reply)
+            details = (
+                f"HTTP 200 with reply: {reply[:60]}..."
+                if passed
+                else f"Expected 200 with reply, got {resp_msg.status_code}: {resp_msg.text[:100]}"
+            )
+            results.append(
+                SmokeCheck(
+                    "triage-fallback authenticated message query", passed, resp_msg.status_code, details, latency
+                )
+            )
+        except Exception as exc:
+            latency = (time.perf_counter() - t0) * 1000
+            results.append(SmokeCheck("triage-fallback authenticated message query", False, 0, str(exc), latency))
+
+        t0 = time.perf_counter()
+        try:
+            unauth_resp = requests.get(f"{triage_fallback_url}/health", timeout=timeout_s)
+            latency = (time.perf_counter() - t0) * 1000
+            passed = unauth_resp.status_code in (401, 403)
+            details = (
+                f"HTTP {unauth_resp.status_code} (access denied as expected)"
+                if passed
+                else f"Expected 401/403, got {unauth_resp.status_code}"
+            )
+            results.append(
+                SmokeCheck("triage-fallback unauthenticated /health", passed, unauth_resp.status_code, details, latency)
+            )
+        except Exception as exc:
+            latency = (time.perf_counter() - t0) * 1000
+            results.append(SmokeCheck("triage-fallback unauthenticated /health", False, 0, str(exc), latency))
 
     return results
 
@@ -241,6 +349,11 @@ def parse_args() -> argparse.Namespace:
         help=f"Human Queue URL (default: {DEFAULT_HUMAN_QUEUE_URL})",
     )
     parser.add_argument(
+        "--triage-fallback-url",
+        default=os.environ.get("TRIAGE_FALLBACK_URL", DEFAULT_TRIAGE_FALLBACK_URL),
+        help=f"Triage Fallback URL (default: {DEFAULT_TRIAGE_FALLBACK_URL})",
+    )
+    parser.add_argument(
         "--timeout",
         type=float,
         default=30.0,
@@ -252,14 +365,16 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     logger.info("Executing Cloud Run MCP smoke tests...")
-    logger.info("Ticket DB URL:    %s", args.ticket_db_url)
-    logger.info("Order Lookup URL: %s", args.order_lookup_url)
-    logger.info("Human Queue URL:  %s", args.human_queue_url)
+    logger.info("Ticket DB URL:        %s", args.ticket_db_url)
+    logger.info("Order Lookup URL:     %s", args.order_lookup_url)
+    logger.info("Human Queue URL:      %s", args.human_queue_url)
+    logger.info("Triage Fallback URL:  %s", args.triage_fallback_url)
 
     results = run_smoke_checks(
         ticket_db_url=args.ticket_db_url,
         order_lookup_url=args.order_lookup_url,
         human_queue_url=args.human_queue_url,
+        triage_fallback_url=args.triage_fallback_url,
         timeout_s=args.timeout,
     )
 

@@ -137,4 +137,125 @@ variable "human_queue_url" {
   default     = ""
 }
 
+variable "deletion_protection" {
+  description = "Whether deletion protection is enabled on Cloud Run services"
+  type        = bool
+  default     = false
+}
+
+variable "triage_fallback_min_instances" {
+  description = "Minimum instances for warm triage-fallback Cloud Run service (REQ-AGENT-035)"
+  type        = number
+  default     = 1
+}
+
+variable "triage_fallback_invokers" {
+  description = "List of IAM member strings granted roles/run.invoker on triage-fallback"
+  type        = list(string)
+  default     = []
+}
+
+variable "discovery_engine_sa_email" {
+  description = "Email of Discovery Engine service agent"
+  type        = string
+  default     = ""
+}
+
+variable "router_s1_endpoint" {
+  description = "Resource ID of the dedicated router-s1 Vertex AI Endpoint"
+  type        = string
+  default     = "projects/susmith-fde-ticket-router/locations/us-central1/endpoints/router-s1-dedicated"
+}
+
+variable "router_s1_base_url" {
+  description = "Base URL of the dedicated router-s1 Vertex AI Endpoint"
+  type        = string
+  default     = "https://router-s1-dedicated.us-central1-620485621180.prediction.vertexai.goog"
+}
+
+variable "faq_resolver_url" {
+  description = "Public HTTPS URL for FaqResolver on GKE Autopilot via sslip.io"
+  type        = string
+  default     = "https://faq.8-232-184-225.sslip.io"
+}
+
+variable "faq_resolver_audience" {
+  description = "Target audience URI for Google ID token authentication on FaqResolver"
+  type        = string
+  default     = "https://faq.8-232-184-225.sslip.io"
+}
+
+variable "allowed_callers" {
+  description = "Allowed caller service accounts/principals for TriageRouter (defaults to sa_triage_email)"
+  type        = string
+  default     = ""
+}
+
+variable "model_armor_template" {
+  description = "Full resource name of the Model Armor template"
+  type        = string
+  default     = "projects/susmith-fde-ticket-router/locations/us-central1/templates/support-router-lean"
+}
+
+variable "model_armor_enabled" {
+  description = "Whether Model Armor sanitization is enabled (1 or 0)"
+  type        = string
+  default     = "1"
+}
+
+variable "human_queue_topic" {
+  description = "Pub/Sub topic for human queue escalations"
+  type        = string
+  default     = "human-queue"
+}
+
+variable "agent_search_location" {
+  description = "Location for Agent Search datastores"
+  type        = string
+  default     = "global"
+}
+
+variable "agent_search_engine_id" {
+  description = "Engine ID for support-kb-search"
+  type        = string
+  default     = "support-kb-search"
+}
+
+variable "cct_key_version" {
+  description = "KMS key version for customer context signing"
+  type        = string
+  default     = ""
+}
+
+variable "cct_issuer" {
+  description = "Issuer claim for customer context tokens"
+  type        = string
+  default     = "triage-router"
+}
+
+variable "cct_audience" {
+  description = "Audience claim for customer context tokens"
+  type        = string
+  default     = "order-lookup-mcp"
+}
+
+variable "cct_ttl_s" {
+  description = "TTL in seconds for customer context tokens"
+  type        = string
+  default     = "300"
+}
+
+variable "require_real_deps" {
+  description = "Whether to enforce real dependencies on TriageRouter (1 or 0)"
+  type        = string
+  default     = "1"
+}
+
+variable "ge_oauth_auth_id" {
+  description = "OAuth authorization ID for Gemini Enterprise front-door"
+  type        = string
+  default     = ""
+}
+
+
 

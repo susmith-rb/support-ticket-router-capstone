@@ -102,7 +102,7 @@ def test_triage_deployment_script():
     assert os.access(script_path, os.X_OK), "deploy_triage_agent_runtime.py must be executable"
 
     script_content = script_path.read_text(encoding="utf-8")
-    assert 'os.environ[key] = val' in script_content or 'os.environ["GOOGLE_CLOUD_PROJECT"] = project' in script_content
+    assert "os.environ[key] = val" in script_content or 'os.environ["GOOGLE_CLOUD_PROJECT"] = project' in script_content
     assert "cloudpickle==3.0.0" in script_content
     assert "pydantic>=2.0.0" in script_content
     assert "agent-engine-staging" in script_content
@@ -169,14 +169,14 @@ def test_faq_gke_manifests():
     gke_main = (gke_mod_dir / "main.tf").read_text(encoding="utf-8")
 
     # GKE Autopilot cluster configuration
-    assert 'enable_autopilot = true' in gke_main
+    assert "enable_autopilot = true" in gke_main
     assert 'channel = "REGULAR"' in gke_main
-    assert 'enable_private_nodes    = true' in gke_main
-    assert 'deletion_protection = var.deletion_protection' in gke_main
-    assert 'network    = var.network' in gke_main or 'network = var.network' in gke_main
-    assert 'subnetwork = var.subnetwork' in gke_main or 'subnetwork = var.subnetwork' in gke_main
-    assert 'cluster_secondary_range_name' in gke_main
-    assert 'services_secondary_range_name' in gke_main
+    assert "enable_private_nodes    = true" in gke_main
+    assert "deletion_protection = var.deletion_protection" in gke_main
+    assert "network    = var.network" in gke_main or "network = var.network" in gke_main
+    assert "subnetwork = var.subnetwork" in gke_main or "subnetwork = var.subnetwork" in gke_main
+    assert "cluster_secondary_range_name" in gke_main
+    assert "services_secondary_range_name" in gke_main
 
     # Network Module
     net_mod_dir = MOD_DIR / "network"
@@ -184,18 +184,18 @@ def test_faq_gke_manifests():
     net_main = (net_mod_dir / "main.tf").read_text(encoding="utf-8")
     assert 'resource "google_compute_network" "support_vpc"' in net_main
     assert 'resource "google_compute_subnetwork" "support_us_central1"' in net_main
-    assert 'private_ip_google_access = true' in net_main
+    assert "private_ip_google_access = true" in net_main
     assert '"gke-pods"' in net_main
     assert '"gke-services"' in net_main
     assert 'resource "google_compute_global_address" "faq_resolver"' in net_main
-    assert 'faq-resolver-ip' in net_main
+    assert "faq-resolver-ip" in net_main
 
     # Root module network wiring
     root_main = (TF_DIR / "main.tf").read_text(encoding="utf-8")
     assert 'module "network"' in root_main
     assert '"compute.googleapis.com"' in root_main
-    assert 'network                       = module.network.network_id' in root_main
-    assert 'subnetwork                    = module.network.subnetwork_id' in root_main
+    assert "network                       = module.network.network_id" in root_main
+    assert "subnetwork                    = module.network.subnetwork_id" in root_main
 
     # K8s Manifests
     assert (K8S_DIR / "namespace.yaml").is_file()
@@ -309,7 +309,7 @@ def test_dedicated_router_endpoint_and_static_ip_terraform():
 
     # Dedicated endpoint resource
     assert 'resource "google_vertex_ai_endpoint" "router_s1_dedicated"' in router_main
-    assert 'dedicated_endpoint_enabled = true' in router_main
+    assert "dedicated_endpoint_enabled = true" in router_main
     assert "dedicated_endpoint_id" in router_outputs
     assert "dedicated_endpoint_dns" in router_outputs
 
@@ -327,7 +327,6 @@ def test_dedicated_router_endpoint_and_static_ip_terraform():
     assert "faq_resolver_audience" in root_outputs
     assert "router_s1_dedicated_endpoint_id" in root_outputs
     assert "router_s1_dedicated_base_url" in root_outputs
-
 
 
 # REQ-AGENT-019
@@ -361,7 +360,7 @@ def test_cloud_run_services_iam_and_cost_posture():
     assert "default     = 3" in vars_tf  # max_instance_count
 
     # Conditional deployment
-    assert "count = var.agents_image != \"\" ? 1 : 0" in main_tf
+    assert 'count = var.agents_image != "" ? 1 : 0' in main_tf
 
     # Strict IAM invokers & No public access
     assert 'role     = "roles/run.invoker"' in main_tf
@@ -447,3 +446,54 @@ def test_gke_node_artifact_registry_reader():
     assert "roles/logging.logWriter" in gke_main
     assert "roles/artifactregistry.reader" in gke_main
 
+
+# REQ-AGENT-035
+def test_cloud_run_fallback_service():
+    """Verify Cloud Run warm fallback service triage-fallback declaration and configuration.
+
+    Invariants:
+    1. google_cloud_run_v2_service.triage_fallback declared in modules/cloud-run-services/main.tf.
+    2. Service runs warm with min_instances=1 (var.triage_fallback_min_instances).
+    3. Runs under sa-triage identity (var.sa_triage_email).
+    4. Ingress set to INGRESS_TRAFFIC_ALL with IAM authentication enforced.
+    5. Environment mirrors Agent Engine contract without forking (SERVICE=triage_fallback).
+    6. Roles/run.invoker IAM member resources declared for authorized callers.
+    7. Ignores container image changes in lifecycle ignore_changes.
+    8. Root module wires deletion_protection and outputs triage_fallback_url.
+    """
+    cr_main = (MOD_DIR / "cloud-run-services" / "main.tf").read_text(encoding="utf-8")
+    cr_vars = (MOD_DIR / "cloud-run-services" / "variables.tf").read_text(encoding="utf-8")
+    cr_outputs = (MOD_DIR / "cloud-run-services" / "outputs.tf").read_text(encoding="utf-8")
+    root_main = (TF_DIR / "main.tf").read_text(encoding="utf-8")
+    root_outputs = (TF_DIR / "outputs.tf").read_text(encoding="utf-8")
+
+    # Resource definition
+    assert 'resource "google_cloud_run_v2_service" "triage_fallback"' in cr_main
+    assert 'name                = "triage-fallback"' in cr_main
+    assert 'ingress             = "INGRESS_TRAFFIC_ALL"' in cr_main
+    assert "service_account = var.sa_triage_email" in cr_main
+    assert "min_instance_count = var.triage_fallback_min_instances" in cr_main
+
+    # Variables
+    assert "triage_fallback_min_instances" in cr_vars
+    assert "triage_fallback_invokers" in cr_vars
+    assert "deletion_protection" in cr_vars
+    assert "triage_fallback_min_instances" in root_main
+
+    # Environment variables contract
+    assert 'name  = "SERVICE"' in cr_main
+    assert 'value = "triage_fallback"' in cr_main
+    assert 'name  = "ROUTER_S1_ENDPOINT"' in cr_main
+    assert 'name  = "ORDER_LOOKUP_MCP_URL"' in cr_main
+    assert 'name  = "TICKET_DB_MCP_URL"' in cr_main
+    assert 'name  = "HUMAN_QUEUE_URL"' in cr_main
+    assert 'name  = "REDACTION_KMS_KEY"' in cr_main
+    assert 'name  = "ALLOWED_CALLERS"' in cr_main
+
+    # Invokers
+    assert 'resource "google_cloud_run_v2_service_iam_member" "triage_fallback_invokers"' in cr_main
+    assert 'role     = "roles/run.invoker"' in cr_main
+
+    # Outputs
+    assert "triage_fallback_url" in cr_outputs
+    assert "triage_fallback_url" in root_outputs

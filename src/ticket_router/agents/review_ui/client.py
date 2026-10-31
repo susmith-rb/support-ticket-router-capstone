@@ -2,6 +2,7 @@
 
 # REQ-AGENT-034: Human Review UI with Cloud Run IAP and Verified Rep Identity
 # REQ-AUTH-010: Human Review UI Rep Identity Assertion and sa-review-ui Least Privilege
+# REQ-AGENT-033: Multi-Turn Conversation Holding and Customer Follow-up Attachment
 """
 
 from __future__ import annotations
@@ -125,6 +126,26 @@ class HumanQueueClient:
         payload = {
             "ticket_id": ticket_id,
             "resolution_notes": resolution_notes,
+        }
+        resp = self.session.post(url, json=payload, headers=headers, timeout=self.timeout)
+        resp.raise_for_status()
+        return resp.json()
+
+    def reopen_ticket(
+        self,
+        ticket_id: str,
+        rep_id: str,
+        reason: str = "",
+        target_status: str = "returned_to_automation",
+    ) -> Dict[str, Any]:
+        """Reopen a resolved ticket or release an active ticket back to automation (REQ-AGENT-033)."""
+        url = f"{self.base_url}/reopen"
+        headers = self._build_headers(rep_id)
+        # Note: operator_id is intentionally omitted from the body; rep_id is passed via X-Rep-Id header
+        payload = {
+            "ticket_id": ticket_id,
+            "reason": reason,
+            "target_status": target_status,
         }
         resp = self.session.post(url, json=payload, headers=headers, timeout=self.timeout)
         resp.raise_for_status()

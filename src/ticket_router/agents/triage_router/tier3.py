@@ -134,6 +134,9 @@ def invoke_tier3_gemini(
     Reuses client initialization and prompt plumbing from Tier 2, passing thinking level
     and enforcing a single budgeted call with hard deadline.
     """
+    from ticket_router.models.tier2_gemini import check_gemini_429_hook
+
+    check_gemini_429_hook()
     model_role = "tier3_multihop"
     resolved_model = target_model or model_id(model_role)
     resolved_location = location or model_location(model_role) or os.environ.get("GOOGLE_CLOUD_LOCATION")

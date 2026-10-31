@@ -172,3 +172,32 @@ def test_envelope_zero_plaintext_logging(caplog):
     # Assert secret string is not in any captured log records
     for record in caplog.records:
         assert secret_email not in record.getMessage()
+
+
+def test_envelope_cipher_decrypt_error_branches():
+    """Verify EnvelopeCipher decrypt validation error handling.
+
+    # REQ-STORE-009: Reversible PII Tokens and KMS Envelope-Encrypted Redaction Maps
+    # REQ-CICD-010: Targeted tests for human_queue/agent.py & security/envelope.py
+    """
+    cipher = EnvelopeCipher(kms_key_name="projects/p/locations/l/keyRings/r/cryptoKeys/k")
+
+    # Empty blob
+    with pytest.raises(ValueError, match="Cannot decrypt empty envelope blob"):
+        cipher.decrypt(b"", aad=b"test")
+
+    # Invalid format (neither base64 nor valid json)
+    with pytest.raises(ValueError, match="Invalid envelope format"):
+        cipher.decrypt(b"???not-base64-or-json???", aad=b"test")
+
+    # Valid JSON but not a dict
+    with pytest.raises(ValueError, match="Invalid envelope payload structure"):
+        cipher.decrypt(b"[1, 2, 3]", aad=b"test")
+
+    # Unsupported version
+    with pytest.raises(ValueError, match="Unsupported envelope version"):
+        cipher.decrypt(b'{"v": 99}', aad=b"test")
+
+    # Missing crypto fields
+    with pytest.raises(ValueError, match="Envelope missing required crypto fields"):
+        cipher.decrypt(b'{"v": 1, "wdek": "abc"}', aad=b"test")

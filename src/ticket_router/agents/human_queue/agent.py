@@ -3,6 +3,7 @@
 # REQ-AGENT-009: HumanQueue Workflow and Audited PII Re-Identification
 # REQ-AGENT-010: MCP Tool Contracts, JSON Schemas, and Role-Based DB Access
 # REQ-AGENT-004: Gaming-Resistant Queue Priority Assignment
+# REQ-AGENT-033: Multi-Turn Conversation Holding and Customer Follow-up Attachment
 
 Dedicated Cloud SQL IAM database role 'queue_rw' is held by sa-queue@, permitting
 read access to tickets and redaction_maps, and column-level updates to status/notes.
@@ -158,6 +159,50 @@ class HumanQueueAgent:
             payload={"resolution_notes": resolution_notes, "rep_id": operator_id},
         )
         return {"status": "RESOLVED"}
+
+    def reopen_ticket(
+        self,
+        ticket_id: UUID | str,
+        operator_id: str,
+        reason: str = "",
+        target_status: str = "returned_to_automation",
+    ) -> Dict[str, Any]:
+        """Reopen a resolved ticket or release an active ticket back to automation (REQ-AGENT-033)."""
+        if target_status not in ("returned_to_automation", "open"):
+            raise ValueError(
+                f"Invalid target_status '{target_status}'. Must be 'returned_to_automation' or 'open'."
+            )
+
+        try:
+            target_uuid = UUID(str(ticket_id))
+        except (ValueError, AttributeError, TypeError):
+            return {"status": "not_found"}
+
+        ticket = self.repo.get_ticket(target_uuid)
+        if ticket is None:
+            return {"status": "not_found"}
+
+        self.repo.update_ticket_status(
+            ticket_id=target_uuid,
+            status=target_status,
+            resolution_notes=reason or None,
+        )
+        event_type = (
+            "returned_to_automation"
+            if target_status == "returned_to_automation"
+            else "reopened"
+        )
+        self.repo.append_event(
+            ticket_id=target_uuid,
+            event_type=event_type,
+            actor=operator_id,
+            payload={
+                "reason": reason,
+                "rep_id": operator_id,
+                "target_status": target_status,
+            },
+        )
+        return {"status": target_status.upper(), "ticket_id": str(target_uuid)}
 
     def reidentify_pii(
         self,

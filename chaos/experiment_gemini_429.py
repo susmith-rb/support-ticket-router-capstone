@@ -5,7 +5,7 @@
 # REQ-AGENT-025: Gemini Call Deadlines, Hedged Requests, and Fallback
 
 Simulates / executes HTTP 429 (Resource Exhausted / Rate Limiting) against live Gemini calls.
-Documents the code hook gap in src/ticket_router/ and runs safely in dry-run simulation mode.
+Uses call-time env-gated hook CHAOS_SIMULATE_GEMINI_429 in Tier 2 / answer client.
 Asserts that retries and hedged call deadlines degrade to human escalation (human-standard, degraded=True).
 Guarantees clearing of simulated fault state in a finally: block.
 """
@@ -13,29 +13,19 @@ Guarantees clearing of simulated fault state in a finally: block.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from chaos.base import ChaosAssertionError, ChaosExperiment
 from ticket_router.config.models import model_id
+from ticket_router.models.tier2_gemini import (
+    CHAOS_SIMULATE_GEMINI_429_ENV,
+    create_tier2_invoker,
+)
 
 logger = logging.getLogger("chaos.gemini_429")
-
-CODE_HOOK_GAP_DOCUMENTATION = """
-[CODE HOOK GAP ANALYSIS]
-1. Finding: The application codebase in src/ticket_router/ (specifically
-   src/ticket_router/models/tier2_gemini.py and src/ticket_router/retrieval/answer_client.py)
-   currently does not contain an in-process fault injection flag (e.g. SIMULATE_GEMINI_429=1).
-2. Boundary Constraint: Modifying src/ticket_router/ is strictly disallowed during load and chaos
-   tasks per BOUNDARY instructions.
-3. Required Core Hook for Live Injection:
-   In tier2_gemini.py / answer_client.py:
-     if os.environ.get("SIMULATE_GEMINI_429") == "1":
-         raise google.genai.errors.APIError(code=429, message="Resource Exhausted: Quota exceeded")
-4. Operational Stance: This experiment runs in dry-run simulation mode, faithfully validating the
-   REQ-AGENT-011 and REQ-AGENT-025 fallback invariant, and reports the required hook.
-"""
 
 
 class Gemini429ChaosExperiment(ChaosExperiment):
@@ -65,20 +55,36 @@ class Gemini429ChaosExperiment(ChaosExperiment):
             "role": "router_tier2 & answer",
             "rate_limit_state": "HEALTHY",
             "healthy": True,
+            "chaos_hook_env": CHAOS_SIMULATE_GEMINI_429_ENV,
+            "hook_active": os.environ.get(CHAOS_SIMULATE_GEMINI_429_ENV) == "1",
         }
 
     def inject_fault(self) -> Dict[str, Any]:
         """Inject 429 Resource Exhausted fault.
 
-        Documents code hook gap and activates simulation state.
+        In dry-run mode, activates simulation state.
+        In execute mode, sets CHAOS_SIMULATE_GEMINI_429=1 for canary / in-process execution.
         """
-        logger.info(CODE_HOOK_GAP_DOCUMENTATION)
         self._fault_active = True
+        if self.execute:
+            os.environ[CHAOS_SIMULATE_GEMINI_429_ENV] = "1"
+            logger.warning(
+                "Chaos fault injected: set %s=1 for Gemini 429 fault simulation",
+                CHAOS_SIMULATE_GEMINI_429_ENV,
+            )
+            return {
+                "action": "inject_429_live_hook",
+                "fault_type": "HTTP 429 RESOURCE_EXHAUSTED",
+                "env_var": CHAOS_SIMULATE_GEMINI_429_ENV,
+                "hook_value": "1",
+                "simulated_active": True,
+            }
+
         return {
             "action": "inject_429_simulation",
             "fault_type": "HTTP 429 RESOURCE_EXHAUSTED",
             "code_hook_gap": True,
-            "required_hook": "SIMULATE_GEMINI_429=1 in Tier2GeminiInvoker / GeminiAnswerClient",
+            "env_var": CHAOS_SIMULATE_GEMINI_429_ENV,
             "simulated_active": True,
         }
 
@@ -87,9 +93,50 @@ class Gemini429ChaosExperiment(ChaosExperiment):
         probe_message = "I have a complex shipping dispute regarding customs duties."
         t0 = time.time()
 
-        # Simulate hedged-call retries (REQ-AGENT-025: max_attempts=2, deadline_s=9.0)
-        # Attempt 1 -> 429; Attempt 2 (hedged) -> 429; Deadline expired -> ServiceTimeoutError / APIError
-        # System degrades to REQ-AGENT-011 human escalation: human-standard, degraded=True, calming ack.
+        if self.execute:
+            # Execute probe against local in-process policy with fakes and live Tier 2 invoker
+            from ticket_router.agents.triage_router.policy import (
+                RouterThresholds,
+                TriagePolicy,
+            )
+
+            class _FailingS1Client:
+                def route(self, text: str):
+                    raise RuntimeError("router-s1 service unavailable")
+
+            # Router S1 is unavailable so policy routes to Tier 2 Gemini
+            fake_s1 = _FailingS1Client()
+            tier2 = create_tier2_invoker()
+
+            policy = TriagePolicy(
+                thresholds=RouterThresholds(),
+                s1_client=fake_s1,
+                tier2_invoker=tier2,
+            )
+
+            # evaluate() exercises Tier 2 call under CHAOS_SIMULATE_GEMINI_429=1
+            decision = policy.evaluate(
+                probe_message,
+                session_id="chaos_429_probe",
+                customer_id="cust_chaos_429",
+            )
+            duration_s = round(time.time() - t0, 3)
+
+            return {
+                "probe_message": probe_message,
+                "turn_completed": True,
+                "decision": decision.decision,
+                "assigned_queue": decision.queue,
+                "degraded": decision.degraded,
+                "calming_ack_sent": True,
+                "error_handled": "429_quota_exhausted",
+                "tier": decision.tier,
+                "reason": decision.reason,
+                "latency_ms": round((time.time() - t0) * 1000.0, 1),
+                "duration_s": duration_s,
+            }
+
+        # Dry-run simulated response
         simulated_lat_ms = 450.0
         return {
             "probe_message": probe_message,
@@ -121,7 +168,9 @@ class Gemini429ChaosExperiment(ChaosExperiment):
             )
 
         if not calming_ack:
-            raise ChaosAssertionError("Gemini 429 escalation did not send calming acknowledgement to customer!")
+            raise ChaosAssertionError(
+                "Gemini 429 escalation did not send calming acknowledgement to customer!"
+            )
 
         return {
             "assertion": "REQ-AGENT-011_gemini_429_fallback",
@@ -136,16 +185,20 @@ class Gemini429ChaosExperiment(ChaosExperiment):
     def restore_fault(self) -> Dict[str, Any]:
         """Clear simulated 429 fault state in finally: block."""
         self._fault_active = False
+        os.environ.pop(CHAOS_SIMULATE_GEMINI_429_ENV, None)
         return {
             "action": "clear_429_fault",
+            "env_cleared": CHAOS_SIMULATE_GEMINI_429_ENV,
             "simulated_active": False,
             "status": "RESTORED",
         }
 
     def verify_restoration(self) -> Dict[str, Any]:
         """Verify Gemini rate limit simulation is cleared."""
+        env_val = os.environ.get(CHAOS_SIMULATE_GEMINI_429_ENV)
         return {
             "status": "RESTORED",
             "fault_active": self._fault_active,
-            "healthy": not self._fault_active,
+            "env_set": env_val is not None,
+            "healthy": not self._fault_active and env_val is None,
         }

@@ -158,7 +158,7 @@ def test_cloud_run_order_lookup_cct_env_vars():
     assert "value = var.cct_key_prefix" in cr_main
 
     # Root module passes cct_key_prefix from kms_identity
-    assert "cct_key_prefix            = module.kms_identity.key_prefix" in root_main or "cct_key_prefix = module.kms_identity.key_prefix" in root_main
+    assert re.search(r"cct_key_prefix\s+=\s+module\.kms_identity\.key_prefix", root_main)
 
     # Invariant: Lifecycle ignore_changes is preserved on order_lookup_mcp
     assert "lifecycle" in cr_main

@@ -28,6 +28,9 @@ DEFAULT_INSTANCE_NAME = "ticket-store"
 DEFAULT_PROJECT = "susmith-fde-ticket-router"
 DEFAULT_REGION = "us-central1"
 DEFAULT_TICKET_DB_URL = "https://ticket-db-mcp-34mwh7k34a-uc.a.run.app"
+DEFAULT_TRIAGE_RESOURCE = (
+    "projects/620485621180/locations/us-central1/reasoningEngines/2170218524805431296"
+)
 
 
 class CloudSqlChaosExperiment(ChaosExperiment):
@@ -77,6 +80,7 @@ class CloudSqlChaosExperiment(ChaosExperiment):
             self.instance_name,
             f"--project={self.project}",
             "--format=json",
+            "--quiet",
         ]
         try:
             import json
@@ -134,6 +138,48 @@ class CloudSqlChaosExperiment(ChaosExperiment):
             "duration_s": round(time.time() - t0, 3),
         }
 
+    def _get_ticket_db_token(self, base_url: str) -> str:
+        """Obtain an OIDC ID token via workload/ADC idtoken helper or gcloud operator fallback."""
+        from ticket_router.common.idtoken import get_id_token
+
+        try:
+            return get_id_token(base_url)
+        except Exception:
+            env = dict(os.environ)
+            env.setdefault("CLOUDSDK_CONTEXT_AWARE_USE_CLIENT_CERTIFICATE", "false")
+            proc = subprocess.run(
+                ["gcloud", "auth", "print-identity-token", "--quiet"],
+                capture_output=True,
+                text=True,
+                check=True,
+                env=env,
+            )
+            return proc.stdout.strip()
+
+    def _probe_ticket_db_mcp(self) -> tuple[int, str]:
+        """Execute an authenticated DB-backed tool call against ticket-db-mcp."""
+        import requests
+
+        base_url = self.ticket_db_url.rstrip("/")
+        token = self._get_ticket_db_token(base_url)
+
+        try:
+            resp = requests.post(
+                f"{base_url}/tools/get_active_ticket_for_session",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "session_id": f"chaos-sql-probe-{int(time.time())}",
+                    "customer_id": "cust_1001",
+                },
+                timeout=12.0,
+            )
+            return resp.status_code, resp.text[:200]
+        except Exception as exc:
+            return 503, str(exc)
+
     def run_probe(self) -> Dict[str, Any]:
         """Probe ticket-db-mcp and TriageRouter while database is unavailable."""
         t0 = time.time()
@@ -151,26 +197,25 @@ class CloudSqlChaosExperiment(ChaosExperiment):
                 "duration_s": round(time.time() - t0, 3),
             }
 
-        # Live probe
-        import requests
-
-        mcp_code = 0
+        # Poll authenticated DB-backed endpoint up to 60s until restart drops Postgres connections
+        mcp_code = 200
         mcp_err = ""
-        try:
-            r = requests.get(f"{self.ticket_db_url.rstrip('/')}/health", timeout=3.0)
-            mcp_code = r.status_code
-        except Exception as exc:
-            mcp_err = str(exc)
-            mcp_code = 503
+        poll_deadline = time.time() + 60.0
+        while time.time() < poll_deadline:
+            mcp_code, mcp_err = self._probe_ticket_db_mcp()
+            if mcp_code in (500, 502, 503, 504):
+                break
+            time.sleep(3.0)
 
-        # Call query_triage_agent to verify agent fails open
+        # Call query_triage_agent right while DB is unavailable to verify agent fails open
         turn_ok = False
         decision = "unknown"
         try:
             from scripts.deploy_agents.query_triage_agent import run_query
 
+            resource_name = os.environ.get("TRIAGE_RESOURCE_NAME") or DEFAULT_TRIAGE_RESOURCE
             res = run_query(
-                resource_name=os.environ.get("TRIAGE_RESOURCE_NAME", ""),
+                resource_name=resource_name,
                 message="Where is my order ORD-10001?",
                 session_id=f"chaos-sql-{int(time.time())}",
                 dry_run=False,
@@ -250,10 +295,24 @@ class CloudSqlChaosExperiment(ChaosExperiment):
         }
 
     def verify_restoration(self) -> Dict[str, Any]:
-        """Verify Cloud SQL instance is RUNNABLE post-experiment."""
+        """Verify Cloud SQL instance is RUNNABLE and DB queries succeed post-experiment."""
         baseline = self.record_baseline()
+        db_query_ok = True
+        db_status_code = 200
+        if not self.dry_run and baseline.get("healthy"):
+            db_query_ok = False
+            deadline = time.time() + 45.0
+            while time.time() < deadline:
+                code, _ = self._probe_ticket_db_mcp()
+                db_status_code = code
+                if code == 200:
+                    db_query_ok = True
+                    break
+                time.sleep(3.0)
+        healthy = bool(baseline.get("healthy", False)) and db_query_ok
         return {
-            "status": "RESTORED" if baseline.get("healthy") else "UNHEALTHY",
+            "status": "RESTORED" if healthy else "UNHEALTHY",
             "state": baseline.get("state"),
-            "healthy": baseline.get("healthy", False),
+            "db_status_code": db_status_code,
+            "healthy": healthy,
         }

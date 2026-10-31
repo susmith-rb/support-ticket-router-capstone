@@ -494,3 +494,79 @@ def test_cloud_trace_exporter_real_gapic_mtls_negotiation(monkeypatch: pytest.Mo
     assert channel_calls[-1][0].split(":")[0] == "cloudtrace.googleapis.com"
     assert channel_calls[-1][1]["ssl_credentials"] is None
     assert channel_calls[-1][1]["options"] == list(cloud_trace_mod._OPTIONS)
+
+
+def test_observability_traceparent_parsing():
+    """Verify parse_traceparent with valid and invalid inputs.
+
+    # REQ-AGENT-014: Observability: Distributed Tracing & PII-Free Structured Logging
+    # REQ-CICD-010: Targeted tests for common/observability.py pure logic
+    """
+    assert parse_traceparent("") is None
+    assert parse_traceparent(None) is None  # type: ignore[arg-type]
+    assert parse_traceparent("invalid") is None
+    assert parse_traceparent("00-1-2-01") is None
+
+    valid = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    parsed = parse_traceparent(valid)
+    assert parsed is not None
+    assert parsed["version"] == "00"
+    assert parsed["trace_id"] == "4bf92f3577b34da6a3ce929d0e0e4736"
+    assert parsed["span_id"] == "00f067aa0ba902b7"
+    assert parsed["flags"] == "01"
+
+
+def test_observability_cloud_trace_context_parsing():
+    """Verify parse_cloud_trace_context edge cases and conversions.
+
+    # REQ-AGENT-014: Observability: Distributed Tracing & PII-Free Structured Logging
+    # REQ-CICD-010: Targeted tests for common/observability.py pure logic
+    """
+    assert parse_cloud_trace_context("") is None
+    assert parse_cloud_trace_context(None) is None  # type: ignore[arg-type]
+    assert parse_cloud_trace_context("malformed") is None
+    # Zero trace or span ID
+    assert parse_cloud_trace_context("00000000000000000000000000000000/0") is None
+    # Overflow span ID >= 2^64
+    assert parse_cloud_trace_context(f"4bf92f3577b34da6a3ce929d0e0e4736/{2**64 + 1}") is None
+
+    # Valid with options: o=1 -> flags 01
+    ct1 = "4bf92f3577b34da6a3ce929d0e0e4736/10544503810011;o=1"
+    tp1 = parse_cloud_trace_context(ct1)
+    assert tp1 is not None
+    assert tp1.startswith("00-4bf92f3577b34da6a3ce929d0e0e4736-")
+    assert tp1.endswith("-01")
+
+    # Valid with options: o=0 -> flags 00
+    ct2 = "4bf92f3577b34da6a3ce929d0e0e4736/10544503810011;o=0"
+    tp2 = parse_cloud_trace_context(ct2)
+    assert tp2 is not None
+    assert tp2.endswith("-00")
+
+
+def test_observability_generate_traceparent():
+    """Verify generate_traceparent output matches W3C specification.
+
+    # REQ-AGENT-014: Observability: Distributed Tracing & PII-Free Structured Logging
+    # REQ-CICD-010: Targeted tests for common/observability.py pure logic
+    """
+    tp = generate_traceparent()
+    parsed = parse_traceparent(tp)
+    assert parsed is not None
+    assert len(parsed["trace_id"]) == 32
+    assert len(parsed["span_id"]) == 16
+
+
+def test_observability_configure_tracing(monkeypatch: pytest.MonkeyPatch):
+    """Verify configure_tracing handles disabled flag and missing tracing dependencies.
+
+    # REQ-AGENT-014: Observability: Distributed Tracing & PII-Free Structured Logging
+    # REQ-CICD-010: Targeted tests for common/observability.py pure logic
+    """
+    monkeypatch.setenv("ENABLE_CLOUD_TRACE", "0")
+    assert configure_tracing(force=True) is False
+
+    monkeypatch.setenv("ENABLE_CLOUD_TRACE", "1")
+    # In hermetic test environment without opentelemetry-sdk, gracefully returns False
+    res = configure_tracing(force=True)
+    assert res in (True, False)

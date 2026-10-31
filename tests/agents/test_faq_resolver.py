@@ -1084,3 +1084,91 @@ def test_faq_resolver_natural_recent_orders_lookup_and_sign_in_guard():
 
 
 
+
+
+def test_faq_validator_edge_cases():
+    """Verify CitationValidator handles citations and text normalization.
+
+    # REQ-AGENT-007: FaqResolver Grounded RAG Answering
+    # REQ-CICD-010: Targeted tests for faq_resolver validator & passage_selector
+    """
+    from ticket_router.agents.faq_resolver import validator
+
+    validator.CitationValidator()
+    assert validator.norm("  Hello   World!  ") == "hello world!"
+    assert validator.is_verbatim_citation("return window", "Our return window is 30 days.") is True
+    assert validator.is_verbatim_citation("not present", "Our return window is 30 days.") is False
+
+
+def test_passage_selector_helpers():
+    """Verify passage_selector tokenization, stemming, and static passage selection.
+
+    # REQ-AGENT-007: FaqResolver Grounded RAG Answering
+    # REQ-CICD-010: Targeted tests for faq_resolver validator & passage_selector
+    """
+    from ticket_router.agents.faq_resolver import passage_selector
+
+    tokens = passage_selector._tokenize("Where is my order?")
+    assert "where" in tokens
+    assert "order" in tokens
+
+    article_text = "Track your order online using your order ID. Return policy details and refund timeframes."
+    passage = passage_selector.select_static_passage("Where is my order?", article_text)
+    assert passage is not None
+    assert "order" in passage.lower()
+
+
+def test_reranker_vertex_and_fake_branches():
+    """Verify VertexLayaReranker and FakeReranker coverage.
+
+    # REQ-AGENT-007: FaqResolver Grounded RAG Answering
+    # REQ-CICD-010: Targeted tests for faq_resolver/reranker.py
+    """
+    from collections import namedtuple
+    from unittest.mock import MagicMock
+
+    from ticket_router.agents.faq_resolver import reranker
+
+    # 1. FakeReranker preferred_id and fail_with
+    fake_fail = reranker.FakeReranker(fail_with=RuntimeError("Simulated failure"))
+    with pytest.raises(RuntimeError, match="Simulated failure"):
+        fake_fail.rerank("query", [{"id": "doc1"}])
+
+    fake_pref = reranker.FakeReranker(preferred_id="doc2")
+    cands, _ = fake_pref.rerank("query", [{"id": "doc1"}, {"id": "doc2"}, {"id": "doc3"}])
+    assert cands[0]["id"] == "doc2"
+    assert cands[0]["score"] == 1.0
+
+    # 2. VertexLayaReranker empty candidates
+    v_rerank = reranker.VertexLayaReranker(endpoint_url="https://rerank.endpoint.com")
+    res_empty, lat_empty = v_rerank.rerank("query", [])
+    assert res_empty == []
+    assert lat_empty == 0.0
+
+    # 3. VertexLayaReranker endpoint path parsing
+    vr_url = reranker.VertexLayaReranker(endpoint_url="https://custom.service.internal")
+    assert vr_url._client is not None
+
+    vr_proj = reranker.VertexLayaReranker(endpoint_url="projects/my-p/locations/us-central1/endpoints/12345")
+    assert vr_proj._client is not None
+
+    # 4. VertexLayaReranker preserving omitted candidates and error fallback
+    Scored = namedtuple("Scored", ["id", "score"])
+
+    mock_client = MagicMock()
+    mock_client.rerank.return_value = [Scored(id="doc1", score=0.99)]
+    v_rerank._client = mock_client
+
+    # doc2 omitted by reranker model
+    ranked, lat = v_rerank.rerank("query", [{"id": "doc1"}, {"id": "doc2"}])
+    assert len(ranked) == 2
+    assert ranked[0]["id"] == "doc1"
+    assert ranked[0]["score"] == 0.99
+    assert ranked[1]["id"] == "doc2"
+
+    # Exception fallback returns unranked
+    mock_client.rerank.side_effect = RuntimeError("Service unavailable")
+    fallback_ranked, fb_lat = v_rerank.rerank("query", [{"id": "a"}, {"id": "b"}])
+    assert len(fallback_ranked) == 2
+    assert fallback_ranked[0]["id"] == "a"
+    assert fb_lat == 0.0

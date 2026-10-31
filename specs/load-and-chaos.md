@@ -39,7 +39,7 @@ Implements TDD §5 (Locust load test: 33 msg/s sustained for 20 min, Black Frida
      - Restoration: Redeploy model to dedicated endpoint with original traffic split and replica configuration in `finally:`.
   3. **Fault 2: Gemini 429 Rate Limiting / Resource Exhaustion**:
      - Fault: Simulates Gemini API returning HTTP 429 / `RESOURCE_EXHAUSTED`.
-     - Gap & Documented Hook: Because application source code in `src/ticket_router/` has no fault-injection hook and must not be edited during load/chaos testing, the experiment operates in dry-run mode and documents the needed code hook (`SIMULATE_GEMINI_429`).
+     - Code Hook: Implemented via call-time environment variable `CHAOS_SIMULATE_GEMINI_429=1` in `src/ticket_router/models/tier2_gemini.py` and `src/ticket_router/retrieval/answer_client.py`. When active, raises `google.genai.errors.ClientError(429)` before making network calls.
      - Assertion: Probe confirms that after retries and deadline expiration (`REQ-AGENT-025`), the turn degrades to human escalation (`human-standard`, `degraded=True`) with a calming acknowledgement.
      - Restoration: Clear simulated fault state in `finally:`.
   4. **Fault 3: Cloud SQL Failure / Restart**:
@@ -55,5 +55,5 @@ Implements TDD §5 (Locust load test: 33 msg/s sustained for 20 min, Black Frida
 
 ## 3. Open Questions / Deltas
 
-- **Gemini 429 Code Hook Gap**: `src/ticket_router/models/tier2_gemini.py` and `src/ticket_router/retrieval/answer_client.py` do not currently check an environment variable (such as `SIMULATE_GEMINI_429`) to trigger rate limit injection in live deployments. To conduct live 429 fault injection without editing `src/ticket_router/`, an operator would need to configure upstream Cloud Run / Vertex AI quotas or add the hook in a future core application change. The chaos script provides full dry-run simulation and reports the code hook requirements.
+- **Gemini 429 Code Hook Implementation**: Resolved. `src/ticket_router/models/tier2_gemini.py` and `src/ticket_router/retrieval/answer_client.py` evaluate `CHAOS_SIMULATE_GEMINI_429=1` at call time to trigger client-side rate limit injection in chaos and canary execution. In production configurations, this variable is default off and barred by static tests.
 - **Cloud SQL Zonal Restart vs. Regional Failover**: `gcloud sql instances failover` requires a high-availability regional configuration (`availability_type = "REGIONAL"`). The capstone deployment uses `availability_type = "ZONAL"` for cost efficiency. The chaos script uses `gcloud sql instances restart ticket-store` as the zonal equivalent to simulate an abrupt database outage and recovery.

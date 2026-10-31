@@ -373,3 +373,45 @@ def test_human_queue_reidentify_pii_from_redaction_map():
     assert len(reid_events) == 1
     assert "full_name" in reid_events[0].payload["fields_unmasked"]
     assert "Eleanor" not in str(reid_events[0].payload)
+
+
+def test_human_queue_agent_edge_cases():
+    """Verify HumanQueueAgent claim_ticket and resolve_ticket edge error branches.
+
+    # REQ-AGENT-009: HumanQueue Workflow and Audited PII Re-Identification
+    # REQ-AGENT-010: MCP Tool Contracts, JSON Schemas, and Role-Based DB Access
+    # REQ-CICD-010: Targeted tests for human_queue/agent.py & security/envelope.py
+    """
+    repo = FakeTicketRepo()
+    agent = HumanQueueAgent(ticket_repo=repo)
+
+    # 1. Invalid UUID format
+    assert agent.claim_ticket("not-a-uuid", "op1") == {"success": False, "error": "not_found"}
+    assert agent.resolve_ticket("not-a-uuid", "op1", "notes") == {"status": "not_found"}
+
+    # 2. Non-existent ticket
+    random_id = str(uuid4())
+    assert agent.claim_ticket(random_id, "op1") == {"success": False, "error": "not_found"}
+    assert agent.resolve_ticket(random_id, "op1", "notes") == {"status": "not_found"}
+
+    # 3. Already claimed ticket
+    tc = TicketCreate(
+        customer_id="cust-1",
+        body_redacted="Help needed",
+        assigned_queue="human-urgent",
+    )
+    t = repo.create_ticket(tc)
+
+    # Queue depths before claiming
+    depths = agent.queue_depths()
+    assert isinstance(depths, dict)
+    assert depths["human-urgent"] == 1
+
+    # Claim by op1
+    res_claim1 = agent.claim_ticket(t.ticket_id, "op1")
+    assert res_claim1["success"] is True
+
+    # Claim by op2 when assigned to op1
+    res_claim2 = agent.claim_ticket(t.ticket_id, "op2")
+    assert res_claim2["success"] is False
+    assert res_claim2["error"] == "already_claimed"

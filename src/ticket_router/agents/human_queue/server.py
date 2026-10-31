@@ -3,6 +3,7 @@
 # REQ-AGENT-009: HumanQueue Workflow and Audited PII Re-Identification
 # REQ-AGENT-001: Multi-Agent Package Structure and Deployment Topology
 # REQ-AGENT-031: Escalation Event Consumer (Pub/Sub push -> human-queue)
+# REQ-AGENT-033: Multi-Turn Conversation Holding and Customer Follow-up Attachment
 """
 
 from __future__ import annotations
@@ -63,6 +64,16 @@ class ResolvePayload(BaseModel):
     model_config = ConfigDict(extra="ignore")
     ticket_id: str = Field(..., description="Ticket UUID to resolve")
     resolution_notes: str = Field(default="", description="Operator resolution notes")
+
+
+class ReopenPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    ticket_id: str = Field(..., description="Ticket UUID to reopen or return to automation")
+    reason: str = Field(default="", description="Operator reason or notes")
+    target_status: str = Field(
+        default="returned_to_automation",
+        description="Target status ('returned_to_automation' or 'open')",
+    )
 
 
 class ReidentifyPayload(BaseModel):
@@ -362,6 +373,28 @@ def resolve(
         operator_id=rep_id,
         resolution_notes=payload.resolution_notes,
     )
+    if result.get("status") == "not_found":
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    return result
+
+
+@router.post("/reopen")
+def reopen(
+    payload: ReopenPayload,
+    _no_body_op: None = Depends(require_no_body_operator_id),
+    rep_id: str = Depends(verify_review_ui_caller),
+    agent: HumanQueueAgent = Depends(get_agent),
+) -> Dict[str, Any]:
+    try:
+        result = agent.reopen_ticket(
+            ticket_id=payload.ticket_id,
+            operator_id=rep_id,
+            reason=payload.reason,
+            target_status=payload.target_status,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     if result.get("status") == "not_found":
         raise HTTPException(status_code=404, detail="Ticket not found")
     return result

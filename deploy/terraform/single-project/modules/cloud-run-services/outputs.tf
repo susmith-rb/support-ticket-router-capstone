@@ -22,3 +22,9 @@ output "sa_review_ui_email" {
   description = "Email of the service account running human-review-ui"
   value       = google_service_account.sa_review_ui.email
 }
+
+output "triage_fallback_url" {
+  description = "Service URI for triage-fallback"
+  value       = length(google_cloud_run_v2_service.triage_fallback) > 0 ? google_cloud_run_v2_service.triage_fallback[0].uri : ""
+}
+

@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -33,8 +34,8 @@ def test_root_pubsub_push_wiring_static():
 
     # 4. module cloud_run_services passes push_audience and sa_queue_push_email
     assert 'module "cloud_run_services"' in main_tf
-    assert 'push_audience             = "${var.human_queue_url}/pubsub/escalations"' in main_tf
-    assert "sa_queue_push_email       = module.pubsub.sa_queue_push_email" in main_tf
+    assert re.search(r'push_audience\s+=\s+"\$\{var\.human_queue_url\}/pubsub/escalations"', main_tf)
+    assert re.search(r"sa_queue_push_email\s+=\s+module\.pubsub\.sa_queue_push_email", main_tf)
 
 
 # REQ-STORE-009

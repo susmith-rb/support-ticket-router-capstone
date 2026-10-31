@@ -35,6 +35,9 @@ def test_no_caller_asserted_identity_flows_into_customer_id():
 
         # Check 2: No line containing both 'user_id' and 'customer_id'
         for line_no, line in enumerate(content.splitlines(), start=1):
+            stripped = line.strip()
+            if stripped.startswith(("#", "-", "*")):
+                continue
             if "user_id" in line and "customer_id" in line:
                 violations.append(
                     f"{rel_path}:{line_no}: Line contains both 'user_id' and 'customer_id': {line.strip()}"

@@ -484,3 +484,177 @@ resource "google_iap_web_cloud_run_service_iam_member" "review_ui_reps" {
   member                 = each.value
 }
 
+# -----------------------------------------------------------------------------
+# 5. Warm Cloud Run Fallback Host for TriageRouter (REQ-AGENT-035)
+# -----------------------------------------------------------------------------
+
+resource "google_cloud_run_v2_service" "triage_fallback" {
+  lifecycle {
+    ignore_changes = [template[0].containers[0].image, client, client_version, scaling]
+  }
+
+  count               = local.service_count
+  name                = "triage-fallback"
+  location            = var.region
+  project             = var.project_id
+  ingress             = "INGRESS_TRAFFIC_ALL"
+  deletion_protection = var.deletion_protection
+
+  template {
+    service_account = var.sa_triage_email
+
+    scaling {
+      min_instance_count = var.triage_fallback_min_instances
+      max_instance_count = var.max_instance_count
+    }
+
+    containers {
+      image = var.agents_image
+
+      env {
+        name  = "SERVICE"
+        value = "triage_fallback"
+      }
+      env {
+        name  = "PROJECT_ID"
+        value = var.project_id
+      }
+      env {
+        name  = "GOOGLE_CLOUD_PROJECT"
+        value = var.project_id
+      }
+      env {
+        name  = "REGION"
+        value = var.region
+      }
+      env {
+        name  = "GOOGLE_CLOUD_LOCATION"
+        value = var.region
+      }
+      env {
+        name  = "CLOUD_ML_PROJECT_ID"
+        value = var.project_id
+      }
+      env {
+        name  = "AGENT_SEARCH_LOCATION"
+        value = var.agent_search_location
+      }
+      env {
+        name  = "AGENT_SEARCH_ENGINE_ID"
+        value = var.agent_search_engine_id
+      }
+      env {
+        name  = "ROUTER_S1_ENDPOINT"
+        value = var.router_s1_endpoint
+      }
+      env {
+        name  = "ROUTER_S1_BASE_URL"
+        value = var.router_s1_base_url
+      }
+      env {
+        name  = "ORDER_LOOKUP_MCP_URL"
+        value = length(google_cloud_run_v2_service.order_lookup_mcp) > 0 ? google_cloud_run_v2_service.order_lookup_mcp[0].uri : ""
+      }
+      env {
+        name  = "TICKET_DB_MCP_URL"
+        value = length(google_cloud_run_v2_service.ticket_db_mcp) > 0 ? google_cloud_run_v2_service.ticket_db_mcp[0].uri : ""
+      }
+      env {
+        name  = "HUMAN_QUEUE_URL"
+        value = length(google_cloud_run_v2_service.human_queue) > 0 ? google_cloud_run_v2_service.human_queue[0].uri : var.human_queue_url
+      }
+      env {
+        name  = "HUMAN_QUEUE_TOPIC"
+        value = var.human_queue_topic
+      }
+      env {
+        name  = "REDACTION_KMS_KEY"
+        value = var.redaction_kms_key
+      }
+      env {
+        name  = "FAQ_RESOLVER_URL"
+        value = var.faq_resolver_url
+      }
+      env {
+        name  = "FAQ_RESOLVER_AUDIENCE"
+        value = var.faq_resolver_audience
+      }
+      env {
+        name  = "ALLOWED_CALLERS"
+        value = var.allowed_callers != "" ? var.allowed_callers : join(",", compact([var.sa_triage_email, "sa-cd-deployer@${var.project_id}.iam.gserviceaccount.com", var.discovery_engine_sa_email]))
+      }
+      env {
+        name  = "MODEL_ARMOR_TEMPLATE"
+        value = var.model_armor_template
+      }
+      env {
+        name  = "MODEL_ARMOR_ENABLED"
+        value = var.model_armor_enabled
+      }
+      env {
+        name  = "CCT_KEY_VERSION"
+        value = var.cct_key_version != "" ? var.cct_key_version : "${var.cct_key_prefix}cryptoKeyVersions/1"
+      }
+      env {
+        name  = "CCT_ISSUER"
+        value = var.cct_issuer
+      }
+      env {
+        name  = "CCT_AUDIENCE"
+        value = var.cct_audience
+      }
+      env {
+        name  = "CCT_TTL_S"
+        value = var.cct_ttl_s
+      }
+      env {
+        name  = "ENABLE_CLOUD_TRACE"
+        value = "1"
+      }
+      env {
+        name  = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
+        value = "NO_CONTENT"
+      }
+      env {
+        name  = "REQUIRE_REAL_DEPS"
+        value = var.require_real_deps
+      }
+      env {
+        name  = "GE_OAUTH_AUTH_ID"
+        value = var.ge_oauth_auth_id
+      }
+
+      ports {
+        container_port = 8080
+      }
+
+      resources {
+        limits = {
+          cpu    = "1"
+          memory = "1Gi"
+        }
+      }
+    }
+  }
+
+  labels = var.labels
+}
+
+locals {
+  triage_fallback_invokers = distinct(compact(concat(
+    ["serviceAccount:sa-cd-deployer@${var.project_id}.iam.gserviceaccount.com"],
+    var.discovery_engine_sa_email != "" ? ["serviceAccount:${var.discovery_engine_sa_email}"] : [],
+    var.triage_fallback_invokers,
+  )))
+}
+
+resource "google_cloud_run_v2_service_iam_member" "triage_fallback_invokers" {
+  for_each = local.service_count > 0 ? toset(local.triage_fallback_invokers) : toset([])
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.triage_fallback[0].name
+  role     = "roles/run.invoker"
+  member   = each.value
+}
+
+

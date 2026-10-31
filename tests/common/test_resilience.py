@@ -207,3 +207,59 @@ def test_latency_budgets_and_timeouts():
     with pytest.raises(ServiceTimeoutError):
         cb.call_with_timeout(_slow_task, timeout_s=0.030)
     assert cb.state == CircuitState.OPEN
+
+
+def test_circuit_breaker_properties_and_cooldown():
+    """Verify CircuitBreaker properties, state transitions, and cooldown jitter.
+
+    # REQ-AGENT-011: Distributed Circuit Breakers and Fallback Hierarchies
+    # REQ-CICD-010: Targeted tests for common/resilience.py pure logic
+    """
+    fake_time = 100.0
+
+    def clock():
+        return fake_time
+
+    # RNG returning 0.5 means jitter_fraction = (0.5 * 2 - 1) * 0.20 = 0.0
+    cb = CircuitBreaker(
+        name="test_cb",
+        failure_threshold=2,
+        base_cooldown_s=10.0,
+        max_cooldown_s=60.0,
+        jitter_ratio=0.20,
+        clock=clock,
+        rng=lambda: 0.5,
+    )
+
+    assert cb.state == CircuitState.CLOSED
+    assert cb.consecutive_failures == 0
+    assert cb.consecutive_successes == 0
+    assert cb.trip_count == 0
+    assert cb.reset_at == 0.0
+
+    # First failure
+    cb.record_failure(RuntimeError("fail 1"))
+    assert cb.consecutive_failures == 1
+    assert cb.state == CircuitState.CLOSED
+
+    # Second failure trips breaker
+    cb.record_failure(RuntimeError("fail 2"))
+    assert cb.state == CircuitState.OPEN
+    assert cb.trip_count == 1
+    assert cb.reset_at == 110.0  # 100.0 + 10.0
+
+    # Before cooldown expires
+    fake_time = 105.0
+    assert cb.state == CircuitState.OPEN
+
+    # After cooldown expires, state transitions to HALF_OPEN on read
+    fake_time = 111.0
+    assert cb.state == CircuitState.HALF_OPEN
+    assert cb.consecutive_successes == 0
+
+    # Success in HALF_OPEN recovers breaker to CLOSED (success_threshold=2)
+    cb.record_success()
+    assert cb.state == CircuitState.HALF_OPEN
+    cb.record_success()
+    assert cb.state == CircuitState.CLOSED
+    assert cb.consecutive_failures == 0

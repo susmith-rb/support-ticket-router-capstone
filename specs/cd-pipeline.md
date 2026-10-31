@@ -57,13 +57,13 @@ CD never runs `terraform`.
 ---
 
 ### REQ-CD-004: Deploy Cloud Run microservices
-- **Statement**: The CD pipeline MUST update Cloud Run services `ticket-db-mcp`, `order-lookup-mcp`, `human-queue`, and `human-review-ui` with the new image tag in region `us-central1`, waiting for a ready revision while preserving environment variables and IAM policies managed by Terraform.
-- **Rationale**: REQ-AGENT-017, TDD §12.6: Microservice revision lifecycle updates container images independently of infrastructure declarations.
+- **Statement**: The CD pipeline MUST update Cloud Run services `ticket-db-mcp`, `order-lookup-mcp`, `human-queue`, `human-review-ui`, and `triage-fallback` with the new image tag in region `us-central1`, waiting for a ready revision while preserving environment variables and IAM policies managed by Terraform.
+- **Rationale**: REQ-AGENT-017, REQ-AGENT-035, TDD §12.6: Microservice revision lifecycle updates container images independently of infrastructure declarations.
 - **Acceptance**: `tests/infra/test_cd_pipeline_static.py::test_cd_deploys_cloud_run`
 - **Status**: done
 - **Owner**: platform
 
-- `gcloud run services update {ticket-db-mcp,order-lookup-mcp,human-queue,human-review-ui} --image <tag> --region us-central1` (image only; env/IAM stay in Terraform). Wait for ready revision.
+- `gcloud run services update {ticket-db-mcp,order-lookup-mcp,human-queue,human-review-ui,triage-fallback} --image <tag> --region us-central1` (image only; env/IAM stay in Terraform). Wait for ready revision.
 
 ---
 
@@ -91,20 +91,20 @@ CD never runs `terraform`.
 ---
 
 ### REQ-CD-007: Post-deploy smoke verification gates
-- **Statement**: The CD pipeline MUST execute three post-deploy smoke verification scripts in sequence, failing closed if any check fails: (1) `scripts/smoke/cloud_run_smoke.py`, (2) `scripts/e2e_identity_check.py`, and (3) `scripts/model_armor_smoke.py --timeout-s 5`.
-- **Rationale**: REQ-IDENT-008, REQ-MA-006: Immediate end-to-end verification of service health, authentication boundaries, BOLA isolation, and Model Armor security controls is required before declaring a deployment successful.
+- **Statement**: The CD pipeline MUST execute three post-deploy smoke verification scripts in sequence, failing closed if any check fails: (1) `scripts/smoke/cloud_run_smoke.py` (verifying `ticket-db-mcp`, `order-lookup-mcp`, `human-queue`, and `triage-fallback`), (2) `scripts/e2e_identity_check.py`, and (3) `scripts/model_armor_smoke.py --timeout-s 5`.
+- **Rationale**: REQ-IDENT-008, REQ-MA-006, REQ-AGENT-035: Immediate end-to-end verification of service health, fallback readiness, authentication boundaries, BOLA isolation, and Model Armor security controls is required before declaring a deployment successful.
 - **Acceptance**: `tests/infra/test_cd_pipeline_static.py::test_cd_post_deploy_smoke`
 - **Status**: done
 - **Owner**: platform
 
-1. `scripts/smoke/cloud_run_smoke.py` (port of the operator smoke: /health 200 on 3 services, unauthenticated 403, idempotent upsert dedup, body-customer_id rejected 400).
+1. `scripts/smoke/cloud_run_smoke.py` (port of the operator smoke: /health 200 on 4 services including triage-fallback, unauthenticated 403, idempotent upsert dedup, body-customer_id rejected 400, authenticated fallback message query).
 2. `scripts/e2e_identity_check.py` (demo tokens from Secret Manager `identity-demo-user-1001/1002`, `identity-web-api-key`).
 3. `scripts/model_armor_smoke.py --timeout-s 5` (functional 5/5).
 
 ---
 
 ### REQ-CD-008: Rollback on failure and last-good record on success
-- **Statement**: On complete success, the pipeline MUST write `{sha, image, build_id, time}` to `gs://$PROJECT_ID-laya/cd/last_good.json`. On any deployment or smoke failure, the pipeline MUST roll back Cloud Run (including `human-review-ui`) and GKE deployments to the image recorded in `last_good.json`, output instructions for Agent Engine re-run, and exit with code 1.
+- **Statement**: On complete success, the pipeline MUST write `{sha, image, build_id, time}` to `gs://$PROJECT_ID-laya/cd/last_good.json`. On any deployment or smoke failure, the pipeline MUST roll back Cloud Run (including `human-review-ui` and `triage-fallback`) and GKE deployments to the image recorded in `last_good.json`, output instructions for Agent Engine re-run, and exit with code 1.
 - **Rationale**: TDD §12.6: Automatic rollback minimizes blast radius and downtime for customer-facing services upon bad deployments.
 - **Acceptance**: `tests/infra/test_cd_pipeline_static.py::test_cd_rollback_and_last_good`
 - **Status**: done

@@ -221,3 +221,22 @@ variable "faq_agent_identity" {
   type        = string
   default     = "0"
 }
+
+variable "cloud_run_deletion_protection" {
+  description = "Whether deletion protection is enabled on Cloud Run services"
+  type        = bool
+  default     = false
+}
+
+variable "triage_fallback_min_instances" {
+  description = "Minimum instances for warm triage-fallback Cloud Run service (REQ-AGENT-035)"
+  type        = number
+  default     = 1
+}
+
+variable "triage_fallback_invokers" {
+  description = "List of IAM member strings granted roles/run.invoker on triage-fallback"
+  type        = list(string)
+  default     = []
+}
+

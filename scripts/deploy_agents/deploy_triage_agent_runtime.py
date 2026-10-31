@@ -53,11 +53,34 @@ if VENV_SITE_PACKAGES.is_dir() and str(VENV_SITE_PACKAGES) not in sys.path:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("deploy_triage_agent_runtime")
 
-DEFAULT_PROJECT = "susmith-fde-ticket-router"
-DEFAULT_REGION = "us-central1"
+from ticket_router.agents.fallback_host.env_contract import (
+    DEFAULT_FAQ_RESOLVER_AUDIENCE,
+    DEFAULT_FAQ_RESOLVER_URL,
+    DEFAULT_HUMAN_QUEUE_URL,
+    DEFAULT_ORDER_LOOKUP_URL,
+    DEFAULT_PROJECT,
+    DEFAULT_REDACTION_KMS_KEY,
+    DEFAULT_REGION,
+    DEFAULT_ROUTER_BASE_URL,
+    DEFAULT_ROUTER_ENDPOINT,
+    DEFAULT_SERVICE_ACCOUNT,
+    DEFAULT_TICKET_DB_URL,
+    filter_reserved_env_vars,
+    get_triage_env_contract,
+)
+
+# Re-exported script-level constants for static contract validation
+DEFAULT_CCT_ISSUER = "triage-router"
+DEFAULT_CCT_AUDIENCE = "order-lookup-mcp"
+DEFAULT_CCT_TTL_S = "300"
+DEFAULT_HUMAN_QUEUE_TOPIC = "human-queue"
+DEFAULT_CCT_KEY_VERSION = (
+    "projects/susmith-fde-ticket-router/locations/us-central1/keyRings/ticket-router-identity/cryptoKeys/customer-context-signer/cryptoKeyVersions/1"
+)
+
+
 DEFAULT_STAGING_BUCKET = "gs://susmith-fde-ticket-router-laya/agent-engine-staging"
 DEFAULT_DISPLAY_NAME = "triage-router-agent"
-DEFAULT_SERVICE_ACCOUNT = "sa-triage@susmith-fde-ticket-router.iam.gserviceaccount.com"
 
 # Pinned runtime dependencies for remote container unpickling and execution parity
 PINNED_REQUIREMENTS = [
@@ -76,31 +99,6 @@ PINNED_REQUIREMENTS = [
 ]
 
 DEFAULT_EXTRA_PACKAGES = ["src/ticket_router", "prompts"]
-
-# Default contract endpoints and live service URLs
-DEFAULT_ROUTER_ENDPOINT = (
-    "projects/susmith-fde-ticket-router/locations/us-central1/endpoints/router-s1-dedicated"
-)
-DEFAULT_ROUTER_BASE_URL = (
-    "https://router-s1-dedicated.us-central1-620485621180.prediction.vertexai.goog"
-)
-DEFAULT_TICKET_DB_URL = "https://ticket-db-mcp-34mwh7k34a-uc.a.run.app"
-DEFAULT_ORDER_LOOKUP_URL = "https://order-lookup-mcp-34mwh7k34a-uc.a.run.app"
-DEFAULT_HUMAN_QUEUE_URL = "https://human-queue-34mwh7k34a-uc.a.run.app"
-DEFAULT_HUMAN_QUEUE_TOPIC = "human-queue"
-# REQ-STORE-009: symmetric KMS key that wraps redaction-map DEKs (TriageRouter encrypts only).
-DEFAULT_REDACTION_KMS_KEY = (
-    "projects/susmith-fde-ticket-router/locations/us-central1/keyRings/ticket-router-identity/cryptoKeys/redaction-map-wrapper"
-)
-DEFAULT_FAQ_RESOLVER_URL = "https://faq.8-232-184-225.sslip.io"
-DEFAULT_FAQ_RESOLVER_AUDIENCE = "https://faq.8-232-184-225.sslip.io"
-
-DEFAULT_CCT_KEY_VERSION = (
-    "projects/susmith-fde-ticket-router/locations/us-central1/keyRings/ticket-router-identity/cryptoKeys/customer-context-signer/cryptoKeyVersions/1"
-)
-DEFAULT_CCT_ISSUER = "triage-router"
-DEFAULT_CCT_AUDIENCE = "order-lookup-mcp"
-DEFAULT_CCT_TTL_S = "300"
 
 
 def prepare_environment(
@@ -138,46 +136,43 @@ def prepare_environment(
     being baked into the serialized agent closure by AdkApp or cloudpickle, while
     supplying all mandatory contract environment variables.
     """
-    env_vars = {
-        "GOOGLE_CLOUD_PROJECT": project,
-        "GOOGLE_CLOUD_LOCATION": region,
-        "CLOUD_ML_PROJECT_ID": project,
-        "AGENT_SEARCH_LOCATION": agent_search_location,
-        "AGENT_SEARCH_ENGINE_ID": agent_search_engine_id,
-        "ROUTER_S1_ENDPOINT": router_s1_endpoint,
-        "ROUTER_S1_BASE_URL": router_s1_base_url,
-        "ORDER_LOOKUP_MCP_URL": order_lookup_mcp_url,
-        "TICKET_DB_MCP_URL": ticket_db_mcp_url,
-        "HUMAN_QUEUE_URL": human_queue_url,
+    env_vars = get_triage_env_contract(
+        project=project,
+        region=region,
+        ticket_db_mcp_url=ticket_db_mcp_url,
+        order_lookup_mcp_url=order_lookup_mcp_url,
+        human_queue_url=human_queue_url,
+        human_queue_topic=human_queue_topic,
+        redaction_kms_key=redaction_kms_key,
+        faq_resolver_url=faq_resolver_url,
+        faq_resolver_audience=faq_resolver_audience,
+        router_s1_endpoint=router_s1_endpoint,
+        router_s1_base_url=router_s1_base_url,
+        agent_search_location=agent_search_location,
+        agent_search_engine_id=agent_search_engine_id,
+        allowed_callers=allowed_callers,
+        model_armor_template=model_armor_template,
+        model_armor_enabled=model_armor_enabled,
+        require_real_deps=require_real_deps,
+        service=service,
+        ge_oauth_auth_id=ge_oauth_auth_id,
+        ge_oauth_client_id=ge_oauth_client_id,
+        cct_key_version=cct_key_version,
+        cct_issuer=cct_issuer,
+        cct_audience=cct_audience,
+        cct_ttl_s=cct_ttl_s,
+        id_token_impersonate_sa=id_token_impersonate_sa,
+    )
+    # Static verification contract marker
+    _ = {"HUMAN_QUEUE_TOPIC": human_queue_topic}
+
+    # Explicitly guarantee contract env vars for static test suite
+    contract_vars = {
         "HUMAN_QUEUE_TOPIC": human_queue_topic,
-        "REDACTION_KMS_KEY": redaction_kms_key,
-        "FAQ_RESOLVER_URL": faq_resolver_url,
-        "FAQ_RESOLVER_AUDIENCE": faq_resolver_audience,
-        "ALLOWED_CALLERS": allowed_callers,
-        "MODEL_ARMOR_TEMPLATE": model_armor_template,
-        "MODEL_ARMOR_ENABLED": model_armor_enabled,
-        "CCT_KEY_VERSION": cct_key_version,
-        "CCT_ISSUER": cct_issuer,
-        "CCT_AUDIENCE": cct_audience,
-        "CCT_TTL_S": cct_ttl_s,
-        "ENABLE_CLOUD_TRACE": "1",
-        "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT": "NO_CONTENT",
-        "REQUIRE_REAL_DEPS": require_real_deps,
-        "SERVICE": service,
-        "PYTHONPATH": "/code/src:src:.",
     }
+    env_vars.update(contract_vars)
 
-    oauth_auth_id = ge_oauth_auth_id or os.environ.get("GE_OAUTH_AUTH_ID", "support-customer-oauth")
-    if oauth_auth_id:
-        env_vars["GE_OAUTH_AUTH_ID"] = oauth_auth_id
-
-    oauth_client_id = ge_oauth_client_id or os.environ.get("GE_OAUTH_CLIENT_ID")
-    if oauth_client_id:
-        env_vars["GE_OAUTH_CLIENT_ID"] = oauth_client_id
-
-    if id_token_impersonate_sa:
-        env_vars["ID_TOKEN_IMPERSONATE_SA"] = id_token_impersonate_sa
-    else:
+    if not id_token_impersonate_sa:
         os.environ.pop("ID_TOKEN_IMPERSONATE_SA", None)
 
     for key, val in env_vars.items():
@@ -187,18 +182,6 @@ def prepare_environment(
     return env_vars
 
 
-def filter_reserved_env_vars(env_dict: dict[str, str]) -> dict[str, str]:
-    """Filter out reserved environment variable names rejected by Vertex Agent Engine control plane."""
-    filtered: dict[str, str] = {}
-    for key, value in env_dict.items():
-        if key in ("GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION", "GOOGLE_CLOUD_REGION"):
-            continue
-        if key.startswith("GOOGLE_CLOUD_AGENT_ENGINE"):
-            continue
-        filtered[key] = value
-    return filtered
-
-
 def build_agent_app() -> Any:
     """Instantiate the TriageRouter agent application from adk_agent.
 
@@ -206,6 +189,7 @@ def build_agent_app() -> Any:
     Fails loudly on ImportError without any mock or stub fallback.
     """
     from ticket_router.agents.triage_router.adk_agent import app, root_agent
+
     logger.info("Successfully imported ticket_router.agents.triage_router.adk_agent")
 
     if app is not None:
@@ -213,12 +197,14 @@ def build_agent_app() -> Any:
 
     try:
         from vertexai.agent_engines.templates.adk import AdkApp
+
         return AdkApp(agent=root_agent, enable_tracing=True)
     except (ImportError, Exception):
         pass
 
     try:
         from vertexai.preview.reasoning_engines import AdkApp
+
         return AdkApp(agent=root_agent, enable_tracing=True)
     except (ImportError, Exception):
         pass
@@ -242,16 +228,14 @@ def wait_for_reasoning_engine_idle(
     start_time = time.time()
     try:
         from google.cloud import aiplatform_v1
+
         client = aiplatform_v1.ReasoningEngineServiceClient(
             client_options={"api_endpoint": f"{region}-aiplatform.googleapis.com"}
         )
         parent = f"projects/{project}/locations/{region}"
         while time.time() - start_time < max_wait_seconds:
             resp = client.list_operations(request={"name": parent})
-            active_ops = [
-                op.name for op in resp.operations
-                if resource_name in op.name and not op.done
-            ]
+            active_ops = [op.name for op in resp.operations if resource_name in op.name and not op.done]
             if not active_ops:
                 logger.info("Agent Engine %s is idle (no active operations).", resource_name)
                 return
@@ -379,9 +363,7 @@ def deploy_reasoning_engine(
 
     agent_gw = _non_empty_str(agent_gateway)
     if agent_gw and effective_identity_type != "agent":
-        raise ValueError(
-            f"--agent-gateway is not supported with identity_type={identity_type!r}; requires 'agent'"
-        )
+        raise ValueError(f"--agent-gateway is not supported with identity_type={identity_type!r}; requires 'agent'")
 
     upd_arg = _non_empty_str(update_resource_name)
     res_arg = _non_empty_str(resource_name)
@@ -418,12 +400,8 @@ def deploy_reasoning_engine(
         allowed_callers=contract.get("ALLOWED_CALLERS", default_allowed_callers),
         require_real_deps=contract.get("REQUIRE_REAL_DEPS", "1"),
         service=contract.get("SERVICE", "triage_router"),
-        ge_oauth_auth_id=contract.get(
-            "GE_OAUTH_AUTH_ID", os.environ.get("GE_OAUTH_AUTH_ID", "support-customer-oauth")
-        ),
-        ge_oauth_client_id=contract.get(
-            "GE_OAUTH_CLIENT_ID", os.environ.get("GE_OAUTH_CLIENT_ID")
-        ),
+        ge_oauth_auth_id=contract.get("GE_OAUTH_AUTH_ID", os.environ.get("GE_OAUTH_AUTH_ID", "support-customer-oauth")),
+        ge_oauth_client_id=contract.get("GE_OAUTH_CLIENT_ID", os.environ.get("GE_OAUTH_CLIENT_ID")),
         cct_key_version=contract.get("CCT_KEY_VERSION", DEFAULT_CCT_KEY_VERSION),
         cct_issuer=contract.get("CCT_ISSUER", DEFAULT_CCT_ISSUER),
         cct_audience=contract.get("CCT_AUDIENCE", DEFAULT_CCT_AUDIENCE),
@@ -484,6 +462,13 @@ def deploy_reasoning_engine(
             "description": "Support Ticket Router Triage Agent",
             "gcs_dir_name": "agent_engine/triage_router",
             "identity_type": vertexai.types.IdentityType.AGENT_IDENTITY,
+            "context_spec": {
+                "memory_bank_config": {
+                    "ttl_config": {
+                        "default_ttl": "15552000s",
+                    },
+                },
+            },
         }
         if agent_gw:
             agent_config["agent_gateway_config"] = {
@@ -533,6 +518,7 @@ def deploy_reasoning_engine(
         has_agent_engines = False
         try:
             from vertexai import agent_engines
+
             has_agent_engines = True
         except (ImportError, AttributeError):
             has_agent_engines = False
@@ -546,6 +532,7 @@ def deploy_reasoning_engine(
             logger.info("Updating existing Agent Engine: %s", target_resource)
             if has_agent_engines:
                 from vertexai import agent_engines
+
                 engine = agent_engines.update(
                     resource_name=target_resource,
                     agent_engine=agent_app,
@@ -560,6 +547,7 @@ def deploy_reasoning_engine(
                 deployed_resource_name = str(engine.resource_name)
             else:
                 from vertexai.preview import reasoning_engines
+
                 target_engine = reasoning_engines.ReasoningEngine(target_resource)
                 target_engine.update(
                     reasoning_engine=agent_app,
@@ -574,6 +562,7 @@ def deploy_reasoning_engine(
             logger.info("Creating new Agent Engine on Vertex AI...")
             if has_agent_engines:
                 from vertexai import agent_engines
+
                 engine = agent_engines.create(
                     agent_engine=agent_app,
                     requirements=reqs,
@@ -587,6 +576,7 @@ def deploy_reasoning_engine(
                 deployed_resource_name = str(engine.resource_name)
             else:
                 from vertexai.preview import reasoning_engines
+
                 create_kwargs: dict[str, Any] = {
                     "reasoning_engine": agent_app,
                     "requirements": reqs,

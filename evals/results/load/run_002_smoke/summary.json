@@ -1,0 +1,82 @@
+{
+  "profile": "smoke",
+  "total_requests": 120,
+  "successful_requests": 120,
+  "failed_requests": 0,
+  "error_rate_pct": 0.0,
+  "duration_s": 281.23,
+  "actual_qps": 0.43,
+  "latency_ms": {
+    "p50": 4673.39,
+    "p90": 7195.07,
+    "p95": 7744.87,
+    "p99": 10601.9,
+    "min": 2367.14,
+    "max": 13865.65,
+    "mean": 4657.1,
+    "stddev": 2008.19,
+    "success_p50": 4673.39,
+    "success_p95": 7744.87
+  },
+  "decisions": {
+    "auto_rag": {
+      "count": 120,
+      "percentage": 100.0
+    }
+  },
+  "tiers": {
+    "unknown": {
+      "count": 120,
+      "percentage": 100.0
+    }
+  },
+  "categories": {
+    "order_anon": {
+      "count": 18,
+      "percentage": 15.0,
+      "p50_ms": 2566.76,
+      "p95_ms": 3997.82,
+      "errors": 0
+    },
+    "order_auth": {
+      "count": 24,
+      "percentage": 20.0,
+      "p50_ms": 7056.19,
+      "p95_ms": 10118.13,
+      "errors": 0
+    },
+    "escalate_angry": {
+      "count": 21,
+      "percentage": 17.5,
+      "p50_ms": 2650.8,
+      "p95_ms": 4752.56,
+      "errors": 0
+    },
+    "faq": {
+      "count": 45,
+      "percentage": 37.5,
+      "p50_ms": 4869.67,
+      "p95_ms": 6302.42,
+      "errors": 0
+    },
+    "oos": {
+      "count": 5,
+      "percentage": 4.17,
+      "p50_ms": 5416.42,
+      "p95_ms": 6019.92,
+      "errors": 0
+    },
+    "greeting": {
+      "count": 7,
+      "percentage": 5.83,
+      "p50_ms": 2611.09,
+      "p95_ms": 3104.31,
+      "errors": 0
+    }
+  },
+  "resource_name": "projects/620485621180/locations/us-central1/reasoningEngines/2170218524805431296",
+  "project": "susmith-fde-ticket-router",
+  "region": "us-central1",
+  "dry_run": false,
+  "concurrency": 2
+}

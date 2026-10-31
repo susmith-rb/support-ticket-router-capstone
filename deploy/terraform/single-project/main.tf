@@ -194,30 +194,34 @@ module "kms_identity" {
 }
 
 module "cloud_run_services" {
-  source                    = "./modules/cloud-run-services"
-  project_id                = var.project_id
-  region                    = var.region
-  agents_image              = var.agents_image
-  cloud_sql_connection_name = module.cloud_sql.instance_connection_name
-  sa_ticket_mcp_email       = module.cloud_sql.sa_ticket_mcp_email
-  sa_order_mcp_email        = module.cloud_sql.sa_order_mcp_email
-  sa_queue_email            = module.cloud_sql.sa_queue_email
-  sa_triage_email           = module.agents_iam.sa_triage_email
-  sa_faq_email              = module.agents_iam.sa_faq_email
-  triage_agent_principal    = var.triage_agent_principal
-  min_instance_count        = var.cloud_run_min_instances
-  max_instance_count        = var.cloud_run_max_instances
-  cct_key_prefix            = module.kms_identity.key_prefix
-  cct_mode                  = var.cct_mode
-  push_audience             = "${var.human_queue_url}/pubsub/escalations"
-  sa_queue_push_email       = module.pubsub.sa_queue_push_email
-  faq_agent_principal       = var.faq_agent_principal
-  allowed_caller_spiffe_ids = var.allowed_caller_spiffe_ids
-  redaction_kms_key         = module.kms_identity.redaction_map_wrapper_key_id
-  purge_audience            = "${var.human_queue_url}/internal/purge-expired-redaction-maps"
-  purge_invoker_email       = "sa-redaction-purge@${var.project_id}.iam.gserviceaccount.com"
-  review_ui_reps            = var.review_ui_reps
-  labels                    = var.labels
+  source                        = "./modules/cloud-run-services"
+  project_id                    = var.project_id
+  region                        = var.region
+  agents_image                  = var.agents_image
+  cloud_sql_connection_name     = module.cloud_sql.instance_connection_name
+  sa_ticket_mcp_email           = module.cloud_sql.sa_ticket_mcp_email
+  sa_order_mcp_email            = module.cloud_sql.sa_order_mcp_email
+  sa_queue_email                = module.cloud_sql.sa_queue_email
+  sa_triage_email               = module.agents_iam.sa_triage_email
+  sa_faq_email                  = module.agents_iam.sa_faq_email
+  triage_agent_principal        = var.triage_agent_principal
+  min_instance_count            = var.cloud_run_min_instances
+  max_instance_count            = var.cloud_run_max_instances
+  cct_key_prefix                = module.kms_identity.key_prefix
+  cct_mode                      = var.cct_mode
+  push_audience                 = "${var.human_queue_url}/pubsub/escalations"
+  sa_queue_push_email           = module.pubsub.sa_queue_push_email
+  faq_agent_principal           = var.faq_agent_principal
+  allowed_caller_spiffe_ids     = var.allowed_caller_spiffe_ids
+  redaction_kms_key             = module.kms_identity.redaction_map_wrapper_key_id
+  purge_audience                = "${var.human_queue_url}/internal/purge-expired-redaction-maps"
+  purge_invoker_email           = "sa-redaction-purge@${var.project_id}.iam.gserviceaccount.com"
+  review_ui_reps                = var.review_ui_reps
+  labels                        = var.labels
+  deletion_protection           = var.cloud_run_deletion_protection
+  triage_fallback_min_instances = var.triage_fallback_min_instances
+  triage_fallback_invokers      = var.triage_fallback_invokers
+  discovery_engine_sa_email     = google_project_service_identity.discovery_engine.email
 
   depends_on = [module.project_services, module.cloud_sql, module.agents_iam, module.kms_identity]
 }

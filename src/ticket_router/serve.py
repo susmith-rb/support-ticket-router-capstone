@@ -6,11 +6,12 @@
 # REQ-STORE-002: Cloud SQL Python Connector with IAM database authentication
 # REQ-STORE-006: Concrete storage layer for tickets, orders, and redaction maps
 
-Selects target service application via environment variable SERVICE:
-- SERVICE=ticket_db       -> ticket-db-mcp server (sa-ticket-mcp, ticket_rw)
-- SERVICE=order_lookup    -> order-lookup-mcp server (sa-order-mcp, orders_ro)
-- SERVICE=human_queue     -> human-queue agent server (sa-queue, queue_rw)
-- SERVICE=faq_resolver    -> faq-resolver agent server (GKE Autopilot / unified container)
+# Selects target service application via environment variable SERVICE:
+# - SERVICE=ticket_db       -> ticket-db-mcp server (sa-ticket-mcp, ticket_rw)
+# - SERVICE=order_lookup    -> order-lookup-mcp server (sa-order-mcp, orders_ro)
+# - SERVICE=human_queue     -> human-queue agent server (sa-queue, queue_rw)
+# - SERVICE=faq_resolver    -> faq-resolver agent server (GKE Autopilot / unified container)
+# - SERVICE=triage_fallback -> triage-fallback agent server (Cloud Run warm fallback host)
 """
 
 from __future__ import annotations
@@ -76,23 +77,17 @@ def build_connection_manager(
     """
     conn_name = instance_connection_name or os.getenv("INSTANCE_CONNECTION_NAME")
     if not conn_name:
-        raise RuntimeError(
-            "INSTANCE_CONNECTION_NAME environment variable is required to connect to Cloud SQL"
-        )
+        raise RuntimeError("INSTANCE_CONNECTION_NAME environment variable is required to connect to Cloud SQL")
 
     parts = conn_name.split(":")
     if len(parts) != 3:
-        raise ValueError(
-            f"Invalid INSTANCE_CONNECTION_NAME '{conn_name}', expected 'project:region:instance'"
-        )
+        raise ValueError(f"Invalid INSTANCE_CONNECTION_NAME '{conn_name}', expected 'project:region:instance'")
     project_id, region, instance_name = parts
 
     database = db_name or os.getenv("DB_NAME", "support")
     user = db_iam_user or os.getenv("DB_IAM_USER") or os.getenv("DB_USER")
     if not user:
-        raise RuntimeError(
-            "DB_IAM_USER environment variable is required for IAM database authentication"
-        )
+        raise RuntimeError("DB_IAM_USER environment variable is required for IAM database authentication")
 
     from ticket_router.store.connector import CloudSqlConnectionManager
 
@@ -196,8 +191,14 @@ def get_app(service_name: Optional[str] = None) -> FastAPI:
         raw_app = create_review_ui_app()
         return _instrument_fastapi_app(raw_app, svc)
 
+    if svc in ("triage_fallback", "triage_router", "fallback_host"):
+        from ticket_router.agents.fallback_host.app import create_app as create_fallback_app
+
+        raw_app = create_fallback_app()
+        return _instrument_fastapi_app(raw_app, svc)
+
     raise ValueError(
-        f"Unknown SERVICE '{svc}'. Must be one of: ticket_db, order_lookup, human_queue, faq_resolver, review_ui"
+        f"Unknown SERVICE '{svc}'. Must be one of: ticket_db, order_lookup, human_queue, faq_resolver, review_ui, triage_fallback"
     )
 
 

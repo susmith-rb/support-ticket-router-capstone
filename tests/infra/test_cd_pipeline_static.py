@@ -148,6 +148,7 @@ def test_cd_deploys_cloud_run():
     assert "order-lookup-mcp" in script
     assert "human-queue" in script
     assert "human-review-ui" in script
+    assert "triage-fallback" in script
     assert "--image" in script
 
 
@@ -250,7 +251,6 @@ def test_cd_agent_engine_step_is_change_aware():
     assert "--sha" in script
 
 
-
 # REQ-CD-007
 def test_cd_post_deploy_smoke():
     """Verify post-deploy smoke gate scripts and execution in CD pipeline.
@@ -268,6 +268,7 @@ def test_cd_post_deploy_smoke():
     assert "get_id_token" in smoke_code  # shared helper with Cloud Build generateIdToken fallback
     assert "upsert_ticket" in smoke_code
     assert "get_order" in smoke_code
+    assert "triage-fallback" in smoke_code
     assert "403" in smoke_code
     assert "400" in smoke_code
     assert "unverified_customer" in smoke_code  # asserted ids fail closed
@@ -311,6 +312,7 @@ def test_cd_rollback_and_last_good():
     fetch_script = " ".join(fetch_step.get("args", []))
     assert "rollback.sh" in fetch_script
     assert "gcloud run services update" in fetch_script
+    assert "triage-fallback" in fetch_script
     assert "kubectl set image deployment/faq-resolver" in fetch_script
     assert "gcloud builds triggers run support-ticket-router-cd" in fetch_script
     assert "exit 1" in fetch_script
@@ -373,13 +375,13 @@ def test_terraform_ignores_cd_owned_fields():
     assert 'resource "google_cloud_run_v2_service" "order_lookup_mcp"' in cr_main
     assert 'resource "google_cloud_run_v2_service" "human_queue"' in cr_main
     assert 'resource "google_cloud_run_v2_service" "human_review_ui"' in cr_main
+    assert 'resource "google_cloud_run_v2_service" "triage_fallback"' in cr_main
 
-    # Verify each of the 4 services ignores the container image
+    # Verify each of the 5 services ignores the container image
     occurrences = [
-        line for line in cr_main.splitlines()
-        if "ignore_changes" in line and "template[0].containers[0].image" in line
+        line for line in cr_main.splitlines() if "ignore_changes" in line and "template[0].containers[0].image" in line
     ]
-    assert len(occurrences) == 4, f"Expected 4 Cloud Run services to ignore image, found {len(occurrences)}"
+    assert len(occurrences) == 5, f"Expected 5 Cloud Run services to ignore image, found {len(occurrences)}"
 
     runbook = RUNBOOKS_DIR / "deploy.md"
     assert runbook.is_file(), f"Missing deployment runbook: {runbook}"
@@ -397,10 +399,22 @@ def test_cloudbuild_yaml_has_no_unescaped_shell_vars():
     import re
 
     builtin = {
-        "PROJECT_ID", "PROJECT_NUMBER", "BUILD_ID", "LOCATION", "TRIGGER_NAME",
-        "COMMIT_SHA", "SHORT_SHA", "REVISION_ID", "BRANCH_NAME", "TAG_NAME",
-        "REPO_NAME", "REPO_FULL_NAME", "REF_NAME", "TRIGGER_BUILD_CONFIG_PATH",
-        "SERVICE_ACCOUNT_EMAIL", "SERVICE_ACCOUNT",
+        "PROJECT_ID",
+        "PROJECT_NUMBER",
+        "BUILD_ID",
+        "LOCATION",
+        "TRIGGER_NAME",
+        "COMMIT_SHA",
+        "SHORT_SHA",
+        "REVISION_ID",
+        "BRANCH_NAME",
+        "TAG_NAME",
+        "REPO_NAME",
+        "REPO_FULL_NAME",
+        "REF_NAME",
+        "TRIGGER_BUILD_CONFIG_PATH",
+        "SERVICE_ACCOUNT_EMAIL",
+        "SERVICE_ACCOUNT",
     }
     cicd = Path(__file__).resolve().parents[2] / "cicd"
     bad = []

@@ -67,6 +67,10 @@ from ticket_router.identity.customer_token import (
     Signer,
     mint_customer_context_token,
 )
+from ticket_router.memory.client import (
+    BaseMemoryBankClient,
+    VertexMemoryBankClient,
+)
 from ticket_router.models.router_s1_client import RouterPrediction, RouterS1Client
 from ticket_router.security.envelope import RedactionSealer
 from ticket_router.security.model_armor import (
@@ -133,6 +137,9 @@ def invoke_tier2_gemini(
     location: Optional[str] = None,
 ) -> RouterPrediction:
     """Execute Tier 2 fallback inference using Gemini Flash (REQ-AGENT-002, REQ-AGENT-013)."""
+    from ticket_router.models.tier2_gemini import check_gemini_429_hook
+
+    check_gemini_429_hook()
     try:
         from google import genai  # type: ignore[import-untyped]
         client_kwargs: Dict[str, Any] = {}
@@ -376,6 +383,7 @@ class TriageRouterAgent:
         settings: Optional[Settings] = None,
         human_handoff: Optional[HumanHandoff] = None,
         redaction_sealer: Optional[RedactionSealer] = None,
+        memory_client: Optional[BaseMemoryBankClient] = None,
     ) -> None:
         self._policy = policy
         self._mcp_client = mcp_client
@@ -383,6 +391,7 @@ class TriageRouterAgent:
         self._model_armor_client = model_armor_client
         self._human_handoff = human_handoff
         self._redaction_sealer = redaction_sealer
+        self._memory_client = memory_client
         self.logger = logger or StructuredJsonLogger(name="triage_router")
         self.lazy_init = lazy_init
         self._injected_signer: Optional[Signer] = cct_signer if cct_signer is not None else signer
@@ -455,6 +464,11 @@ class TriageRouterAgent:
                 publisher=pub,
                 escalated_by="triage_router",
             )
+        if self._memory_client is None:
+            self._memory_client = VertexMemoryBankClient(
+                project=settings.project,
+                region=settings.location,
+            )
         self.lazy_init = False
 
     @property
@@ -480,6 +494,13 @@ class TriageRouterAgent:
         self._ensure_initialized()
         assert self._human_handoff is not None
         return self._human_handoff
+
+    @property
+    def memory_client(self) -> BaseMemoryBankClient:
+        self._ensure_initialized()
+        if self._memory_client is None:
+            self._memory_client = VertexMemoryBankClient()
+        return self._memory_client
 
     def _mint_cct_if_verified(
         self,
@@ -926,6 +947,27 @@ class TriageRouterAgent:
                 body_to_persist = decision.details["sanitized_text"]
             pii_mapping = decision.pii_mapping or {}
 
+            # REQ-AGENT-036: Vertex AI Agent Engine Memory Bank read for verified customers
+            if (
+                customer_verified
+                and ticket_customer_id
+                and not str(ticket_customer_id).startswith("anon:")
+                and not memory_summary
+            ):
+                try:
+                    memory_summary = self.memory_client.retrieve_summary(
+                        customer_id=ticket_customer_id,
+                        query=body_to_persist,
+                        timeout_s=0.300,
+                    )
+                except Exception as exc:
+                    logger.warning("Memory Bank retrieve failed open: %s", exc)
+                    memory_summary = ""
+
+            if memory_summary:
+                turn_span.set_attribute("memory_summary_len", len(memory_summary))
+                decision.details["memory_summary"] = memory_summary
+
             def _clean_decision_dict(dec: RouterDecision) -> Dict[str, Any]:
                 d = asdict(dec)
                 d.pop("pii_mapping", None)
@@ -1177,6 +1219,28 @@ class TriageRouterAgent:
                 traceparent=traceparent,
                 predicted_intent=decision.predicted_intent,
             )
+
+            # REQ-AGENT-036: Non-blocking write to Memory Bank from tokenized turn (never restored PII)
+            if (
+                customer_verified
+                and ticket_customer_id
+                and not str(ticket_customer_id).startswith("anon:")
+                and decision.decision != "blocked"
+                and decision.reason != "card_data_blocked"
+            ):
+                try:
+                    dec_summary = (
+                        f"Decision: {decision.decision}, queue: {decision.queue}, "
+                        f"intent: {decision.predicted_intent}"
+                    )
+                    self.memory_client.generate_turn_memories(
+                        customer_id=ticket_customer_id,
+                        user_message_tokenized=body_to_persist,
+                        decision_summary=dec_summary,
+                        async_mode=True,
+                    )
+                except Exception as exc:
+                    logger.warning("Memory Bank write failed: %s", exc)
 
             # Restore in-memory PII tokens for customer-facing reply paths (REQ-STORE-009)
             if calming_ack:

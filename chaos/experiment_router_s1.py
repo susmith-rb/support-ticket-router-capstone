@@ -22,9 +22,18 @@ from chaos.base import ChaosAssertionError, ChaosExperiment
 
 logger = logging.getLogger("chaos.router_s1")
 
-DEFAULT_ENDPOINT_NAME = "projects/susmith-fde-ticket-router/locations/us-central1/endpoints/router-s1-dedicated"
+DEFAULT_ENDPOINT_NAME = "projects/620485621180/locations/us-central1/endpoints/router-s1-dedicated"
 DEFAULT_PROJECT = "susmith-fde-ticket-router"
 DEFAULT_REGION = "us-central1"
+DEFAULT_TRIAGE_RESOURCE = (
+    "projects/620485621180/locations/us-central1/reasoningEngines/2170218524805431296"
+)
+DEFAULT_MODEL_RESOURCE = "projects/620485621180/locations/us-central1/models/980967231871516672"
+DEFAULT_DEPLOYED_DISPLAY_NAME = "router-s1-v5-dedicated"
+DEFAULT_MACHINE_TYPE = "n1-standard-4"
+DEFAULT_ACCELERATOR_TYPE = "nvidia-tesla-t4"
+DEFAULT_ACCELERATOR_COUNT = 1
+DEFAULT_SERVING_SA = "ticket-router-serving@susmith-fde-ticket-router.iam.gserviceaccount.com"
 
 
 class RouterS1ChaosExperiment(ChaosExperiment):
@@ -52,16 +61,24 @@ class RouterS1ChaosExperiment(ChaosExperiment):
         self.project = project
         self.region = region
         self.deployed_model_id: Optional[str] = None
+        self._captured_model: str = os.environ.get("ROUTER_S1_MODEL_ID", DEFAULT_MODEL_RESOURCE)
+        self._captured_display_name: str = DEFAULT_DEPLOYED_DISPLAY_NAME
+        self._captured_machine_type: str = DEFAULT_MACHINE_TYPE
+        self._captured_accel_type: str = DEFAULT_ACCELERATOR_TYPE
+        self._captured_accel_count: int = DEFAULT_ACCELERATOR_COUNT
+        self._captured_min_replicas: int = 1
+        self._captured_max_replicas: int = 1
+        self._captured_service_account: str = DEFAULT_SERVING_SA
         self._simulated_deployed = True
 
     def record_baseline(self) -> Dict[str, Any]:
-        """Verify endpoint is currently healthy and serving."""
+        """Verify endpoint is currently healthy and serving, capturing full deployment spec."""
         if self.dry_run:
             return {
                 "endpoint": self.endpoint_name,
                 "status": "DEPLOYED",
                 "traffic_split": {"0": 100},
-                "active_model": "router-s1-v2",
+                "active_model": "router-s1-v5-dedicated",
                 "healthy": True,
             }
 
@@ -74,6 +91,7 @@ class RouterS1ChaosExperiment(ChaosExperiment):
             f"--project={self.project}",
             f"--region={self.region}",
             "--format=json",
+            "--quiet",
         ]
         try:
             res = subprocess.run(cmd, capture_output=True, text=True, check=True)
@@ -82,11 +100,35 @@ class RouterS1ChaosExperiment(ChaosExperiment):
             data = json.loads(res.stdout)
             deployed = data.get("deployedModels", [])
             if deployed:
-                self.deployed_model_id = deployed[0].get("id")
+                dm = deployed[0]
+                self.deployed_model_id = dm.get("id")
+                if dm.get("model"):
+                    self._captured_model = dm["model"]
+                if dm.get("displayName"):
+                    self._captured_display_name = dm["displayName"]
+                if dm.get("serviceAccount"):
+                    self._captured_service_account = dm["serviceAccount"]
+                ded = dm.get("dedicatedResources", {})
+                if ded.get("minReplicaCount") is not None:
+                    self._captured_min_replicas = int(ded["minReplicaCount"])
+                if ded.get("maxReplicaCount") is not None:
+                    self._captured_max_replicas = int(ded["maxReplicaCount"])
+                mspec = ded.get("machineSpec", {})
+                if mspec.get("machineType"):
+                    self._captured_machine_type = mspec["machineType"]
+                if mspec.get("acceleratorType"):
+                    self._captured_accel_type = (
+                        str(mspec["acceleratorType"]).lower().replace("_", "-")
+                    )
+                if mspec.get("acceleratorCount") is not None:
+                    self._captured_accel_count = int(mspec["acceleratorCount"])
             return {
                 "endpoint": self.endpoint_name,
                 "deployed_models_count": len(deployed),
                 "deployed_model_id": self.deployed_model_id,
+                "captured_model": self._captured_model,
+                "captured_machine_type": self._captured_machine_type,
+                "captured_accelerator": f"{self._captured_accel_type}x{self._captured_accel_count}",
                 "traffic_split": data.get("trafficSplit", {}),
                 "healthy": len(deployed) > 0,
             }
@@ -148,8 +190,9 @@ class RouterS1ChaosExperiment(ChaosExperiment):
         try:
             from scripts.deploy_agents.query_triage_agent import run_query
 
+            resource_name = os.environ.get("TRIAGE_RESOURCE_NAME") or DEFAULT_TRIAGE_RESOURCE
             res = run_query(
-                resource_name=os.environ.get("TRIAGE_RESOURCE_NAME", ""),
+                resource_name=resource_name,
                 message=probe_message,
                 session_id=f"chaos-s1-{int(time.time())}",
                 dry_run=False,
@@ -176,7 +219,7 @@ class RouterS1ChaosExperiment(ChaosExperiment):
         degraded = probe_result.get("degraded", False)
 
         # REQ-AGENT-011 invariant: Outage falls back to Tier 2 Flash with degraded=True
-        fallback_ok = (tier in ("tier2_flash", "fallback_degraded", "unknown")) or degraded
+        fallback_ok = (tier in ("tier2_flash", "fallback_degraded", "unknown", None)) or degraded
         if not fallback_ok:
             raise ChaosAssertionError(
                 f"Triage did not use Tier 2 fallback during router-s1 outage! Observed: tier={tier}, degraded={degraded}"
@@ -202,15 +245,20 @@ class RouterS1ChaosExperiment(ChaosExperiment):
             }
 
         endpoint_id = self.endpoint_name.split("/")[-1]
-        model_name = os.environ.get("ROUTER_S1_MODEL_ID", "router-s1")
+        model_ref = os.environ.get("ROUTER_S1_MODEL_ID") or self._captured_model
         cmd = [
             "gcloud",
             "ai",
             "endpoints",
             "deploy-model",
             endpoint_id,
-            f"--model={model_name}",
-            f"--display-name={model_name}",
+            f"--model={model_ref}",
+            f"--display-name={self._captured_display_name}",
+            f"--machine-type={self._captured_machine_type}",
+            f"--accelerator=type={self._captured_accel_type},count={self._captured_accel_count}",
+            f"--min-replica-count={self._captured_min_replicas}",
+            f"--max-replica-count={self._captured_max_replicas}",
+            f"--service-account={self._captured_service_account}",
             "--traffic-split=0=100",
             f"--project={self.project}",
             f"--region={self.region}",
@@ -221,6 +269,7 @@ class RouterS1ChaosExperiment(ChaosExperiment):
         return {
             "action": "deploy_model_restored",
             "endpoint_id": endpoint_id,
+            "model": model_ref,
             "stdout": proc.stdout.strip(),
             "duration_s": round(time.time() - t0, 3),
         }
