@@ -97,6 +97,7 @@ locals {
     "sa-order-mcp@${var.project_id}.iam.gserviceaccount.com",
     "sa-queue@${var.project_id}.iam.gserviceaccount.com",
     "sa-triage@${var.project_id}.iam.gserviceaccount.com",
+    "sa-review-ui@${var.project_id}.iam.gserviceaccount.com",
   ]
 }
 
