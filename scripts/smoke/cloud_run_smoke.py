@@ -159,9 +159,14 @@ def run_smoke_checks(
         latency = (time.perf_counter() - t0) * 1000
         # CCT_MODE=accept answers unverified_customer; CCT_MODE=require (REQ-AUTH-003) answers
         # invalid_customer_context because a signed customer context token is mandatory.
-        refused = "unverified_customer" in resp_own.text or "invalid_customer_context" in resp_own.text
+        # With the REQ-AUTH-009 caller allowlist enforced, the CD smoke identity is not an
+        # allowed caller and is refused even earlier with caller_not_authorized.
+        refused = any(
+            marker in resp_own.text
+            for marker in ("unverified_customer", "invalid_customer_context", "caller_not_authorized")
+        )
         passed = resp_own.status_code == 403 and refused
-        details = "HTTP 403 (asserted id refused)" if passed else f"Expected 403 unverified_customer/invalid_customer_context, got {resp_own.status_code}: {resp_own.text[:100]}"
+        details = "HTTP 403 (asserted id refused)" if passed else f"Expected 403 unverified_customer/invalid_customer_context/caller_not_authorized, got {resp_own.status_code}: {resp_own.text[:100]}"
         results.append(SmokeCheck("order-lookup-mcp asserted-id own order refused", passed, resp_own.status_code, details, latency))
     except Exception as exc:
         latency = (time.perf_counter() - t0) * 1000
