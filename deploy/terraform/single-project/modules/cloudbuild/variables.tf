@@ -87,6 +87,12 @@ variable "triage_agent_gateway" {
   default     = ""
 }
 
+variable "triage_ingress_gateway" {
+  description = "Agent Gateway resource bound to the TriageRouter engine by CD for ingress (REQ-AUTH-011). Empty = no gateway."
+  type        = string
+  default     = ""
+}
+
 variable "triage_resource_name" {
   description = "Resource name of the TriageRouter Agent Engine instance for deployment update"
   type        = string

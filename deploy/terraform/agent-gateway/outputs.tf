@@ -27,3 +27,14 @@ output "authz_policy_id" {
   description = "Resource ID of the Network Security authz policy"
   value       = google_network_security_authz_policy.tr_authz_policy.id
 }
+
+output "ingress_gateway_name" {
+  description = "Resource name of the ingress Agent Gateway (tr-ingress)"
+  value       = google_network_services_agent_gateway.tr_ingress.name
+}
+
+output "ingress_gateway_id" {
+  description = "Resource ID of the ingress Agent Gateway (tr-ingress)"
+  value       = google_network_services_agent_gateway.tr_ingress.id
+}
+

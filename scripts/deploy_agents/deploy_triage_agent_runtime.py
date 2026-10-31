@@ -264,6 +264,40 @@ def _non_empty_str(val: Any) -> str | None:
     return None
 
 
+def build_agent_gateway_config(
+    egress_gateway: str | None = None,
+    ingress_gateway: str | None = None,
+    *,
+    agent_gateway: str | None = None,
+    ingress_agent_gateway: str | None = None,
+) -> dict[str, Any] | None:
+    """Build agent_gateway_config dict ensuring both keys are present when provided.
+
+    When both egress and ingress are set, returns both configs:
+        {"agent_to_anywhere_config": {"agent_gateway": egress}, "client_to_agent_config": {"agent_gateway": ingress}}
+    When only egress is set, returns agent_to_anywhere_config.
+    When only ingress is set without egress, logs a warning and returns client_to_agent_config.
+    Returns None if neither gateway is specified.
+    """
+    egress = _non_empty_str(egress_gateway or agent_gateway)
+    ingress = _non_empty_str(ingress_gateway or ingress_agent_gateway)
+    if not egress and not ingress:
+        return None
+
+    config: dict[str, Any] = {}
+    if egress:
+        config["agent_to_anywhere_config"] = {"agent_gateway": egress}
+    if ingress:
+        if not egress:
+            logger.warning(
+                "Ingress agent gateway configured without egress gateway (%s); "
+                "Reasoning Engine update replaces entire agent_gateway_config without agent_to_anywhere_config.",
+                ingress,
+            )
+        config["client_to_agent_config"] = {"agent_gateway": ingress}
+    return config
+
+
 def format_effective_identity_principal(raw_identity: str | None) -> str | None:
     """Normalize Vertex AI ReasoningEngine effective_identity into IAM member format.
 
@@ -355,6 +389,7 @@ def deploy_reasoning_engine(
     identity_type: str = "sa",
     resource_name: str | None = None,
     agent_gateway: str | None = None,
+    ingress_agent_gateway: str | None = None,
 ) -> str | None:
     """Package and deploy or update TriageRouterAgent on Vertex AI Agent Engine."""
     if identity_type not in ("sa", "agent", "service_account"):
@@ -362,8 +397,11 @@ def deploy_reasoning_engine(
     effective_identity_type = "sa" if identity_type in ("sa", "service_account") else "agent"
 
     agent_gw = _non_empty_str(agent_gateway)
-    if agent_gw and effective_identity_type != "agent":
-        raise ValueError(f"--agent-gateway is not supported with identity_type={identity_type!r}; requires 'agent'")
+    ingress_gw = _non_empty_str(ingress_agent_gateway)
+    if (agent_gw or ingress_gw) and effective_identity_type != "agent":
+        raise ValueError(
+            f"--agent-gateway/--ingress-agent-gateway is not supported with identity_type={identity_type!r}; requires 'agent'"
+        )
 
     upd_arg = _non_empty_str(update_resource_name)
     res_arg = _non_empty_str(resource_name)
@@ -417,7 +455,9 @@ def deploy_reasoning_engine(
     logger.info("Display Name:          %s", display_name)
     logger.info("Identity Type:         %s", effective_identity_type)
     if agent_gw:
-        logger.info("Agent Gateway:         %s", agent_gw)
+        logger.info("Agent Gateway (Egress):%s", agent_gw)
+    if ingress_gw:
+        logger.info("Agent Gateway (Ingress):%s", ingress_gw)
     if effective_identity_type == "agent":
         logger.info("Impersonate SA (OIDC): %s", impersonate_sa)
     else:
@@ -449,9 +489,12 @@ def deploy_reasoning_engine(
     deployed_resource_name: str | None = None
     if effective_identity_type == "agent":
         # REQ-AUTH-004: Deploy via vertexai.Client().agent_engines with AGENT_IDENTITY and no service_account.
-        # REQ-AUTH-007: Optional Agent Gateway configuration and token sharing prevention.
+        # REQ-AUTH-007 / REQ-AUTH-011: Optional Agent Gateway egress & ingress configuration and token sharing prevention.
         if agent_gw:
             remote_env_vars["GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES"] = "False"
+        if ingress_gw:
+            remote_env_vars["INGRESS_GATEWAY"] = ingress_gw
+            remote_env_vars["INGRESS_GATEWAY_MODEL_ARMOR"] = "1"
         client = vertexai.Client(project=project, location=region)
         agent_config: dict[str, Any] = {
             "staging_bucket": bucket_uri,
@@ -470,12 +513,9 @@ def deploy_reasoning_engine(
                 },
             },
         }
-        if agent_gw:
-            agent_config["agent_gateway_config"] = {
-                "agent_to_anywhere_config": {
-                    "agent_gateway": agent_gw,
-                }
-            }
+        gw_config = build_agent_gateway_config(egress_gateway=agent_gw, ingress_gateway=ingress_gw)
+        if gw_config:
+            agent_config["agent_gateway_config"] = gw_config
         if target_resource:
             wait_for_reasoning_engine_idle(
                 resource_name=target_resource,
@@ -735,6 +775,11 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         help="Agent Gateway resource name for egress governance (requires --identity-type agent, REQ-AUTH-007)",
     )
     parser.add_argument(
+        "--ingress-agent-gateway",
+        default=os.environ.get("TRIAGE_INGRESS_AGENT_GATEWAY"),
+        help="Agent Gateway resource name for ingress governance (requires --identity-type agent, REQ-AUTH-011)",
+    )
+    parser.add_argument(
         "--update",
         metavar="RESOURCE_NAME",
         default=None,
@@ -755,6 +800,9 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     gw_val = _non_empty_str(parsed.agent_gateway)
     if gw_val and parsed.identity_type != "agent":
         parser.error("--agent-gateway requires --identity-type agent")
+    ingress_gw_val = _non_empty_str(parsed.ingress_agent_gateway)
+    if ingress_gw_val and parsed.identity_type != "agent":
+        parser.error("--ingress-agent-gateway requires --identity-type agent")
     upd_val = _non_empty_str(parsed.update)
     res_val = _non_empty_str(parsed.resource_name)
     if upd_val and res_val and upd_val != res_val:
@@ -800,6 +848,7 @@ def main(argv: list[str] | None = None) -> None:
             dry_run=args.dry_run,
             identity_type=args.identity_type,
             agent_gateway=args.agent_gateway,
+            ingress_agent_gateway=args.ingress_agent_gateway,
         )
         logger.info("Deployment script completed. Output: %s", resource_name)
         if resource_name and args.identity_type != "agent":

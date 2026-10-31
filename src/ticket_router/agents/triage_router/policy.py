@@ -460,12 +460,14 @@ class TriagePolicy:
         tier3_enabled: Optional[bool] = None,
         tier3_confidence_threshold: Optional[float] = None,
         tier3_deadline_s: Optional[float] = None,
+        prompt_safety_delegated_to_gateway: Optional[bool] = None,
     ) -> None:
         self.thresholds = thresholds or RouterThresholds()
         self.s1_client = s1_client
         self.tier2_invoker = tier2_invoker
         self.tier3_invoker = tier3_invoker
         self.model_armor_client = model_armor_client
+        self.prompt_safety_delegated_to_gateway = prompt_safety_delegated_to_gateway
         self.tier3_enabled = (
             tier3_enabled
             if tier3_enabled is not None
@@ -481,6 +483,14 @@ class TriagePolicy:
             if tier3_deadline_s is not None
             else self.thresholds.tier3_deadline_s
         )
+
+    def _is_prompt_safety_delegated(self) -> bool:
+        """Check if prompt safety checks (PI/JB, URI, RAI) are delegated to Agent Gateway ingress."""
+        if self.prompt_safety_delegated_to_gateway is not None:
+            return self.prompt_safety_delegated_to_gateway
+        from ticket_router.security.model_armor import is_prompt_safety_delegated_to_gateway
+
+        return is_prompt_safety_delegated_to_gateway()
 
     def _call_s1(self, text: str) -> Tuple[Optional[RouterPrediction], Optional[str]]:
         """Execute router-s1 encoder call with error handling."""
@@ -633,6 +643,7 @@ class TriagePolicy:
         sanitized_text: Optional[str] = None
         tokenized_text: Optional[str] = None
         pii_mapping: Dict[str, str] = {}
+        prompt_safety_shadow: Optional[Dict[str, Any]] = None
 
         # ---------------------------------------------------------------------
         # Tier 1 & Model Armor: Concurrent Execution (REQ-MA-003, REQ-MA-005)
@@ -674,65 +685,92 @@ class TriagePolicy:
                     pii_mapping={},
                 )
 
-            # 1. Prompt Injection, Jailbreak, or Malicious URI -> Hard Security Escalation
-            # NEVER forwarded to neural LLM tiers or FaqResolverAgent.
-            # Queue comes from verified facts only: an injection attempt must
-            # never buy a faster lane (priority-gaming invariant).
-            if ma_verdict.has_pi_jb or ma_verdict.has_malicious_uri:
-                sec_queue = evaluate_gaming_resistant_priority(
-                    facts=verified_facts,
-                    sentiment="neutral",
-                    urgency="normal",
-                )
-                return RouterDecision(
-                    ticket_id=t_id,
-                    session_id=session_id,
-                    decision="escalate",
-                    tier="model_armor",
-                    queue=sec_queue.value,
-                    predicted_intent="other",
-                    escalate=True,
-                    sentiment="neutral",
-                    urgency="normal",
-                    reason="model_armor_security_trigger",
-                    degraded=False,
-                    details={
-                        "category": "security",
+            # Ingress Gateway Prompt Safety Delegation (REQ-AUTH-011, REQ-MA-007)
+            # When delegated to Agent Gateway ingress, PI/JB, malicious URI, and RAI gate
+            # decisions become monitor-only shadow logs rather than hard escalations.
+            # Card blocking (above) and SDP tokenization always remain active in-agent.
+            delegated = self._is_prompt_safety_delegated()
+            if delegated and (ma_verdict.has_pi_jb or ma_verdict.has_malicious_uri or ma_verdict.has_rai_violation):
+                prompt_safety_shadow = {
+                    "shadow_mode": True,
+                    "pi_jb_tripped": ma_verdict.has_pi_jb,
+                    "malicious_uri_tripped": ma_verdict.has_malicious_uri,
+                    "rai_tripped": ma_verdict.has_rai_violation,
+                }
+                ma_details["prompt_safety_shadow"] = prompt_safety_shadow
+                logger.info(
+                    "prompt_safety_shadow: verdict tripped (pi_jb=%s, malicious_uri=%s, rai=%s), "
+                    "delegated to gateway ingress, monitor-only (not escalating)",
+                    ma_verdict.has_pi_jb,
+                    ma_verdict.has_malicious_uri,
+                    ma_verdict.has_rai_violation,
+                    extra={
+                        "event": "prompt_safety_shadow",
                         "model_armor": ma_details,
-                        "sanitized_text": sanitized_text,
+                        "session_id": session_id,
+                        "ticket_id": t_id,
                     },
-                    tokenized_text=tokenized_text,
-                    pii_mapping=pii_mapping,
                 )
+            else:
+                # 1. Prompt Injection, Jailbreak, or Malicious URI -> Hard Security Escalation
+                # NEVER forwarded to neural LLM tiers or FaqResolverAgent.
+                # Queue comes from verified facts only: an injection attempt must
+                # never buy a faster lane (priority-gaming invariant).
+                if ma_verdict.has_pi_jb or ma_verdict.has_malicious_uri:
+                    sec_queue = evaluate_gaming_resistant_priority(
+                        facts=verified_facts,
+                        sentiment="neutral",
+                        urgency="normal",
+                    )
+                    return RouterDecision(
+                        ticket_id=t_id,
+                        session_id=session_id,
+                        decision="escalate",
+                        tier="model_armor",
+                        queue=sec_queue.value,
+                        predicted_intent="other",
+                        escalate=True,
+                        sentiment="neutral",
+                        urgency="normal",
+                        reason="model_armor_security_trigger",
+                        degraded=False,
+                        details={
+                            "category": "security",
+                            "model_armor": ma_details,
+                            "sanitized_text": sanitized_text,
+                        },
+                        tokenized_text=tokenized_text,
+                        pii_mapping=pii_mapping,
+                    )
 
-            # 2. Responsible AI (RAI) Harassment / Abuse -> Boundary Ack + Human Review
-            # NEVER dropped, does NOT raise priority (REQ-AGENT-004).
-            if ma_verdict.has_rai_violation:
-                queue = evaluate_gaming_resistant_priority(
-                    facts=verified_facts,
-                    sentiment="angry",
-                    urgency="normal",
-                )
-                return RouterDecision(
-                    ticket_id=t_id,
-                    session_id=session_id,
-                    decision="escalate",
-                    tier="model_armor",
-                    queue=queue.value,
-                    predicted_intent="other",
-                    escalate=True,
-                    sentiment="angry",
-                    urgency="normal",
-                    reason="model_armor_rai_trigger",
-                    degraded=False,
-                    details={
-                        "category": "abuse",
-                        "model_armor": ma_details,
-                        "sanitized_text": sanitized_text,
-                    },
-                    tokenized_text=tokenized_text,
-                    pii_mapping=pii_mapping,
-                )
+                # 2. Responsible AI (RAI) Harassment / Abuse -> Boundary Ack + Human Review
+                # NEVER dropped, does NOT raise priority (REQ-AGENT-004).
+                if ma_verdict.has_rai_violation:
+                    queue = evaluate_gaming_resistant_priority(
+                        facts=verified_facts,
+                        sentiment="angry",
+                        urgency="normal",
+                    )
+                    return RouterDecision(
+                        ticket_id=t_id,
+                        session_id=session_id,
+                        decision="escalate",
+                        tier="model_armor",
+                        queue=queue.value,
+                        predicted_intent="other",
+                        escalate=True,
+                        sentiment="angry",
+                        urgency="normal",
+                        reason="model_armor_rai_trigger",
+                        degraded=False,
+                        details={
+                            "category": "abuse",
+                            "model_armor": ma_details,
+                            "sanitized_text": sanitized_text,
+                        },
+                        tokenized_text=tokenized_text,
+                        pii_mapping=pii_mapping,
+                    )
 
             # 3. Model Armor Degraded / Timeout -> Fail-safe to human-standard (never drop)
             if ma_verdict.degraded:
@@ -781,6 +819,8 @@ class TriagePolicy:
                     details_s1["model_armor"] = ma_details
                 if sanitized_text:
                     details_s1["sanitized_text"] = sanitized_text
+                if prompt_safety_shadow:
+                    details_s1["prompt_safety_shadow"] = prompt_safety_shadow
 
                 return RouterDecision(
                     ticket_id=t_id,
@@ -816,6 +856,8 @@ class TriagePolicy:
                     details_rag["model_armor"] = ma_details
                 if sanitized_text:
                     details_rag["sanitized_text"] = sanitized_text
+                if prompt_safety_shadow:
+                    details_rag["prompt_safety_shadow"] = prompt_safety_shadow
 
                 return RouterDecision(
                     ticket_id=t_id,
@@ -846,6 +888,8 @@ class TriagePolicy:
                     details_order["model_armor"] = ma_details
                 if sanitized_text:
                     details_order["sanitized_text"] = sanitized_text
+                if prompt_safety_shadow:
+                    details_order["prompt_safety_shadow"] = prompt_safety_shadow
 
                 return RouterDecision(
                     ticket_id=t_id,
@@ -1199,6 +1243,8 @@ class TriagePolicy:
             details_fb["model_armor"] = ma_details
         if sanitized_text:
             details_fb["sanitized_text"] = sanitized_text
+        if prompt_safety_shadow:
+            details_fb["prompt_safety_shadow"] = prompt_safety_shadow
 
         return RouterDecision(
             ticket_id=t_id,

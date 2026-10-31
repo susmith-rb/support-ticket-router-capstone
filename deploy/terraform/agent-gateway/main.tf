@@ -284,3 +284,152 @@ resource "google_project_iam_audit_config" "iap_data_access" {
     log_type = "DATA_READ"
   }
 }
+
+# -----------------------------------------------------------------------------
+# Agent Gateway: tr-ingress (CLIENT_TO_AGENT) (REQ-AUTH-011)
+# -----------------------------------------------------------------------------
+resource "google_network_services_agent_gateway" "tr_ingress" {
+  provider = google-beta
+  name     = "tr-ingress"
+  location = var.region
+
+  google_managed {
+    governed_access_path = "CLIENT_TO_AGENT"
+  }
+
+  registries = [
+    "//agentregistry.googleapis.com/projects/${var.project_id}/locations/${var.region}"
+  ]
+
+  depends_on = [
+    google_project_service.services["networkservices.googleapis.com"],
+    google_project_service.services["agentregistry.googleapis.com"],
+  ]
+}
+
+# -----------------------------------------------------------------------------
+# Model Armor Ingress Template: support-router-ingress (REQ-AUTH-011, REQ-MA-007)
+# -----------------------------------------------------------------------------
+# Dedicated ingress Model Armor template for perimeter prompt safety.
+# Crucially: NO sdp_settings (SDP de-identify would rewrite prompts and break
+# reversible tokenization; card blocking stays in-agent).
+resource "google_model_armor_template" "support_router_ingress" {
+  provider    = google-beta
+  location    = var.region
+  template_id = "support-router-ingress"
+  project     = var.project_id
+
+  filter_config {
+    pi_and_jailbreak_filter_settings {
+      filter_enforcement = "ENABLED"
+      confidence_level   = "MEDIUM_AND_ABOVE"
+    }
+
+    malicious_uri_filter_settings {
+      filter_enforcement = "ENABLED"
+    }
+
+    rai_settings {
+      rai_filters {
+        filter_type      = "SEXUALLY_EXPLICIT"
+        confidence_level = "MEDIUM_AND_ABOVE"
+      }
+      rai_filters {
+        filter_type      = "HATE_SPEECH"
+        confidence_level = "MEDIUM_AND_ABOVE"
+      }
+      rai_filters {
+        filter_type      = "HARASSMENT"
+        confidence_level = "MEDIUM_AND_ABOVE"
+      }
+      rai_filters {
+        filter_type      = "DANGEROUS"
+        confidence_level = "MEDIUM_AND_ABOVE"
+      }
+    }
+  }
+
+  template_metadata {
+    log_sanitize_operations            = false
+    log_template_operations            = false
+    ignore_partial_invocation_failures = false
+    custom_prompt_safety_error_code    = 403
+    custom_prompt_safety_error_message = "Model Armor: Prompt violates content security configurations"
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Model Armor Authz Extension & CONTENT_AUTHZ Policy for Ingress (REQ-AUTH-011)
+# -----------------------------------------------------------------------------
+resource "google_network_services_authz_extension" "tr_ingress_model_armor" {
+  provider        = google-beta
+  name            = "tr-ingress-model-armor"
+  location        = var.region
+  service         = "modelarmor.${var.region}.rep.googleapis.com"
+  timeout         = "5s"
+  fail_open       = false
+  forward_headers = ["authorization"]
+
+  metadata = {
+    model_armor_settings = jsonencode([
+      {
+        request_template_id  = google_model_armor_template.support_router_ingress.id
+        response_template_id = google_model_armor_template.support_router_ingress.id
+      }
+    ])
+  }
+
+  depends_on = [
+    google_project_service.services["networkservices.googleapis.com"],
+    google_model_armor_template.support_router_ingress,
+  ]
+}
+
+resource "google_network_security_authz_policy" "tr_ingress_model_armor" {
+  provider       = google-beta
+  name           = "tr-ingress-authz-policy"
+  location       = var.region
+  policy_profile = "CONTENT_AUTHZ"
+  action         = "CUSTOM"
+
+  target {
+    resources = [google_network_services_agent_gateway.tr_ingress.id]
+  }
+
+  custom_provider {
+    authz_extension {
+      resources = [google_network_services_authz_extension.tr_ingress_model_armor.id]
+    }
+  }
+
+  depends_on = [
+    google_project_service.services["networksecurity.googleapis.com"],
+    google_network_services_agent_gateway.tr_ingress,
+    google_network_services_authz_extension.tr_ingress_model_armor,
+  ]
+}
+
+# -----------------------------------------------------------------------------
+# Reasoning Engine Service Agent Model Armor IAM (REQ-AUTH-011)
+# -----------------------------------------------------------------------------
+# Required for Reasoning Engine ext_proc callout to Model Armor on ingress.
+resource "google_project_iam_member" "re_sa_model_armor_callout_user" {
+  project = var.project_id
+  role    = "roles/modelarmor.calloutUser"
+  member  = "serviceAccount:service-${var.project_number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "re_sa_model_armor_user" {
+  project = var.project_id
+  role    = "roles/modelarmor.user"
+  member  = "serviceAccount:service-${var.project_number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+}
+
+# -----------------------------------------------------------------------------
+# Note on Ingress Unified Access Policy (UAP) (REQ-AUTH-011)
+# -----------------------------------------------------------------------------
+# Ingress permission iap.googleapis.com/resources.ingressViaIAP is currently unlaunched.
+# Therefore, no ingress UAP is provisioned. Caller authorization remains enforced via
+# Vertex AI Reasoning Engine IAM plus in-agent customer Identity Platform token and
+# KMS Customer Context Token (CCT) verification.
+

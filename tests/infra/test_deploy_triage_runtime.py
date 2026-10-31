@@ -17,6 +17,7 @@ import pytest
 
 from scripts.deploy_agents.deploy_triage_agent_runtime import (
     build_agent_app,
+    build_agent_gateway_config,
     deploy_reasoning_engine,
     filter_reserved_env_vars,
     format_effective_identity_principal,
@@ -396,7 +397,7 @@ def test_parse_args_agent_gateway_flag_and_env():
 def test_deploy_reasoning_engine_rejects_agent_gateway_for_sa():
     """Verify deploy_reasoning_engine raises ValueError when agent_gateway is used with SA identity."""
     with pytest.raises(
-        ValueError, match="--agent-gateway is not supported with identity_type='sa'"
+        ValueError, match=r"--agent-gateway.*is not supported with identity_type='sa'"
     ):
         deploy_reasoning_engine(
             project="p",
@@ -409,7 +410,7 @@ def test_deploy_reasoning_engine_rejects_agent_gateway_for_sa():
 
     with pytest.raises(
         ValueError,
-        match="--agent-gateway is not supported with identity_type='service_account'",
+        match=r"--agent-gateway.*is not supported with identity_type='service_account'",
     ):
         deploy_reasoning_engine(
             project="p",
@@ -465,4 +466,150 @@ def test_deploy_agent_identity_configures_agent_gateway():
         cfg["env_vars"]["GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES"]
         == "False"
     )
+
+
+# REQ-AUTH-011 / REQ-MA-007
+def test_build_agent_gateway_config():
+    """Verify build_agent_gateway_config shapes agent_to_anywhere and client_to_agent blocks."""
+    egress = "projects/p/locations/l/agentGateways/tr-egress"
+    ingress = "projects/p/locations/l/agentGateways/tr-ingress"
+
+    # Both gateways configured -> dict with both keys
+    both = build_agent_gateway_config(agent_gateway=egress, ingress_agent_gateway=ingress)
+    assert both == {
+        "agent_to_anywhere_config": {"agent_gateway": egress},
+        "client_to_agent_config": {"agent_gateway": ingress},
+    }
+
+    # Egress only -> agent_to_anywhere_config only
+    egress_only = build_agent_gateway_config(agent_gateway=egress, ingress_agent_gateway=None)
+    assert egress_only == {
+        "agent_to_anywhere_config": {"agent_gateway": egress},
+    }
+
+    # Ingress only -> client_to_agent_config only (and warning logged)
+    ingress_only = build_agent_gateway_config(agent_gateway=None, ingress_agent_gateway=ingress)
+    assert ingress_only == {
+        "client_to_agent_config": {"agent_gateway": ingress},
+    }
+
+    # Neither configured -> None
+    assert build_agent_gateway_config(agent_gateway=None, ingress_agent_gateway=None) is None
+    assert build_agent_gateway_config(agent_gateway="   ", ingress_agent_gateway="") is None
+
+
+# REQ-AUTH-011
+def test_parse_args_ingress_agent_gateway_flag_and_env():
+    """Verify --ingress-agent-gateway flag parsing and rejection with sa identity."""
+    # S1: Rejected with --identity-type sa
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "--ingress-agent-gateway",
+                "projects/p/locations/l/agentGateways/tr-ingress",
+                "--identity-type",
+                "sa",
+            ]
+        )
+
+    # S2: Accepted with --identity-type agent
+    args = parse_args(
+        [
+            "--ingress-agent-gateway",
+            "projects/p/locations/l/agentGateways/tr-ingress",
+            "--identity-type",
+            "agent",
+        ]
+    )
+    assert args.ingress_agent_gateway == "projects/p/locations/l/agentGateways/tr-ingress"
+    assert args.identity_type == "agent"
+
+    # S3: Environment variable fallback
+    with patch.dict(
+        os.environ,
+        {"TRIAGE_INGRESS_AGENT_GATEWAY": "projects/p/locations/l/agentGateways/env-ingress"},
+    ):
+        args_env = parse_args(["--identity-type", "agent"])
+        assert args_env.ingress_agent_gateway == "projects/p/locations/l/agentGateways/env-ingress"
+
+
+# REQ-AUTH-011
+def test_deploy_reasoning_engine_rejects_ingress_gateway_for_sa():
+    """Verify deploy_reasoning_engine raises ValueError when ingress_agent_gateway is used with SA identity."""
+    with pytest.raises(
+        ValueError, match="--ingress-agent-gateway is not supported with identity_type='sa'"
+    ):
+        deploy_reasoning_engine(
+            project="p",
+            region="l",
+            staging_bucket="gs://b",
+            display_name="d",
+            identity_type="sa",
+            ingress_agent_gateway="projects/p/locations/l/agentGateways/tr-ingress",
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="--ingress-agent-gateway is not supported with identity_type='service_account'",
+    ):
+        deploy_reasoning_engine(
+            project="p",
+            region="l",
+            staging_bucket="gs://b",
+            display_name="d",
+            identity_type="service_account",
+            ingress_agent_gateway="projects/p/locations/l/agentGateways/tr-ingress",
+        )
+
+
+# REQ-AUTH-011 / REQ-MA-007
+def test_deploy_agent_identity_configures_both_gateways_and_env():
+    """Verify deploy_reasoning_engine configures both gateway blocks and injects INGRESS env vars."""
+    vertexai = pytest.importorskip("vertexai")
+
+    target = "projects/620485621180/locations/us-central1/reasoningEngines/888000222"
+    egress_gw = "projects/620485621180/locations/us-central1/agentGateways/tr-egress"
+    ingress_gw = "projects/620485621180/locations/us-central1/agentGateways/tr-ingress"
+
+    mock_engine = MagicMock()
+    mock_engine.api_resource.name = target
+    mock_engine.api_resource.spec.effective_identity = "principal://agents.test"
+
+    mock_client = MagicMock()
+    mock_client.agent_engines.update.return_value = mock_engine
+
+    with (
+        patch.object(vertexai, "Client", return_value=mock_client),
+        patch(
+            "scripts.deploy_agents.deploy_triage_agent_runtime.wait_for_reasoning_engine_idle"
+        ),
+    ):
+        deploy_reasoning_engine(
+            project="susmith-fde-ticket-router",
+            region="us-central1",
+            staging_bucket="gs://b/agent-engine-staging",
+            display_name="TriageRouterAgent",
+            identity_type="agent",
+            resource_name=target,
+            agent_gateway=egress_gw,
+            ingress_agent_gateway=ingress_gw,
+            dry_run=False,
+        )
+
+    mock_client.agent_engines.update.assert_called_once()
+    cfg = mock_client.agent_engines.update.call_args.kwargs["config"]
+
+    # Both gateways must be present
+    assert cfg["agent_gateway_config"] == {
+        "agent_to_anywhere_config": {
+            "agent_gateway": egress_gw,
+        },
+        "client_to_agent_config": {
+            "agent_gateway": ingress_gw,
+        },
+    }
+    # Ingress env vars must be set
+    assert cfg["env_vars"]["INGRESS_GATEWAY"] == ingress_gw
+    assert cfg["env_vars"]["INGRESS_GATEWAY_MODEL_ARMOR"] == "1"
+
 

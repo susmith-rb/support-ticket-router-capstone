@@ -19,3 +19,7 @@ allowed_caller_spiffe_ids = "spiffe://agents.global.org-349636765856.system.id.g
 # verified search, Model Armor, Pub/Sub publish, and SPIFFE ID tokens accepted by order-lookup
 # and ticket-db-mcp. Rollback: "0" (CD re-applies workload-identity.patch.yaml).
 faq_agent_identity = "1"
+
+# REQ-AUTH-011: Agent Gateway INGRESS (CLIENT_TO_AGENT) with Model Armor (template support-router-ingress).
+# CD binds the engine with BOTH ingress and egress (an update replaces the whole agent_gateway_config).
+triage_ingress_gateway = "projects/susmith-fde-ticket-router/locations/us-central1/agentGateways/tr-ingress"

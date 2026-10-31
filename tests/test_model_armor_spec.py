@@ -26,7 +26,7 @@ SPEC_FILE = REPO_ROOT / "specs" / "model-armor.md"
 INDEX_FILE = REPO_ROOT / "specs" / "README.md"
 
 REQ_HEADER_PATTERN = re.compile(r"^###\s+(REQ-MA-\d{3})(?::\s*(.*))?$")
-EXPECTED_REQ_IDS = [f"REQ-MA-{i:03d}" for i in range(1, 7)]
+EXPECTED_REQ_IDS = [f"REQ-MA-{i:03d}" for i in range(1, 8)]
 
 
 def _read_spec_text() -> str:

@@ -43,6 +43,30 @@ DEFAULT_TIMEOUT_S: float = 0.700  # REQ-MA-005: max(500 ms, p99 x 1.5); p99 457.
 # Egress screens full FAQ answers (longer text, off the 3 s triage path, inside the 20 s FAQ budget).
 DEFAULT_EGRESS_TIMEOUT_S: float = 2.500
 
+# Ingress Gateway Prompt Safety Delegation (REQ-AUTH-011, REQ-MA-007)
+PROMPT_SAFETY_DELEGATED_TO_GATEWAY_ENV: str = "PROMPT_SAFETY_DELEGATED_TO_GATEWAY"
+INGRESS_GATEWAY_MODEL_ARMOR_ENV: str = "INGRESS_GATEWAY_MODEL_ARMOR"
+DEFAULT_PROMPT_SAFETY_DELEGATED_TO_GATEWAY: str = "0"
+
+
+def is_prompt_safety_delegated_to_gateway() -> bool:
+    """Return True if prompt safety is delegated to Agent Gateway ingress.
+
+    Requires BOTH PROMPT_SAFETY_DELEGATED_TO_GATEWAY="1" AND
+    INGRESS_GATEWAY_MODEL_ARMOR="1". Defaults to False ("0").
+
+    CRITICAL SECURITY INVARIANT:
+    Must remain "0" by default until live Gemini Enterprise testing confirms
+    the gateway ext_proc filter inspects GE v1beta1 traffic (research finding B).
+    """
+    import os
+
+    return (
+        os.environ.get(PROMPT_SAFETY_DELEGATED_TO_GATEWAY_ENV, DEFAULT_PROMPT_SAFETY_DELEGATED_TO_GATEWAY) == "1"
+        and os.environ.get(INGRESS_GATEWAY_MODEL_ARMOR_ENV, "0") == "1"
+    )
+
+
 
 @dataclass(frozen=True)
 class FilterVerdict:

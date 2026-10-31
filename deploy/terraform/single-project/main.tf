@@ -102,6 +102,7 @@ module "cloudbuild" {
   cd_approvers                = var.cd_approvers
   triage_resource_name        = var.triage_resource_name
   triage_agent_gateway        = var.triage_agent_gateway
+  triage_ingress_gateway      = var.triage_ingress_gateway
   faq_agent_identity          = var.faq_agent_identity
 
   depends_on = [module.project_services]

@@ -48,6 +48,7 @@ Inbound Support Ticket (Session Authenticated)
 | `REQ-MA-004` | Egress Sanitization for FaqResolver Answers & Fallback Handoff | `done` | `tests/security/test_model_armor_policy.py::test_faq_egress_sanitization` |
 | `REQ-MA-005` | In-Region Latency Budget, Concurrent SLA & Degraded Metrics | `done` | `tests/security/test_model_armor_budget.py::test_latency_budget_and_short_circuit` |
 | `REQ-MA-006` | Verification Test Strategy: Fakes, Contracts, Static TF & Live Smoke | `done` | `tests/security/test_model_armor_contracts.py::test_contracts_and_smoke_harness` |
+| `REQ-MA-007` | Agent Gateway Ingress Content Security Template (No SDP) | `done` | `tests/infra/test_agent_gateway_static.py::test_gateway_ingress_resource_and_model_armor_policy` |
 
 ---
 
@@ -94,5 +95,12 @@ Inbound Support Ticket (Session Authenticated)
 - **Statement**: Model Armor integration MUST be covered by: (1) Hermetic unit tests using `FakeModelArmorClient` validating prompt injection blocking, abuse boundary ack, priority preservation, SDP redaction, outage fail-safe, and egress blocking; (2) Contract tests validating request/response payload serialization against the Model Armor REST API specification; (3) Static Terraform tests asserting template configuration, filter thresholds, and least-privilege IAM bindings; and (4) Standalone live smoke script `scripts/model_armor_smoke.py` supporting `--latency` benchmark, benign passage, injection blocking, abuse detection, and SDP non-redaction of order tokens against live GCP endpoints post-apply.
 - **Rationale**: TDD §7.1, §12.1. Guarantees hermetic offline CI execution while providing verified live smoke tooling.
 - **Acceptance**: `tests/security/test_model_armor_contracts.py::test_contracts_and_smoke_harness`
+- **Status**: done
+- **Owner**: security
+
+### REQ-MA-007: Agent Gateway Ingress Content Security Template (No SDP)
+- **Statement**: A dedicated Model Armor template `support-router-ingress` MUST be provisioned in `deploy/terraform/agent-gateway/` targeting `us-central1`. The template configures PI/jailbreak filters at `confidence_level = "MEDIUM_AND_ABOVE"`, malicious URI filter at `filter_enforcement = "ENABLED"`, and RAI filters (`SEXUALLY_EXPLICIT`, `HATE_SPEECH`, `HARASSMENT`, `DANGEROUS` at `confidence_level = "MEDIUM_AND_ABOVE"`), with `custom_prompt_safety_error_code = 403`. Crucially, the template MUST NOT declare any `sdp_settings` (DLP inspection/de-identification at the gateway would rewrite prompts and break the reversible PII tokenization scheme in REQ-STORE-009, and credit card blocking must return HTTP 400 without persistence in-agent). Project-level IAM roles `roles/modelarmor.calloutUser` and `roles/modelarmor.user` MUST be granted to Reasoning Engine service agent `service-<PROJECT_NUMBER>@gcp-sa-aiplatform-re.iam.gserviceaccount.com`. In-agent duplicate-check avoidance is controlled by `PROMPT_SAFETY_DELEGATED_TO_GATEWAY` (default `"0"`): when `"1"` and `INGRESS_GATEWAY_MODEL_ARMOR == "1"`, in-agent PI/jailbreak/RAI/malicious-URI checks become monitor-only (`prompt_safety_shadow`), while card data blocking and SDP tokenization remain actively enforced in-agent.
+- **Rationale**: TDD §3.7 and Agent Gateway Ingress Content Security; eliminates duplicate latency/cost while strictly preserving reversible tokenization and PCI boundary isolation.
+- **Acceptance**: `tests/infra/test_agent_gateway_static.py::test_gateway_ingress_resource_and_model_armor_policy` and `tests/security/test_model_armor_policy.py::test_prompt_safety_delegated_to_gateway`
 - **Status**: done
 - **Owner**: security

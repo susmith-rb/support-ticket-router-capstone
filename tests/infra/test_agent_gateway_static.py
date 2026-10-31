@@ -152,7 +152,8 @@ def test_uap_principal_is_only_triage_agent():
     # Extract the clause / rules block for triage_egress
     uap_start = main_hcl.find('resource "google_iam_project_access_policy" "triage_egress"')
     assert uap_start != -1
-    uap_end = main_hcl.find('resource "google_iam_projects_policy_binding"', uap_start)
+    uap_end = main_hcl.find('resource "google_project_iam_audit_config"', uap_start)
+    assert uap_end != -1
     uap_block = main_hcl[uap_start:uap_end]
 
     # Must contain var.triage_agent_principal in principals
@@ -204,3 +205,94 @@ def test_cloudbuild_deploy_step_wires_agent_gateway():
     assert "_TRIAGE_AGENT_GATEWAY: ''" in deploy_yaml
     assert '--agent-gateway "${_TRIAGE_AGENT_GATEWAY}"' in deploy_yaml
     assert 'if [ -n "${_TRIAGE_AGENT_GATEWAY}" ]; then' in deploy_yaml
+
+
+# REQ-AUTH-011
+def test_ingress_gateway_definition_and_properties():
+    """Verify Agent Gateway resource tr-ingress, CLIENT_TO_AGENT, and registry binding."""
+    main_hcl = (AGW_DIR / "main.tf").read_text(encoding="utf-8")
+
+    assert 'resource "google_network_services_agent_gateway" "tr_ingress"' in main_hcl
+    assert _has(main_hcl, 'name     = "tr-ingress"')
+    assert _has(main_hcl, 'governed_access_path = "CLIENT_TO_AGENT"')
+    # `protocols` is deprecated in provider 7.x and must not be set on the gateway.
+    assert "protocols =" not in main_hcl
+    assert "//agentregistry.googleapis.com/projects/" in main_hcl
+
+
+# REQ-AUTH-011 / REQ-MA-007
+def test_ingress_model_armor_template_and_policy():
+    """Verify ingress Model Armor template without SDP, authz extension, and CONTENT_AUTHZ policy."""
+    main_hcl = (AGW_DIR / "main.tf").read_text(encoding="utf-8")
+
+    # 1. Ingress Model Armor template with PI/JB, URI, RAI, 403 error code
+    assert 'resource "google_model_armor_template" "support_router_ingress"' in main_hcl
+    assert _has(main_hcl, 'template_id = "support-router-ingress"')
+    assert _has(main_hcl, "custom_prompt_safety_error_code = 403")
+
+    # Ingress template must NOT have sdp_settings (SDP tokenization stays in-agent)
+    ingress_start = main_hcl.find('resource "google_model_armor_template" "support_router_ingress"')
+    assert ingress_start != -1
+    ingress_end = main_hcl.find('resource "google_network_services_authz_extension" "tr_ingress_model_armor"', ingress_start)
+    ingress_block = main_hcl[ingress_start:ingress_end]
+    assert "sdp_settings" not in ingress_block, "sdp_settings must NOT be configured in ingress Model Armor template"
+
+    # 2. Authz extension for Model Armor callout: fail_open = false, 5s timeout, REP endpoint
+    assert 'resource "google_network_services_authz_extension" "tr_ingress_model_armor"' in main_hcl
+    assert _has(main_hcl, 'service      = "modelarmor.${var.region}.rep.googleapis.com"')
+    assert _has(main_hcl, "fail_open = false")
+    assert _has(main_hcl, 'timeout   = "5s"')
+    assert "model_armor_settings" in main_hcl
+
+    # 3. CONTENT_AUTHZ policy targeting tr-ingress with CUSTOM action
+    assert 'resource "google_network_security_authz_policy" "tr_ingress_model_armor"' in main_hcl
+    assert _has(main_hcl, 'policy_profile = "CONTENT_AUTHZ"')
+    assert _has(main_hcl, 'action         = "CUSTOM"')
+    assert "google_network_services_agent_gateway.tr_ingress.id" in main_hcl
+    assert "google_network_services_authz_extension.tr_ingress_model_armor.id" in main_hcl
+
+
+# REQ-AUTH-011 / REQ-MA-007
+def test_ingress_model_armor_iam_grants():
+    """Verify IAM calloutUser and user roles granted to Reasoning Engine service agent."""
+    main_hcl = (AGW_DIR / "main.tf").read_text(encoding="utf-8")
+
+    assert 'resource "google_project_iam_member" "re_sa_model_armor_callout_user"' in main_hcl
+    assert _has(main_hcl, 'role    = "roles/modelarmor.calloutUser"')
+    assert 'resource "google_project_iam_member" "re_sa_model_armor_user"' in main_hcl
+    assert _has(main_hcl, 'role    = "roles/modelarmor.user"')
+
+    # Both must target the Reasoning Engine service agent
+    expected_member = '"serviceAccount:service-${var.project_number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"'
+    assert expected_member in main_hcl
+
+
+# REQ-AUTH-011
+def test_ingress_gateway_outputs():
+    """Verify outputs.tf exposes ingress_gateway_id and ingress_gateway_name."""
+    outputs_hcl = (AGW_DIR / "outputs.tf").read_text(encoding="utf-8")
+
+    assert 'output "ingress_gateway_id"' in outputs_hcl
+    assert "google_network_services_agent_gateway.tr_ingress.id" in outputs_hcl
+    assert 'output "ingress_gateway_name"' in outputs_hcl
+    assert "google_network_services_agent_gateway.tr_ingress.name" in outputs_hcl
+
+
+# REQ-AUTH-011
+def test_cloudbuild_deploy_step_wires_ingress_agent_gateway():
+    """Verify CloudBuild and single-project Terraform wire _TRIAGE_INGRESS_AGENT_GATEWAY."""
+    deploy_yaml = (REPO_ROOT / "cicd" / "cloudbuild-deploy.yaml").read_text(encoding="utf-8")
+    cb_vars_hcl = (SINGLE_DIR / "modules" / "cloudbuild" / "variables.tf").read_text(encoding="utf-8")
+    cb_main_hcl = (SINGLE_DIR / "modules" / "cloudbuild" / "main.tf").read_text(encoding="utf-8")
+    single_vars_hcl = (SINGLE_DIR / "variables.tf").read_text(encoding="utf-8")
+    single_main_hcl = (SINGLE_DIR / "main.tf").read_text(encoding="utf-8")
+
+    assert "_TRIAGE_INGRESS_AGENT_GATEWAY: ''" in deploy_yaml
+    assert '--ingress-agent-gateway "${_TRIAGE_INGRESS_AGENT_GATEWAY}"' in deploy_yaml
+    assert 'if [ -n "${_TRIAGE_INGRESS_AGENT_GATEWAY}" ]; then' in deploy_yaml
+
+    assert 'variable "triage_ingress_gateway"' in cb_vars_hcl
+    assert "_TRIAGE_INGRESS_AGENT_GATEWAY" in cb_main_hcl
+    assert 'variable "triage_ingress_gateway"' in single_vars_hcl
+    assert "triage_ingress_gateway" in single_main_hcl
+
