@@ -358,8 +358,13 @@ def evaluate_four_arms_on_golden(
         }
 
     golden_esc_ece_15 = compute_ece_with_bins(laya_p_esc, laya_esc_match, n_bins=15)
+    dataset_label = (
+        str(golden_csv.relative_to(REPO_ROOT))
+        if golden_csv.is_relative_to(REPO_ROOT)
+        else str(golden_csv)
+    )
     return {
-        "dataset": str(golden_csv.relative_to(REPO_ROOT)),
+        "dataset": dataset_label,
         "ground_truth": "claude_opus_sonnet_cross_family_consensus",
         "n_cases": n_total,
         "thresholds": {"tau_low": tau_low, "tau_esc": tau_esc},
