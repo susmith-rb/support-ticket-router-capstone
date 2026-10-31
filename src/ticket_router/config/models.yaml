@@ -35,6 +35,10 @@ models:
   tier3_multihop:
     id: "gemini-3.1-pro"
     location: "global"
+    thinking_level: "LOW"
+    enabled: true
+    confidence_threshold: 0.70
+    deadline_s: 2.5
     notes: "Complex multi-hop reasoning"
 
   emergency:

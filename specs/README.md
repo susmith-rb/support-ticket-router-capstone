@@ -55,6 +55,7 @@ Every requirement block in `specs/<area>.md` follows this exact structure:
 | **Agent Evals & Hill-Climbing** | [`specs/agent-evals.md`](agent-evals.md) | End-to-end multi-agent evaluation harness, deterministic metrics, Wilson bounds, offline LLM-as-judge rubrics, hill-climb protocol, and CI gates. | `REQ-EVAL-` |
 | **Model Armor** | [`specs/model-armor.md`](model-armor.md) | Ingress/egress sanitization, regional keep-alive REST client, PI/JB and RAI filters, SDP de-identification, fail-safe routing, and latency budgets. | `REQ-MA-` |
 | **CD Pipeline** | [`specs/cd-pipeline.md`](cd-pipeline.md) | Human-approved continuous deployment across Cloud Run, GKE, and Agent Engine. | `REQ-CD-` |
+| **Load & Chaos** | [`specs/load-and-chaos.md`](load-and-chaos.md) | Locust load testing profiles, cost/quota safeguards, and chaos fault injection (router-s1, 429s, Cloud SQL failover). | `REQ-LOAD-`, `REQ-CHAOS-` |
 
 ---
 

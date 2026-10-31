@@ -33,4 +33,6 @@ ignore = [
 "training/**/*.py" = ["E402"]
 "evals/**/*.py" = ["E402"]
 "corpus/**/*.py" = ["E402"]
+"loadtest/**/*.py" = ["E402"]
+"chaos/**/*.py" = ["E402"]
 

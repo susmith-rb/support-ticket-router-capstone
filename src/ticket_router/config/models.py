@@ -81,6 +81,10 @@ def _clean_val(val_str: str) -> Any:
         return int(val)
     except ValueError:
         pass
+    try:
+        return float(val)
+    except ValueError:
+        pass
     return val
 
 

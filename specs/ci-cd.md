@@ -66,6 +66,7 @@ cicd/
 | `REQ-CICD-007` | Cloud Scheduler Nightly Evaluation Target Configuration | `done` | `tests/infra/test_cicd_static.py::test_scheduler_job_target_contract` |
 | `REQ-CICD-008` | Static Security and Secret Leakage Prevention | `done` | `tests/infra/test_cicd_static.py::test_no_secrets_in_cicd_yamls` |
 | `REQ-CICD-009` | Change-Aware Golden Retrieval Evaluation Gate Execution | `done` | `tests/infra/test_cicd_static.py::test_eval_gate_conditional_execution` |
+| `REQ-CICD-010` | Line and Branch Test Coverage Enforcement in CI | `done` | `tests/infra/test_cicd_static.py::test_ci_coverage_enforcement` |
 
 ---
 
@@ -131,6 +132,13 @@ cicd/
 - **Statement**: CI pipeline subsystems MUST conditionally execute based on SHA-256 content fingerprints computed against the last successful main build state stored in `gs://${_CORPUS_BUCKET}/ci/state.json`. In `cicd/cloudbuild.yaml`: (1) the Golden Retrieval Evaluation Gate (`golden-eval-gate`) executes when the retrieval fingerprint changes or when substitution variable `_RUN_EVAL=true`, scoring the production retrieval configuration (`intent_soft_noisy_0.2`), and skips when `_RUN_EVAL=false` or when `_RUN_EVAL=auto` with unchanged retrieval fingerprint; (2) corpus reindexing on main (`corpus-reindex-on-main`) executes only when the corpus fingerprint changes; (3) static Terraform checks execute only when the Terraform fingerprint changes; and (4) an updated CI state is persisted to GCS (`record-ci-state`) exclusively on successful builds of the `main` branch, preserving the prior retrieval fingerprint if evaluation was bypassed via `_RUN_EVAL=false`. Missing or empty baseline state treats all subsystems as changed.
 - **Rationale**: Cloud Build shallow clones (`depth=1`) lack credentials for remote `git fetch` operations, causing git-diff-based detection to fail and default to executing all stages. Content fingerprinting directly inspects tracked repository bytes (`git ls-files` with filesystem fallback) for isolated subsystems (`retrieval`, `corpus`, `terraform`), preventing 300 sequential live Agent Search queries on non-retrieval PRs/pushes while guaranteeing rigorous quality enforcement whenever retrieval code, corpus data, or search infrastructure changes (or on demand).
 - **Acceptance**: `tests/infra/test_cicd_static.py::test_eval_gate_conditional_execution`
+- **Status**: done
+- **Owner**: ci-cd
+
+### REQ-CICD-010: Line and Branch Test Coverage Enforcement in CI
+- **Statement**: CI workflows and unit test suites MUST validate execution coverage across core configuration, routing, and resilience logic, enforcing branch coverage verification for `config/models.py`, `config/agent_tuning.py`, `common/resilience.py`, and `serve.py`.
+- **Rationale**: TDD §12.6: Ensures comprehensive unit test coverage and prevents silent regressions across core configuration loading, pure logic helpers, and fallback mechanics.
+- **Acceptance**: `tests/infra/test_cicd_static.py::test_ci_coverage_enforcement`
 - **Status**: done
 - **Owner**: ci-cd
 

@@ -40,7 +40,7 @@ steps:
         ruff check .
 
         echo "=== Running offline test suite and spec traceability ==="
-        python -m pytest -v
+        python -m pytest -v --cov=src/ticket_router --cov-branch --cov-fail-under=80 --deselect tests/infra/test_ge_app_and_trace.py::test_ge_app_infra_and_registration_contract
 
         echo "=== Verifying Python byte-compilation ==="
         python -m py_compile src/ticket_router/*.py src/ticket_router/**/*.py evals/*.py corpus/*.py experiments/*.py

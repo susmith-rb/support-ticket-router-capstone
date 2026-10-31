@@ -11,11 +11,16 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from ticket_router.common.resilience import CircuitBreakerError
+from ticket_router.common.resilience import (
+    TIER3_PRO_DEADLINE_S,
+    CircuitBreakerError,
+    ServiceTimeoutError,
+)
 from ticket_router.models.router_s1_client import RouterPrediction, RouterS1Client
 from ticket_router.security.model_armor import (
     ModelArmorClientProtocol,
@@ -41,10 +46,16 @@ class RouterThresholds:
     tau_esc: Definitive escalation floor
     tau_low: Auto-RAG uncertainty lower bound
     tau_intent: Intent confidence floor
+    tier3_enabled: Enable Tier 3 Pro multihop fallback
+    tier3_confidence_threshold: Confidence floor below which Tier 3 is triggered
+    tier3_deadline_s: Hard timeout budget for Tier 3 call
     """
     tau_esc: float = 0.50
     tau_low: float = 0.15
     tau_intent: float = 0.70
+    tier3_enabled: bool = True
+    tier3_confidence_threshold: float = 0.70
+    tier3_deadline_s: float = TIER3_PRO_DEADLINE_S
 
     @classmethod
     def from_tuning_config(cls) -> "RouterThresholds":
@@ -52,10 +63,23 @@ class RouterThresholds:
         try:
             from ticket_router.config.agent_tuning import get_tuning_config
             cfg = get_tuning_config()
+            try:
+                from ticket_router.agents.triage_router.tier3 import Tier3Config
+                t3_cfg = Tier3Config.from_config()
+                t3_enabled = t3_cfg.enabled
+                t3_conf = t3_cfg.confidence_threshold
+                t3_deadline = t3_cfg.deadline_s
+            except Exception:
+                t3_enabled = True
+                t3_conf = 0.70
+                t3_deadline = TIER3_PRO_DEADLINE_S
             return cls(
                 tau_esc=cfg.tau_esc,
                 tau_low=cfg.tau_low,
                 tau_intent=cfg.tau_intent,
+                tier3_enabled=t3_enabled,
+                tier3_confidence_threshold=t3_conf,
+                tier3_deadline_s=t3_deadline,
             )
         except Exception:
             return cls()
@@ -431,12 +455,32 @@ class TriagePolicy:
         thresholds: Optional[RouterThresholds] = None,
         s1_client: Optional[RouterS1Client] = None,
         tier2_invoker: Optional[Callable[[str], RouterPrediction]] = None,
+        tier3_invoker: Optional[Callable[[str], RouterPrediction]] = None,
         model_armor_client: Optional[ModelArmorClientProtocol] = None,
+        tier3_enabled: Optional[bool] = None,
+        tier3_confidence_threshold: Optional[float] = None,
+        tier3_deadline_s: Optional[float] = None,
     ) -> None:
         self.thresholds = thresholds or RouterThresholds()
         self.s1_client = s1_client
         self.tier2_invoker = tier2_invoker
+        self.tier3_invoker = tier3_invoker
         self.model_armor_client = model_armor_client
+        self.tier3_enabled = (
+            tier3_enabled
+            if tier3_enabled is not None
+            else self.thresholds.tier3_enabled
+        )
+        self.tier3_confidence_threshold = (
+            tier3_confidence_threshold
+            if tier3_confidence_threshold is not None
+            else self.thresholds.tier3_confidence_threshold
+        )
+        self.tier3_deadline_s = (
+            tier3_deadline_s
+            if tier3_deadline_s is not None
+            else self.thresholds.tier3_deadline_s
+        )
 
     def _call_s1(self, text: str) -> Tuple[Optional[RouterPrediction], Optional[str]]:
         """Execute router-s1 encoder call with error handling."""
@@ -889,11 +933,213 @@ class TriagePolicy:
                     pii_mapping=pii_mapping,
                 )
 
+            # -----------------------------------------------------------------
+            # Tier 3: Gemini Pro Multihop Fallback (REQ-AGENT-002, TDD §2.2)
+            # -----------------------------------------------------------------
+            from ticket_router.agents.triage_router.tier3 import is_tier3_trigger
+
+            tier3_triggered = False
+            is_low_confidence = False
+            if self.tier3_enabled:
+                tier3_triggered, is_low_confidence = is_tier3_trigger(
+                    t2_pred, confidence_threshold=self.tier3_confidence_threshold
+                )
+
+            t3_error: Optional[str] = None
+            if tier3_triggered:
+                t3_t0 = time.monotonic()
+                t3_pred: Optional[RouterPrediction] = None
+                t3_timed_out = False
+
+                invoker = self.tier3_invoker
+                if invoker is None:
+                    from ticket_router.agents.triage_router.tier3 import create_tier3_invoker
+
+                    invoker = create_tier3_invoker(deadline_s=self.tier3_deadline_s)
+
+                try:
+                    text_for_t3 = tokenized_text if tokenized_text is not None else text
+                    t3_pred = invoker(text_for_t3)
+                except ServiceTimeoutError as exc:
+                    t3_timed_out = True
+                    t3_error = f"tier3_timeout: {exc}"
+                except Exception as exc:
+                    if (
+                        isinstance(exc, (TimeoutError, concurrent.futures.TimeoutError))
+                        or "timeout" in str(exc).lower()
+                    ):
+                        t3_timed_out = True
+                    t3_error = f"tier3_error: {exc}"
+
+                t3_latency_ms = (time.monotonic() - t3_t0) * 1000.0
+
+                outcome: str
+                if t3_pred is not None:
+                    if (
+                        t3_pred.escalate
+                        or t3_pred.sentiment == "angry"
+                        or t3_pred.urgency == "immediate"
+                    ):
+                        outcome = "escalate"
+                    elif t3_pred.out_of_scope:
+                        outcome = "reject_oos"
+                    else:
+                        outcome = "auto_rag"
+                elif t3_timed_out:
+                    outcome = "timeout"
+                else:
+                    outcome = "error"
+
+                logger.info(
+                    "tier3_fallback_evaluated",
+                    extra={
+                        "tier": "tier3_pro",
+                        "latency_ms": round(t3_latency_ms, 2),
+                        "outcome": outcome,
+                    },
+                )
+
+                if t3_pred is not None:
+                    # Invariant: Add-only escalation (REQ-AGENT-003)
+                    final_t3_escalate = (
+                        t3_pred.escalate
+                        or t3_pred.sentiment == "angry"
+                        or t3_pred.urgency == "immediate"
+                    )
+                    if final_t3_escalate:
+                        queue = evaluate_gaming_resistant_priority(
+                            facts=verified_facts,
+                            tier0=tier0,
+                            sentiment=t3_pred.sentiment,
+                            urgency=t3_pred.urgency,
+                        )
+                        details_t3: Dict[str, Any] = {
+                            "s1_error": s1_error,
+                            "tier3_latency_ms": round(t3_latency_ms, 2),
+                            "tier2_intent": t2_pred.intent,
+                            "tier2_intent_prob": t2_pred.intent_prob,
+                        }
+                        if ma_details:
+                            details_t3["model_armor"] = ma_details
+                        if sanitized_text:
+                            details_t3["sanitized_text"] = sanitized_text
+
+                        return RouterDecision(
+                            ticket_id=t_id,
+                            session_id=session_id,
+                            decision="escalate",
+                            tier="tier3_pro",
+                            queue=queue.value,
+                            predicted_intent=t3_pred.intent,
+                            escalate=True,
+                            sentiment=t3_pred.sentiment,
+                            urgency=t3_pred.urgency,
+                            reason="tier3_pro_escalation",
+                            degraded=bool(s1_error),
+                            latency_ms=t3_pred.latency_ms or t3_latency_ms,
+                            details=details_t3,
+                            tokenized_text=tokenized_text,
+                            pii_mapping=pii_mapping,
+                        )
+
+                    if t3_pred.out_of_scope:
+                        details_t3_oos: Dict[str, Any] = {
+                            "s1_error": s1_error,
+                            "out_of_scope": True,
+                            "tier3_latency_ms": round(t3_latency_ms, 2),
+                        }
+                        if ma_details:
+                            details_t3_oos["model_armor"] = ma_details
+                        if sanitized_text:
+                            details_t3_oos["sanitized_text"] = sanitized_text
+
+                        return RouterDecision(
+                            ticket_id=t_id,
+                            session_id=session_id,
+                            decision="reject_oos",
+                            tier="tier3_pro",
+                            queue="none",
+                            predicted_intent="other",
+                            escalate=False,
+                            sentiment=t3_pred.sentiment,
+                            urgency=t3_pred.urgency,
+                            reason="tier3_out_of_scope",
+                            degraded=bool(s1_error),
+                            latency_ms=t3_pred.latency_ms or t3_latency_ms,
+                            details=details_t3_oos,
+                            tokenized_text=tokenized_text,
+                            pii_mapping=pii_mapping,
+                        )
+
+                    details_t3_rag: Dict[str, Any] = {
+                        "s1_error": s1_error,
+                        "tier3_latency_ms": round(t3_latency_ms, 2),
+                    }
+                    if ma_details:
+                        details_t3_rag["model_armor"] = ma_details
+                    if sanitized_text:
+                        details_t3_rag["sanitized_text"] = sanitized_text
+
+                    return RouterDecision(
+                        ticket_id=t_id,
+                        session_id=session_id,
+                        decision="auto_rag",
+                        tier="tier3_pro",
+                        queue="none",
+                        predicted_intent=t3_pred.intent,
+                        escalate=False,
+                        sentiment=t3_pred.sentiment,
+                        urgency=t3_pred.urgency,
+                        reason="tier3_pro_auto_rag",
+                        degraded=bool(s1_error),
+                        latency_ms=t3_pred.latency_ms or t3_latency_ms,
+                        details=details_t3_rag,
+                        tokenized_text=tokenized_text,
+                        pii_mapping=pii_mapping,
+                    )
+
+                # Tier 3 timed out or failed with error
+                if is_low_confidence:
+                    fallback_queue = evaluate_gaming_resistant_priority(
+                        facts=verified_facts, tier0=tier0
+                    )
+                    details_t3_fail: Dict[str, Any] = {
+                        "s1_error": s1_error,
+                        "tier3_error": t3_error,
+                        "tier3_timed_out": t3_timed_out,
+                        "tier2_intent": t2_pred.intent,
+                        "tier2_intent_prob": t2_pred.intent_prob,
+                    }
+                    if ma_details:
+                        details_t3_fail["model_armor"] = ma_details
+                    if sanitized_text:
+                        details_t3_fail["sanitized_text"] = sanitized_text
+
+                    return RouterDecision(
+                        ticket_id=t_id,
+                        session_id=session_id,
+                        decision="escalate",
+                        tier="tier2_flash",
+                        queue=fallback_queue.value,
+                        predicted_intent=t2_pred.intent or "other",
+                        escalate=True,
+                        sentiment="neutral",
+                        urgency="normal",
+                        reason=f"tier3_fallback_degraded: {t3_error}",
+                        degraded=True,
+                        latency_ms=t3_latency_ms,
+                        details=details_t3_fail,
+                        tokenized_text=tokenized_text,
+                        pii_mapping=pii_mapping,
+                    )
+
             if t2_pred.out_of_scope:
                 details_t2_oos: Dict[str, Any] = {
                     "s1_error": s1_error,
                     "out_of_scope": True,
                 }
+                if t3_error:
+                    details_t2_oos["tier3_error"] = t3_error
                 if ma_details:
                     details_t2_oos["model_armor"] = ma_details
                 if sanitized_text:
@@ -918,6 +1164,8 @@ class TriagePolicy:
                 )
 
             details_t2_rag: Dict[str, Any] = {"s1_error": s1_error}
+            if t3_error:
+                details_t2_rag["tier3_error"] = t3_error
             if ma_details:
                 details_t2_rag["model_armor"] = ma_details
             if sanitized_text:

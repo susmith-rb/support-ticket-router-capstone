@@ -20,6 +20,7 @@ ROUTER_S1_TIMEOUT_S: float = 0.500  # HTTP call timeout. Model budget is 150 ms 
 TIER2_FLASH_TIMEOUT_S: float = 1.500  # Kept for backward compatibility; superseded by TIER2_HEDGE_AFTER_S / TIER2_DEADLINE_S (REQ-AGENT-025)
 TIER2_HEDGE_AFTER_S: float = 3.5
 TIER2_DEADLINE_S: float = 9.0
+TIER3_PRO_DEADLINE_S: float = 2.5  # REQ-AGENT-002: Hard deadline budget for Tier 3 Gemini Pro single call
 ANSWER_HEDGE_AFTER_S: float = 4.0  # REQ-AGENT-029: earlier answer hedge (was 7.0 per REQ-AGENT-025; p50 gen ~3s)
 ANSWER_DEADLINE_S: float = 15.0
 AGENT_SEARCH_TIMEOUT_S: float = 0.800  # 800 ms

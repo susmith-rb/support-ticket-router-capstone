@@ -43,6 +43,9 @@ class Settings:
         "projects/susmith-fde-ticket-router/locations/us-central1/keyRings/ticket-router-identity/cryptoKeys/customer-context-signer/"
     )
     cct_allowed_issuers: Tuple[str, ...] = ("triage-router",)
+    tier3_enabled: bool = True
+    tier3_confidence_threshold: float = 0.70
+    tier3_deadline_s: float = 2.5
 
     @classmethod
     def from_env(cls, env: Optional[Dict[str, str]] = None) -> Settings:
@@ -159,6 +162,39 @@ class Settings:
         else:
             cct_allowed_issuers = ("triage-router",)
 
+        # Tier 3 Multihop settings
+        raw_t3_enabled = environ.get("TIER3_ENABLED")
+        if raw_t3_enabled is not None:
+            tier3_enabled = raw_t3_enabled.strip().lower() in ("1", "true", "yes", "on")
+        else:
+            try:
+                from ticket_router.config.models import get as get_model_cfg
+                tier3_enabled = bool(get_model_cfg("tier3_multihop").get("enabled", True))
+            except Exception:
+                tier3_enabled = True
+
+        raw_t3_conf = environ.get("TIER3_CONFIDENCE_THRESHOLD")
+        if raw_t3_conf is not None:
+            tier3_confidence_threshold = float(raw_t3_conf.strip())
+        else:
+            try:
+                from ticket_router.config.models import get as get_model_cfg
+                tier3_confidence_threshold = float(
+                    get_model_cfg("tier3_multihop").get("confidence_threshold", 0.70)
+                )
+            except Exception:
+                tier3_confidence_threshold = 0.70
+
+        raw_t3_deadline = environ.get("TIER3_DEADLINE_S")
+        if raw_t3_deadline is not None:
+            tier3_deadline_s = float(raw_t3_deadline.strip())
+        else:
+            try:
+                from ticket_router.config.models import get as get_model_cfg
+                tier3_deadline_s = float(get_model_cfg("tier3_multihop").get("deadline_s", 2.5))
+            except Exception:
+                tier3_deadline_s = 2.5
+
         return cls(
             project=project,
             location=location,
@@ -184,6 +220,9 @@ class Settings:
             cct_key_version=cct_key_version,
             cct_key_prefix=cct_key_prefix,
             cct_allowed_issuers=cct_allowed_issuers,
+            tier3_enabled=tier3_enabled,
+            tier3_confidence_threshold=tier3_confidence_threshold,
+            tier3_deadline_s=tier3_deadline_s,
         )
 
     def validate_for_faq(self) -> None:

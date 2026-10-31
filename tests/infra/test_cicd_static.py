@@ -787,3 +787,25 @@ def test_ci_eval_gate_search_kwargs_match_ablation_eval(monkeypatch, tmp_path):
         gate_kw = gate_captured_kwargs[idx]
         ae_kw = ae_captured_kwargs[idx]
         assert gate_kw == ae_kw, f"Mismatch at query index {idx}:\nGate: {gate_kw}\nAE:   {ae_kw}"
+
+
+# REQ-CICD-010
+def test_ci_coverage_enforcement():
+    """CI pipeline must enforce >= 80% line and branch test coverage."""
+    cb_path = CICD_DIR / "cloudbuild.yaml"
+    raw_content = cb_path.read_text(encoding="utf-8")
+    pyproject_path = REPO_ROOT / "pyproject.toml"
+    pyproject_content = pyproject_path.read_text(encoding="utf-8")
+
+    # CloudBuild CI step asserts
+    assert "--cov=src/ticket_router" in raw_content or "--cov" in raw_content
+    assert "--cov-branch" in raw_content
+    assert "--cov-fail-under=80" in raw_content or "fail_under = 80" in pyproject_content
+    assert "--deselect tests/infra/test_ge_app_and_trace.py::test_ge_app_infra_and_registration_contract" in raw_content
+
+    # pyproject.toml coverage asserts
+    assert "[tool.coverage.run]" in pyproject_content
+    assert "branch = true" in pyproject_content
+    assert "[tool.coverage.report]" in pyproject_content
+    assert "fail_under = 80" in pyproject_content
+
