@@ -16,6 +16,7 @@ from typing import Any, Optional
 from pydantic import PrivateAttr
 
 from ticket_router.agents.triage_router.agent import TriageResult, TriageRouterAgent
+from ticket_router.agents.triage_router.templates import render_card_data_blocked_reply
 from ticket_router.common.observability import configure_tracing, flush_traces
 
 # Invariant: Force GenAI auto-instrumentation to never capture raw message content
@@ -218,6 +219,8 @@ def extract_oauth_access_token(ctx: Any, auth_id: Optional[str] = None) -> Optio
 
 def extract_answer_from_result(result: TriageResult) -> str:
     """Extract final user-facing text from TriageResult for response event."""
+    if result.decision.decision == "blocked":
+        return result.calming_ack or render_card_data_blocked_reply()
     if result.decision.decision == "escalate":
         return result.calming_ack or "Your request has been routed to our specialist team."
     if result.decision.decision == "reject_oos":
@@ -246,6 +249,17 @@ def create_event(
     result: TriageResult,
 ) -> Any:
     """Create an ADK Event or fallback shim containing final answer content."""
+    output_dict: dict[str, Any] = {
+        "ticket_id": result.ticket_id,
+        "decision": result.decision.decision,
+        "queue": result.decision.queue,
+        "answer": final_text,
+    }
+    if result.status_code != 200:
+        output_dict["status_code"] = result.status_code
+    if result.error:
+        output_dict["error"] = result.error
+
     if _HAS_ADK:
         try:
             from google.genai import types as genai_types
@@ -268,12 +282,7 @@ def create_event(
         invocation_id=invocation_id,
         branch=branch,
         content={"role": "model", "parts": [{"text": final_text}]},
-        output={
-            "ticket_id": result.ticket_id,
-            "decision": result.decision.decision,
-            "queue": result.decision.queue,
-            "answer": final_text,
-        },
+        output=output_dict,
     )
 
 
@@ -375,7 +384,7 @@ class TriageRouterAdkAgent(BaseAgent):
         )
         flush_traces(timeout_millis=1500)
         answer = extract_answer_from_result(result)
-        return {
+        resp: dict[str, Any] = {
             "ticket_id": result.ticket_id,
             "session_id": result.session_id,
             "decision": result.decision.decision,
@@ -385,6 +394,11 @@ class TriageRouterAdkAgent(BaseAgent):
             "answer": answer,
             "latency_ms": result.latency_ms,
         }
+        if result.status_code != 200:
+            resp["status_code"] = result.status_code
+        if result.error:
+            resp["error"] = result.error
+        return resp
 
     def stream_query(
         self,

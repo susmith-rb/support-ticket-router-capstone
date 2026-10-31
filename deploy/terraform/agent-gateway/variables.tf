@@ -36,5 +36,17 @@ variable "ticket_db_mcp_host" {
 variable "router_s1_dedicated_host" {
   description = "Dedicated endpoint host for router-s1 Vertex AI prediction endpoint"
   type        = string
-  default     = "618895853821624320.us-central1-620485621180.prediction.vertexai.goog"
+  default     = "router-s1-dedicated.us-central1-620485621180.prediction.vertexai.goog"
+}
+
+variable "project_number" {
+  description = "Project number; IAP reports registry names in project-ID form and the provider in project-number form (REQ-AUTH-007)"
+  type        = string
+  default     = "620485621180"
+}
+
+variable "faq_resolver_host" {
+  description = "FaqResolver public HTTPS host used by the TriageRouter REST handoff (REQ-AUTH-007)"
+  type        = string
+  default     = "faq.8-232-184-225.sslip.io"
 }

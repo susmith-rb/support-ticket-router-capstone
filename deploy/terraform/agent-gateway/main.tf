@@ -130,6 +130,40 @@ resource "google_agent_registry_service" "faq_resolver" {
 }
 
 locals {
+  # REQ-AUTH-007: IAP evaluates registry names in project-ID form
+  # (projects/<project_id>/...), while the provider's registry_resource uses the
+  # project number, so each registry match accepts both forms. gRPC trace export
+  # (cloudtrace.mtls BatchWriteSpans) does not match an HTTP_JSON interface and
+  # arrives as an unregistered destination, so it is allowed by exact host + path.
+  # Verified with IAP data-access audit logs in DRY_RUN (2026-10-31).
+  faq_agent_names = [
+    google_agent_registry_service.faq_resolver.registry_resource,
+    replace(google_agent_registry_service.faq_resolver.registry_resource, "projects/${var.project_number}/", "projects/${var.project_id}/"),
+  ]
+  core_gapi_endpoint_names = [
+    google_agent_registry_service.core_gapi.registry_resource,
+    replace(google_agent_registry_service.core_gapi.registry_resource, "projects/${var.project_number}/", "projects/${var.project_id}/"),
+  ]
+  # One UAP rule per condition: a rule's CEL expression is capped at 1024 characters.
+  egress_rules = {
+    registry = {
+      description = "TriageRouter to the FaqResolver agent or the core-gapi endpoint (both name forms)"
+      expression  = "(destination.agent_registry.agent.name in ['${join("', '", local.faq_agent_names)}']) || (destination.agent_registry.endpoint.name in ['${join("', '", local.core_gapi_endpoint_names)}'])"
+    }
+    trace = {
+      description = "gRPC trace export (arrives unregistered)"
+      expression  = "(destination.is_registered == false) && (destination.unregistered.host in ['cloudtrace.mtls.googleapis.com', 'cloudtrace.mtls.googleapis.com:443']) && (destination.unregistered.path == '/google.devtools.cloudtrace.v2.TraceService/BatchWriteSpans')"
+    }
+    faq_handoff = {
+      # TriageRouter -> FaqResolver handoff is a REST call (POST /a2a/handoff), not the A2A
+      # JSON-RPC URL from the agent card, so IAP sees it as unregistered: exact host+path+verb.
+      description = "TriageRouter REST handoff to FaqResolver"
+      expression  = "(destination.is_registered == false) && (destination.unregistered.host in ['${var.faq_resolver_host}', '${var.faq_resolver_host}:443']) && (destination.unregistered.path == '/a2a/handoff') && (destination.unregistered.method == 'POST')"
+    }
+  }
+}
+
+locals {
   core_gapi_hosts = [
     "aiplatform.googleapis.com",
     "aiplatform.mtls.googleapis.com",
@@ -206,18 +240,21 @@ resource "google_iam_project_access_policy" "triage_egress" {
   display_name     = "TriageRouter Agent Gateway egress"
 
   details {
-    rules {
-      description = "Allow only the TriageRouter agent identity to egress via Agent Gateway to FaqResolver and core Google APIs"
-      effect      = "ALLOW"
-      principals  = [var.triage_agent_principal]
+    dynamic "rules" {
+      for_each = local.egress_rules
+      content {
+        description = rules.value.description
+        effect      = "ALLOW"
+        principals  = [var.triage_agent_principal]
 
-      operation {
-        permissions = ["iap.googleapis.com/resources.egressViaIAP"]
-      }
+        operation {
+          permissions = ["iap.googleapis.com/resources.egressViaIAP"]
+        }
 
-      conditions {
-        service    = "iap.googleapis.com"
-        expression = "destination.agent_registry.agent.name == '${google_agent_registry_service.faq_resolver.registry_resource}' || destination.agent_registry.endpoint.name == '${google_agent_registry_service.core_gapi.registry_resource}'"
+        conditions {
+          service    = "iap.googleapis.com"
+          expression = rules.value.expression
+        }
       }
     }
   }
@@ -231,3 +268,19 @@ resource "google_iam_project_access_policy" "triage_egress" {
 # provider 7.46 only supports `target.principal_set`, and access-policy bindings
 # need `target.resource` (API error "Policy Binding target must be a resource for
 # Access Policy"). Move it back to google_iam_projects_policy_binding when supported.
+
+# REQ-AUTH-007: IAP data-access audit logs carry the per-request dry-run / enforced
+# authorization verdict and the evaluated principal. The gateway's load-balancer log
+# reports ALLOWED for every request while the authz extension is in DRY_RUN, so these
+# logs are the only way to see what ENFORCE would deny before switching.
+resource "google_project_iam_audit_config" "iap_data_access" {
+  project = var.project_id
+  service = "iap.googleapis.com"
+
+  audit_log_config {
+    log_type = "ADMIN_READ"
+  }
+  audit_log_config {
+    log_type = "DATA_READ"
+  }
+}

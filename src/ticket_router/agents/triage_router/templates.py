@@ -100,3 +100,16 @@ def render_conversational_reply(category: Optional[str] = None) -> str:
         return CONVERSATIONAL_PLEASANTRY_TEMPLATE
     return CONVERSATIONAL_GREETING_TEMPLATE
 
+
+# REQ-MA-007 / REQ-AGENT-028: Ingress Payment Card Data Block Reply (TDD §4.2 C4)
+CARD_DATA_BLOCKED_REPLY = (
+    "For your security we can't accept card numbers in chat. "
+    "Please remove the card number and send your message again; "
+    "for payment issues, use the secure payment page."
+)
+
+
+def render_card_data_blocked_reply() -> str:
+    """Render a deterministic security response for customer prompts containing payment card data."""
+    return CARD_DATA_BLOCKED_REPLY
+

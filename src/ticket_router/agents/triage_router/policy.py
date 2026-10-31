@@ -135,6 +135,37 @@ def _extract_sdp_findings(verdict: Optional[ModelArmorVerdict]) -> List[Any]:
     return []
 
 
+BLOCKED_SDP_INFO_TYPES = frozenset({"CREDIT_CARD_NUMBER"})
+
+
+def _has_dict_location(finding: Any) -> bool:
+    """Return True if the finding has a dict-based location (e.g. codepointRange)."""
+    if isinstance(finding, dict):
+        loc = finding.get("location")
+        return isinstance(loc, dict)
+    loc = getattr(finding, "location", None)
+    return isinstance(loc, dict)
+
+
+def _extract_blocked_card_info_types(verdict: Optional[ModelArmorVerdict]) -> List[str]:
+    """Extract blocked card info types from findings that have dict locations (TDD §4.2 C4)."""
+    if verdict is None:
+        return []
+    blocked: List[str] = []
+    for f in _extract_sdp_findings(verdict):
+        if not _has_dict_location(f):
+            continue
+        if isinstance(f, dict):
+            raw = f.get("infoType") or f.get("info_type")
+        else:
+            raw = getattr(f, "info_type", None) or getattr(f, "infoType", None)
+        if raw:
+            norm = str(raw).strip().upper()
+            if norm in BLOCKED_SDP_INFO_TYPES and norm not in blocked:
+                blocked.append(norm)
+    return blocked
+
+
 # -----------------------------------------------------------------------------
 # Tier 0 Deterministic Rules (REQ-AGENT-002, REQ-AGENT-003)
 # -----------------------------------------------------------------------------
@@ -451,6 +482,11 @@ class TriagePolicy:
         pii_mapping: Dict[str, str] = {}
 
         if ma_verdict is not None:
+            blocked_types = _extract_blocked_card_info_types(ma_verdict)
+            if blocked_types:
+                # Ingress guard: Card data must never be tokenized, mapped, or persisted (TDD §4.2 C4)
+                return ma_verdict, None, None, {}
+
             try:
                 findings = _extract_sdp_findings(ma_verdict)
                 if findings:
@@ -492,7 +528,25 @@ class TriagePolicy:
             tokenized_text: Optional[str] = None
             pii_mapping: Dict[str, str] = {}
             if self.model_armor_client is not None:
-                _, sanitized_text, tokenized_text, pii_mapping = self._run_model_armor(text)
+                ma_verdict, sanitized_text, tokenized_text, pii_mapping = self._run_model_armor(text)
+                blocked_types = _extract_blocked_card_info_types(ma_verdict)
+                if blocked_types:
+                    return RouterDecision(
+                        ticket_id=t_id,
+                        session_id=session_id,
+                        decision="blocked",
+                        tier="ingress_guard",
+                        queue="none",
+                        predicted_intent="other",
+                        escalate=False,
+                        sentiment=tier0.sentiment,
+                        urgency=tier0.urgency,
+                        reason="card_data_blocked",
+                        degraded=False,
+                        details={"blocked_info_types": blocked_types},
+                        tokenized_text=None,
+                        pii_mapping={},
+                    )
                 if sanitized_text:
                     details_t0["sanitized_text"] = sanitized_text
 
@@ -554,6 +608,27 @@ class TriagePolicy:
         ma_details: Dict[str, Any] = {}
         if ma_verdict is not None:
             ma_details = ma_verdict.to_summary_dict()
+
+            # 0. Payment Card Data -> Ingress Guard Hard Block (TDD §4.2 C4, REQ-MA-007)
+            # Card data is blocked at ingress with HTTP 400 and never persisted.
+            blocked_types = _extract_blocked_card_info_types(ma_verdict)
+            if blocked_types:
+                return RouterDecision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="blocked",
+                    tier="ingress_guard",
+                    queue="none",
+                    predicted_intent="other",
+                    escalate=False,
+                    sentiment="neutral",
+                    urgency="normal",
+                    reason="card_data_blocked",
+                    degraded=False,
+                    details={"blocked_info_types": blocked_types},
+                    tokenized_text=None,
+                    pii_mapping={},
+                )
 
             # 1. Prompt Injection, Jailbreak, or Malicious URI -> Hard Security Escalation
             # NEVER forwarded to neural LLM tiers or FaqResolverAgent.

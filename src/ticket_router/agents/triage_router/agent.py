@@ -42,6 +42,7 @@ from ticket_router.agents.triage_router.policy import (
 )
 from ticket_router.agents.triage_router.templates import (
     render_calming_acknowledgement,
+    render_card_data_blocked_reply,
     render_conversational_reply,
     render_out_of_scope_refusal,
 )
@@ -85,6 +86,39 @@ class TriageResult:
     handoff_response: Optional[Dict[str, Any]] = None
     idempotency_key: str = ""
     latency_ms: float = 0.0
+    status_code: int = 200
+    error: Optional[str] = None
+
+    def __getitem__(self, item: str) -> Any:
+        return self.to_dict()[item]
+
+    def __contains__(self, item: object) -> bool:
+        return item in self.to_dict()
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self.to_dict().get(key, default)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert result to response dictionary."""
+        d: Dict[str, Any] = {
+            "ticket_id": self.ticket_id,
+            "session_id": self.session_id,
+            "decision": self.decision.decision,
+            "queue": self.decision.queue,
+            "calming_ack": self.calming_ack,
+            "intent": self.decision.predicted_intent,
+            "latency_ms": self.latency_ms,
+            "status_code": self.status_code,
+        }
+        if self.error:
+            d["error"] = self.error
+        if self.calming_ack:
+            d["answer"] = self.calming_ack
+        elif self.handoff_response and self.handoff_response.get("answer"):
+            d["answer"] = self.handoff_response.get("answer")
+        if self.handoff_response:
+            d["handoff_response"] = self.handoff_response
+        return d
 
 
 def invoke_tier2_gemini(
@@ -672,9 +706,36 @@ class TriageRouterAgent:
 
             calming_ack: Optional[str] = None
             handoff_resp: Optional[Dict[str, Any]] = None
+            status_code: int = 200
+            error_msg: Optional[str] = None
 
-            # 2. Branch: Escalation path vs. Auto-RAG path
-            if decision.decision == "escalate":
+            # 2. Branch: Escalation path vs. Auto-RAG path vs. Ingress Guard
+            if decision.decision == "blocked":
+                # REQ-MA-007 / REQ-AGENT-028: Ingress card data guard (TDD §4.2 C4)
+                # Never persist, never save redaction map, never call A2A/HumanHandoff, never write card to memory.
+                blocked_reply = render_card_data_blocked_reply()
+                calming_ack = blocked_reply
+                status_code = 400
+                error_msg = "card_data_blocked"
+                handoff_resp = {
+                    "status": "BLOCKED",
+                    "route": "blocked",
+                    "answer": blocked_reply,
+                    "status_code": 400,
+                    "error": "card_data_blocked",
+                }
+                logger.warning(
+                    json.dumps(
+                        {
+                            "event": "card_data_blocked",
+                            "ticket_id": t_id,
+                            "session_id": session_id,
+                            "blocked_info_types": decision.details.get("blocked_info_types", []),
+                        },
+                        separators=(",", ":"),
+                    )
+                )
+            elif decision.decision == "escalate":
                 # REQ-AGENT-030: Shared HumanHandoff workflow (persist -> publish -> calming ack)
                 category = decision.details.get("category")
                 handoff_res = self.human_handoff.escalate(
@@ -897,6 +958,8 @@ class TriageRouterAgent:
                 handoff_response=handoff_resp,
                 idempotency_key=idempotency_key,
                 latency_ms=elapsed_ms,
+                status_code=status_code,
+                error=error_msg,
             )
 
 
@@ -930,13 +993,18 @@ class _AdkAgentShim:
             message_text=query,
             customer_id_token=customer_id_token,
         )
-        return {
+        resp: Dict[str, Any] = {
             "ticket_id": res.ticket_id,
             "decision": res.decision.decision,
             "queue": res.decision.queue,
             "calming_ack": res.calming_ack,
             "intent": res.decision.predicted_intent,
         }
+        if res.status_code != 200:
+            resp["status_code"] = res.status_code
+        if res.error:
+            resp["error"] = res.error
+        return resp
 
     def stream_query(
         self,

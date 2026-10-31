@@ -206,10 +206,13 @@ class SearchClient:
         self.ds_path = data_store_name(self.project, self.data_store, location=self.location)
 
     def get_token(self) -> str:
+        # An explicitly injected token is used as-is (tests, short-lived scripts).
+        # Otherwise ask the shared credential cache every call: get_access_token()
+        # refreshes when the ~60 min access token expires. Caching the string here
+        # made every search 401 an hour after pod start (search_failure escalations).
         if self._token:
             return self._token
-        self._token = get_access_token()
-        return self._token
+        return get_access_token()
 
     def _execute_http(
         self,
