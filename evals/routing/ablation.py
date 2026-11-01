@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Sequence, Tuple
 
 from evals.routing.metrics import _compute_ece
 from evals.routing.stats import wilson_interval
-from ticket_router.agents.triage_router.policy import (
+from evals.turn_interpretation.baseline_regex import (
     evaluate_tier0_rules,
     matches_order_lookup,
 )

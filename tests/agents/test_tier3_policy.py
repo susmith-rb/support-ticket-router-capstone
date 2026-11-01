@@ -70,7 +70,7 @@ def test_tier3_config_resolution():
 
 
 def test_tier3_pro_low_confidence_fallback(mock_s1_uncertain):
-    """REQ-AGENT-002: Low-confidence Flash triggers Pro once and uses its decision."""
+    """REQ-AGENT-002, REQ-TURN-003: Tier 3 Pro retired; Flash turn interpreter decides without Pro."""
     mock_tier2 = MagicMock(
         return_value=RouterPrediction(
             escalate=False,
@@ -85,19 +85,7 @@ def test_tier3_pro_low_confidence_fallback(mock_s1_uncertain):
         )
     )
 
-    mock_tier3 = MagicMock(
-        return_value=RouterPrediction(
-            escalate=False,
-            escalate_prob=0.05,
-            sentiment="neutral",
-            sentiment_prob=0.90,
-            urgency="normal",
-            urgency_prob=0.90,
-            intent="shipping_policy",
-            intent_prob=0.95,
-            latency_ms=250.0,
-        )
-    )
+    mock_tier3 = MagicMock()
 
     policy = TriagePolicy(
         thresholds=RouterThresholds(),
@@ -114,16 +102,15 @@ def test_tier3_pro_low_confidence_fallback(mock_s1_uncertain):
     )
 
     assert mock_tier2.call_count == 1
-    assert mock_tier3.call_count == 1
-    assert decision.tier == "tier3_pro"
+    assert mock_tier3.call_count == 0
+    assert decision.tier == "tier2_flash"
     assert decision.decision == "auto_rag"
     assert decision.predicted_intent == "shipping_policy"
     assert decision.escalate is False
-    assert decision.reason == "tier3_pro_auto_rag"
 
 
 def test_tier3_explicit_multihop_signal_triggers_pro(mock_s1_uncertain):
-    """REQ-AGENT-002: Explicit needs_multihop / ambiguous signal calls Pro even with high confidence."""
+    """REQ-AGENT-002, REQ-TURN-003: Flash turn interpreter handles multihop without Pro."""
     mock_tier2 = MagicMock(
         return_value=RouterPrediction(
             escalate=False,
@@ -133,25 +120,13 @@ def test_tier3_explicit_multihop_signal_triggers_pro(mock_s1_uncertain):
             urgency="normal",
             urgency_prob=0.85,
             intent="order_status",
-            intent_prob=0.88,  # High confidence >= 0.70
+            intent_prob=0.88,
             latency_ms=110.0,
-            raw={"needs_multihop": True},  # Explicit signal
+            raw={"needs_multihop": True},
         )
     )
 
-    mock_tier3 = MagicMock(
-        return_value=RouterPrediction(
-            escalate=False,
-            escalate_prob=0.04,
-            sentiment="neutral",
-            sentiment_prob=0.92,
-            urgency="normal",
-            urgency_prob=0.92,
-            intent="order_status",
-            intent_prob=0.96,
-            latency_ms=210.0,
-        )
-    )
+    mock_tier3 = MagicMock()
 
     policy = TriagePolicy(
         thresholds=RouterThresholds(),
@@ -166,14 +141,14 @@ def test_tier3_explicit_multihop_signal_triggers_pro(mock_s1_uncertain):
         customer_id="cust-102",
     )
 
-    assert mock_tier3.call_count == 1
-    assert decision.tier == "tier3_pro"
+    assert mock_tier3.call_count == 0
+    assert decision.tier == "tier2_flash"
     assert decision.predicted_intent == "order_status"
     assert decision.decision == "auto_rag"
 
 
 def test_tier3_pro_timeout_degrades_to_escalation(mock_s1_uncertain):
-    """REQ-AGENT-002, REQ-AGENT-011: Pro timeout on low-confidence Flash degrades to human escalation."""
+    """REQ-AGENT-002, REQ-TURN-003: Pro retired; Flash prediction decides without calling Pro."""
     mock_tier2 = MagicMock(
         return_value=RouterPrediction(
             escalate=False,
@@ -183,7 +158,7 @@ def test_tier3_pro_timeout_degrades_to_escalation(mock_s1_uncertain):
             urgency="normal",
             urgency_prob=0.80,
             intent="returns_refunds",
-            intent_prob=0.50,  # Low confidence
+            intent_prob=0.50,
             latency_ms=130.0,
         )
     )
@@ -204,15 +179,13 @@ def test_tier3_pro_timeout_degrades_to_escalation(mock_s1_uncertain):
         customer_id="cust-103",
     )
 
-    assert decision.decision == "escalate"
-    assert decision.escalate is True
-    assert decision.degraded is True
-    assert decision.queue == "human-standard"
-    assert "tier3" in decision.reason.lower()
+    assert decision.decision == "auto_rag"
+    assert decision.tier == "tier2_flash"
+    assert decision.predicted_intent == "returns_refunds"
 
 
 def test_tier3_pro_error_degrades_to_escalation(mock_s1_uncertain):
-    """REQ-AGENT-002, REQ-AGENT-011: Pro error on low-confidence Flash degrades to human escalation."""
+    """REQ-AGENT-002, REQ-TURN-003: Pro retired; Flash prediction decides without calling Pro."""
     mock_tier2 = MagicMock(
         return_value=RouterPrediction(
             escalate=False,
@@ -222,7 +195,7 @@ def test_tier3_pro_error_degrades_to_escalation(mock_s1_uncertain):
             urgency="normal",
             urgency_prob=0.80,
             intent="account_payment",
-            intent_prob=0.48,  # Low confidence
+            intent_prob=0.48,
             latency_ms=125.0,
         )
     )
@@ -243,14 +216,13 @@ def test_tier3_pro_error_degrades_to_escalation(mock_s1_uncertain):
         customer_id="cust-104",
     )
 
-    assert decision.decision == "escalate"
-    assert decision.escalate is True
-    assert decision.degraded is True
-    assert decision.queue == "human-standard"
+    assert decision.decision == "auto_rag"
+    assert decision.tier == "tier2_flash"
+    assert decision.predicted_intent == "account_payment"
 
 
 def test_tier3_timeout_keeps_tier2_decision_when_not_low_confidence(mock_s1_uncertain):
-    """REQ-AGENT-002: Pro timeout when Flash was NOT low-confidence keeps Flash decision."""
+    """REQ-AGENT-002, REQ-TURN-003: Pro retired; Flash decision is kept."""
     mock_tier2 = MagicMock(
         return_value=RouterPrediction(
             escalate=False,
@@ -260,9 +232,9 @@ def test_tier3_timeout_keeps_tier2_decision_when_not_low_confidence(mock_s1_unce
             urgency="normal",
             urgency_prob=0.85,
             intent="shipping_policy",
-            intent_prob=0.85,  # High confidence >= 0.70
+            intent_prob=0.85,
             latency_ms=115.0,
-            raw={"ambiguous": True},  # Explicit ambiguous signal triggered Tier 3
+            raw={"ambiguous": True},
         )
     )
 
@@ -282,11 +254,9 @@ def test_tier3_timeout_keeps_tier2_decision_when_not_low_confidence(mock_s1_unce
         customer_id="cust-105",
     )
 
-    # Flash was high confidence; Tier 3 timed out -> keep Tier 2 decision
     assert decision.decision == "auto_rag"
     assert decision.tier == "tier2_flash"
     assert decision.predicted_intent == "shipping_policy"
-    assert "tier3_error" in decision.details
 
 
 def test_tier3_high_confidence_flash_does_not_call_pro(mock_s1_uncertain):
@@ -365,22 +335,8 @@ def test_tier3_escalation_from_flash_never_downgraded_pro_not_called(mock_s1_unc
 
 
 def test_tier3_pro_escalation_is_respected(mock_s1_uncertain):
-    """REQ-AGENT-003: Tier 3 can escalate a low-confidence non-escalation Flash prediction."""
+    """REQ-AGENT-003, REQ-TURN-003: Tier 3 Pro retired; Flash turn interpreter decides escalation without calling Pro."""
     mock_tier2 = MagicMock(
-        return_value=RouterPrediction(
-            escalate=False,
-            escalate_prob=0.10,
-            sentiment="neutral",
-            sentiment_prob=0.80,
-            urgency="normal",
-            urgency_prob=0.80,
-            intent="other",
-            intent_prob=0.52,  # Low confidence
-            latency_ms=110.0,
-        )
-    )
-
-    mock_tier3 = MagicMock(
         return_value=RouterPrediction(
             escalate=True,
             escalate_prob=0.95,
@@ -390,9 +346,11 @@ def test_tier3_pro_escalation_is_respected(mock_s1_uncertain):
             urgency_prob=0.90,
             intent="other",
             intent_prob=0.90,
-            latency_ms=240.0,
+            latency_ms=110.0,
         )
     )
+
+    mock_tier3 = MagicMock()
 
     policy = TriagePolicy(
         thresholds=RouterThresholds(),
@@ -407,30 +365,15 @@ def test_tier3_pro_escalation_is_respected(mock_s1_uncertain):
         customer_id="cust-108",
     )
 
-    assert mock_tier3.call_count == 1
-    assert decision.tier == "tier3_pro"
+    assert mock_tier3.call_count == 0
+    assert decision.tier == "tier2_flash"
     assert decision.decision == "escalate"
     assert decision.escalate is True
-    assert decision.reason == "tier3_pro_escalation"
 
 
 def test_tier3_pro_reject_out_of_scope(mock_s1_uncertain):
-    """REQ-AGENT-002, REQ-AGENT-022: Tier 3 out_of_scope decision is respected."""
+    """REQ-AGENT-002, REQ-AGENT-022, REQ-TURN-003: Flash turn interpreter out_of_scope decides without calling Pro."""
     mock_tier2 = MagicMock(
-        return_value=RouterPrediction(
-            escalate=False,
-            escalate_prob=0.08,
-            sentiment="neutral",
-            sentiment_prob=0.80,
-            urgency="normal",
-            urgency_prob=0.80,
-            intent="other",
-            intent_prob=0.55,  # Low confidence
-            latency_ms=110.0,
-        )
-    )
-
-    mock_tier3 = MagicMock(
         return_value=RouterPrediction(
             escalate=False,
             escalate_prob=0.02,
@@ -440,10 +383,12 @@ def test_tier3_pro_reject_out_of_scope(mock_s1_uncertain):
             urgency_prob=0.90,
             intent="other",
             intent_prob=0.95,
-            latency_ms=230.0,
+            latency_ms=110.0,
             out_of_scope=True,
         )
     )
+
+    mock_tier3 = MagicMock()
 
     policy = TriagePolicy(
         thresholds=RouterThresholds(),
@@ -458,12 +403,12 @@ def test_tier3_pro_reject_out_of_scope(mock_s1_uncertain):
         customer_id="cust-109",
     )
 
-    assert mock_tier3.call_count == 1
-    assert decision.tier == "tier3_pro"
+    assert mock_tier3.call_count == 0
+    assert decision.tier == "tier2_flash"
     assert decision.decision == "reject_oos"
     assert decision.predicted_intent == "other"
     assert decision.escalate is False
-    assert decision.reason == "tier3_out_of_scope"
+    assert decision.reason == "tier2_out_of_scope"
 
 
 def test_tier3_disabled_flag_never_calls_pro(mock_s1_uncertain):
@@ -504,8 +449,21 @@ def test_tier3_disabled_flag_never_calls_pro(mock_s1_uncertain):
 
 
 def test_tier3_tier0_rules_never_reach_pro():
-    """REQ-AGENT-002, REQ-AGENT-003, REQ-AGENT-024: Tier 0 rules never reach Tier 3."""
-    mock_tier2 = MagicMock()
+    """REQ-AGENT-002, REQ-AGENT-003, REQ-AGENT-024, REQ-TURN-003: Natural language abuse/emergency/greetings handled by TurnInterpreter, never reaches Tier 3."""
+    mock_tier2 = MagicMock(
+        side_effect=lambda text: RouterPrediction(
+            escalate=True if any(w in text.lower() for w in ["idiot", "kill"]) else False,
+            escalate_prob=0.95 if any(w in text.lower() for w in ["idiot", "kill"]) else 0.05,
+            sentiment="angry" if "idiot" in text.lower() else "neutral",
+            sentiment_prob=0.90,
+            urgency="immediate" if any(w in text.lower() for w in ["idiot", "kill"]) else "normal",
+            urgency_prob=0.90,
+            intent="other",
+            intent_prob=0.90,
+            latency_ms=100.0,
+            raw={"category": "greeting"} if "hello" in text.lower() else ({"category": "pleasantry"} if "thank" in text.lower() else {}),
+        )
+    )
     mock_tier3 = MagicMock()
 
     policy = TriagePolicy(
@@ -516,25 +474,25 @@ def test_tier3_tier0_rules_never_reach_pro():
 
     # Abuse
     d_abuse = policy.evaluate("you idiot scam artist", "sess-t0-1", "cust-1")
-    assert d_abuse.tier == "tier0_rules"
+    assert d_abuse.tier == "tier2_flash"
     assert d_abuse.escalate is True
     assert mock_tier3.call_count == 0
 
     # Emergency
     d_em = policy.evaluate("I will kill myself if this isn't fixed", "sess-t0-2", "cust-2")
-    assert d_em.tier == "tier0_rules"
+    assert d_em.tier == "tier2_flash"
     assert d_em.escalate is True
     assert mock_tier3.call_count == 0
 
     # Greeting
     d_greet = policy.evaluate("hello there", "sess-t0-3", "cust-3")
-    assert d_greet.tier == "tier0_rules"
+    assert d_greet.tier == "tier2_flash"
     assert d_greet.escalate is False
     assert mock_tier3.call_count == 0
 
     # Pleasantry
     d_pleas = policy.evaluate("thank you so much", "sess-t0-4", "cust-4")
-    assert d_pleas.tier == "tier0_rules"
+    assert d_pleas.tier == "tier2_flash"
     assert d_pleas.escalate is False
     assert mock_tier3.call_count == 0
 
@@ -615,7 +573,7 @@ def test_tier3_security_paths_never_reach_pro():
 
 
 def test_tier3_structured_log_emits_event_without_message_text(mock_s1_uncertain, caplog):
-    """REQ-AGENT-014: Structured log event records tier, latency, outcome with zero message text."""
+    """REQ-AGENT-014, REQ-TURN-003: When Tier 3 is disabled, no tier3 fallback is evaluated; message text is never logged."""
     mock_tier2 = MagicMock(
         return_value=RouterPrediction(
             escalate=False,
@@ -630,19 +588,7 @@ def test_tier3_structured_log_emits_event_without_message_text(mock_s1_uncertain
         )
     )
 
-    mock_tier3 = MagicMock(
-        return_value=RouterPrediction(
-            escalate=False,
-            escalate_prob=0.05,
-            sentiment="neutral",
-            sentiment_prob=0.90,
-            urgency="normal",
-            urgency_prob=0.90,
-            intent="shipping_policy",
-            intent_prob=0.95,
-            latency_ms=250.0,
-        )
-    )
+    mock_tier3 = MagicMock()
 
     policy = TriagePolicy(
         thresholds=RouterThresholds(),
@@ -659,16 +605,11 @@ def test_tier3_structured_log_emits_event_without_message_text(mock_s1_uncertain
             customer_id="cust-log",
         )
 
-    # Verify structured event was logged
+    # Verify no tier3 structured event was logged (since Tier 3 is retired)
     tier3_logs = [r for r in caplog.records if r.msg == "tier3_fallback_evaluated"]
-    assert len(tier3_logs) == 1
-    rec = tier3_logs[0]
-    assert rec.tier == "tier3_pro"
-    assert rec.outcome == "auto_rag"
-    assert isinstance(rec.latency_ms, float)
+    assert len(tier3_logs) == 0
 
     # Invariant: Customer message text MUST NEVER be in logs
-    assert sensitive_customer_text not in rec.getMessage()
     for log_record in caplog.records:
         assert sensitive_customer_text not in log_record.getMessage()
 

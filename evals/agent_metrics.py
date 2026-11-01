@@ -90,12 +90,15 @@ def _is_tier0_safety_or_legal(message: str) -> bool:
     if not message:
         return False
     try:
-        from ticket_router.agents.triage_router.policy import evaluate_tier0_rules
+        from evals.turn_interpretation.baseline_regex import evaluate_tier0_rules as baseline_evaluate_tier0_rules
 
-        t0 = evaluate_tier0_rules(message)
-        return bool(t0.matched and t0.category in ("emergency", "legal"))
+        t0 = baseline_evaluate_tier0_rules(message)
+        if t0.matched and t0.category in ("emergency", "legal"):
+            return True
     except Exception:
-        return False
+        pass
+    m = message.lower()
+    return any(w in m for w in ("lawyer", "lawsuit", "court", "subpoena", "police", "kill", "die", "emergency"))
 
 
 def compute_wilson_lower_bound(successes: int, total: int, confidence: float = 0.95) -> float:

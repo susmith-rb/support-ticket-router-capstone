@@ -5,19 +5,15 @@
 """
 
 from ticket_router.agents.triage_router.history import (
-    detect_conversation_history_request,
-    is_cross_customer_history_request,
-    matches_conversation_history_escalation_exception,
+    HISTORY_MEMORY_TIMEOUT_S,
 )
 from ticket_router.agents.triage_router.policy import (
     QueuePriority,
     RouterDecision,
     RouterThresholds,
-    Tier0Result,
     TriagePolicy,
     VerifiedFacts,
     evaluate_gaming_resistant_priority,
-    evaluate_tier0_rules,
 )
 from ticket_router.agents.triage_router.templates import (
     CALMING_ACK_TEMPLATES,
@@ -34,22 +30,18 @@ from ticket_router.agents.triage_router.tier3 import (
 
 __all__ = [
     "CALMING_ACK_TEMPLATES",
+    "HISTORY_MEMORY_TIMEOUT_S",
     "QueuePriority",
     "RouterDecision",
     "RouterThresholds",
-    "Tier0Result",
     "Tier3Config",
     "Tier3GeminiInvoker",
     "TriagePolicy",
     "VerifiedFacts",
     "create_tier3_invoker",
     "default_tier3_invoker",
-    "detect_conversation_history_request",
     "evaluate_gaming_resistant_priority",
-    "evaluate_tier0_rules",
     "invoke_tier3_gemini",
-    "is_cross_customer_history_request",
     "is_tier3_trigger",
-    "matches_conversation_history_escalation_exception",
     "render_calming_acknowledgement",
 ]

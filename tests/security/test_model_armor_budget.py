@@ -19,7 +19,7 @@ from ticket_router.security.model_armor import (
 
 
 def test_latency_budget_and_short_circuit():
-    """Verify concurrent execution overlap, Tier 0 short-circuit, and degraded telemetry."""
+    """Verify concurrent execution overlap, no Tier 0 keyword short-circuit, and degraded telemetry."""
     # 1. Concurrent Execution Overlap (Model Armor + router-s1)
     # When both operations take 80ms, concurrent execution finishes in ~80-100ms (< 150ms).
     s1_delay_s = 0.08
@@ -65,27 +65,21 @@ def test_latency_budget_and_short_circuit():
     assert elapsed_total_s < (s1_delay_s + ma_delay_s) * 0.90
     assert dec.decision == "auto_rag"
 
-    # 2. Tier 0 Short-Circuit Invariant (< 1 ms, 0 calls to Model Armor or router-s1)
+    # 2. No Tier 0 keyword short-circuit (REQ-TURN-001): a legal threat is NOT decided by a
+    # phrase rule; Model Armor still runs (PII tokenization) and router-s1 is consulted.
     mock_s1.reset_mock()
-    ma_fake_uncalled = FakeModelArmorClient()
-    policy_tier0 = TriagePolicy(s1_client=mock_s1, model_armor_client=ma_fake_uncalled)
-
-    emergency_text = "I am going to sue you and take legal action immediately."
-    t_tier0_start = time.perf_counter()
-    dec_t0 = policy_tier0.evaluate(
-        text=emergency_text,
+    mock_s1.route.side_effect = _slow_s1_route
+    ma_fake = FakeModelArmorClient()
+    policy_no_t0 = TriagePolicy(s1_client=mock_s1, model_armor_client=ma_fake)
+    dec_legal = policy_no_t0.evaluate(
+        text="I am going to sue you and take legal action immediately.",
         session_id="sess-t0-001",
         customer_id="cust-1001",
         verified_facts=VerifiedFacts(),
     )
-    elapsed_tier0_ms = (time.perf_counter() - t_tier0_start) * 1000.0
-
-    assert dec_t0.tier == "tier0_rules"
-    assert dec_t0.escalate is True
-    assert elapsed_tier0_ms < 10.0  # In-memory regex evaluation in < 1 ms
-    # Invariant: router-s1 is short-circuited; Model Armor runs for PII tokenization (REQ-STORE-009)
-    mock_s1.route.assert_not_called()
-    assert len(ma_fake_uncalled.prompt_calls) == 1
+    assert dec_legal.tier != "tier0_rules"
+    mock_s1.route.assert_called_once()
+    assert len(ma_fake.prompt_calls) == 1
 
     # 3. Degraded Telemetry Invariant on Timeout/Outage
     ma_outage = FakeModelArmorClient(fail_with_timeout=True)

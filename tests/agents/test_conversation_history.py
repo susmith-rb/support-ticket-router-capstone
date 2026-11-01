@@ -14,17 +14,23 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 
-from ticket_router.agents.triage_router.a2a_client import A2AHandoffPayload
-from ticket_router.agents.triage_router.agent import TriageRouterAgent
-from ticket_router.agents.triage_router.history import (
+from evals.turn_interpretation.baseline_regex import (
     detect_conversation_history_request,
+    evaluate_tier0_rules,
     matches_conversation_history_escalation_exception,
 )
+from ticket_router.agents.triage_router.a2a_client import A2AHandoffPayload
+from ticket_router.agents.triage_router.agent import TriageRouterAgent
 from ticket_router.agents.triage_router.mcp_client import InMemoryTicketDbMcpClient
 from ticket_router.agents.triage_router.policy import (
     RouterThresholds,
     TriagePolicy,
-    evaluate_tier0_rules,
+)
+from ticket_router.agents.triage_router.turn_interpreter import (
+    IntentSpan,
+    SecurityFlags,
+    TurnInterpretation,
+    TurnInterpreter,
 )
 from ticket_router.handoff.human_handoff import HumanHandoff
 from ticket_router.handoff.publisher import FakePublisher
@@ -108,12 +114,74 @@ def _create_test_agent(
     memory_client: Optional[MockMemoryBankClient] = None,
     model_armor_client: Optional[Any] = None,
     s1_client: Optional[Any] = None,
+    turn_interpreter: Optional[Any] = None,
 ) -> TriageRouterAgent:
     s1 = s1_client or MockRouterS1()
+    if turn_interpreter is None:
+        def _default_ti(
+            text_input: str,
+            conversation_state: Optional[Any] = None,
+            recent_intents: Optional[List[str]] = None,
+        ) -> TurnInterpretation:
+            t = text_input.lower()
+            is_cross = any(k in t for k in ["other", "another", "someone else", "everyone", "cust_1002"]) and any(
+                k in t for k in ["chat", "conversation", "history", "message"]
+            )
+            is_hist = (
+                any(
+                    k in t
+                    for k in [
+                        "previous conversation",
+                        "chat history",
+                        "earlier chat",
+                        "past interaction",
+                        "earlier message",
+                        "last conversation",
+                        "chats from yesterday",
+                        "what did we talk about",
+                    ]
+                )
+                or is_cross
+            )
+            is_human = any(k in t for k in ["speak to a human", "talk to a human", "fraud", "lawyer", "fuck"])
+            if is_human:
+                return TurnInterpretation(
+                    turn_act="escalate_human",
+                    intents=[IntentSpan(intent="other", text_span=text_input)],
+                    primary_intent="other",
+                    escalate=True,
+                    escalation_reason="human_requested_or_hard_escalate",
+                    security=SecurityFlags(
+                        conversation_history_request=is_hist,
+                        cross_customer_data_request=is_cross,
+                    ),
+                )
+            if is_hist:
+                return TurnInterpretation(
+                    turn_act="new_request",
+                    intents=[IntentSpan(intent="conversation_history_access", text_span=text_input)],
+                    primary_intent="conversation_history_access",
+                    escalate=False,
+                    security=SecurityFlags(
+                        conversation_history_request=True,
+                        cross_customer_data_request=is_cross,
+                    ),
+                )
+            p_intent = "order_status" if ("order" in t or "purchas" in t) else "other"
+            return TurnInterpretation(
+                turn_act="new_request",
+                intents=[IntentSpan(intent=p_intent, text_span=text_input)],
+                primary_intent=p_intent,
+                escalate=False,
+            )
+
+        turn_interpreter = TurnInterpreter(invoker=_default_ti)
+
     policy = TriagePolicy(
         thresholds=RouterThresholds(),
         s1_client=s1,
         model_armor_client=model_armor_client,
+        turn_interpreter=turn_interpreter,
     )
     publisher = FakePublisher()
     human_handoff = HumanHandoff(
@@ -259,7 +327,7 @@ def test_anonymous_caller_signin_required():
         customer_id_token=None,  # Unverified anonymous caller
     )
     assert res.decision.decision == "auto_rag"
-    assert res.decision.tier == "tier0_rules"
+    assert res.decision.tier in ("tier0_rules", "tier2_flash")
     assert res.decision.predicted_intent == "conversation_history_access"
 
     handoff = res.handoff_response or {}

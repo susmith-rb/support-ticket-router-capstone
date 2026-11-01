@@ -13,6 +13,7 @@ import json
 import time
 from pathlib import Path
 from typing import Any, Dict
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -20,6 +21,11 @@ from ticket_router.agents.triage_router.a2a_client import A2AHandoffPayload
 from ticket_router.agents.triage_router.agent import TriageRouterAgent
 from ticket_router.agents.triage_router.mcp_client import InMemoryTicketDbMcpClient
 from ticket_router.agents.triage_router.policy import RouterThresholds, TriagePolicy
+from ticket_router.agents.triage_router.turn_interpreter import (
+    IntentSpan,
+    SecurityFlags,
+    TurnInterpretation,
+)
 from ticket_router.handoff.human_handoff import HumanHandoff
 from ticket_router.handoff.publisher import FakePublisher
 from ticket_router.models.router_s1_client import RouterPrediction
@@ -161,10 +167,36 @@ def test_multi_turn_lifecycle_dataset(case: Dict[str, Any], monkeypatch: pytest.
         publisher=publisher,
         escalated_by="triage_router",
     )
+    mock_ti = MagicMock()
+    def _mock_ti_route(text, conversation_state=None, recent_intents=None):
+        sec = SecurityFlags(
+            conversation_history_request=bool("previous conversation" in text.lower() or "chat history" in text.lower()),
+        )
+        is_history = sec.conversation_history_request
+        p_intent = "conversation_history_access" if is_history else s1_client.route(text).intent
+        t_low = text.lower().strip()
+        if any(w in t_low for w in ("resolved", "helped", "all good", "thank", "close")):
+            turn_act = "resolution_report"
+        elif conversation_state and conversation_state.active_tickets and not any(w in t_low for w in ("return", "policy", "shipping", "order")):
+            turn_act = "followup_to_active_ticket"
+        elif any(w in t_low for w in ("ticket", "specialist", "receipt", "when will", "status", "here is")):
+            turn_act = "followup_to_active_ticket" if (conversation_state and conversation_state.active_tickets) else "new_request"
+        else:
+            turn_act = "new_request"
+        return TurnInterpretation(
+            turn_act=turn_act,
+            intents=[IntentSpan(intent=p_intent, text_span=text)],
+            primary_intent=p_intent,
+            escalate=False,
+            security=sec,
+        )
+    mock_ti.side_effect = _mock_ti_route
+
     policy = TriagePolicy(
         thresholds=RouterThresholds(),
         s1_client=s1_client,  # type: ignore[arg-type]
         model_armor_client=ma_client,  # type: ignore[arg-type]
+        turn_interpreter=mock_ti,
     )
     agent = TriageRouterAgent(
         policy=policy,

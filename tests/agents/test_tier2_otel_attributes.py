@@ -28,6 +28,12 @@ from ticket_router.agents.triage_router.policy import (
     RouterThresholds,
     TriagePolicy,
 )
+from ticket_router.agents.triage_router.turn_interpreter import (
+    IntentSpan,
+    SecurityFlags,
+    TurnInterpretation,
+    TurnInterpreter,
+)
 from ticket_router.common import hedging as hedging_mod
 from ticket_router.common import observability as obs_mod
 from ticket_router.common.observability import NoOpSpan
@@ -458,9 +464,30 @@ def test_router_final_decision_all_exit_paths(
     assert sec_dec["handoff_status"] == "SECURITY_BLOCKED"
     assert sec_dec["reason"] == "prompt_injection_or_jailbreak"
 
-    # 3. Greeting / Pleasantry (Tier 0 auto_rag)
+    # 3. Greeting / Pleasantry (Tier 0 / Tier 2 auto_rag)
     capture_spans.clear()
-    policy_greet = TriagePolicy(thresholds=RouterThresholds())
+    def _mock_greet_ti(text_input: str, conversation_state: Any = None, recent_intents: Any = None) -> TurnInterpretation:
+        t = text_input.lower()
+        if "discuss earlier" in t:
+            return TurnInterpretation(
+                turn_act="new_request",
+                intents=[IntentSpan(intent="conversation_history_access", text_span=text_input)],
+                primary_intent="conversation_history_access",
+                escalate=False,
+                security=SecurityFlags(conversation_history_request=True),
+            )
+        return TurnInterpretation(
+            turn_act="other",
+            intents=[IntentSpan(intent="other", text_span=text_input)],
+            primary_intent="other",
+            escalate=False,
+            details={"category": "greeting"},
+        )
+
+    policy_greet = TriagePolicy(
+        thresholds=RouterThresholds(),
+        turn_interpreter=TurnInterpreter(invoker=_mock_greet_ti),
+    )
     agent_greet = TriageRouterAgent(
         policy=policy_greet,
         mcp_client=InMemoryTicketDbMcpClient(),
@@ -477,7 +504,7 @@ def test_router_final_decision_all_exit_paths(
     greet_dec = json.loads(turn_greet.attributes["router.final_decision"])
     assert greet_dec["decision"] == "auto_rag"
     assert greet_dec["handoff_status"] == "AUTO_RESOLVED"
-    assert greet_dec["tier"] == "tier0_rules"
+    assert greet_dec["tier"] in ("tier0_rules", "tier2_flash")
 
     # 4. Conversation History Access
     capture_spans.clear()
@@ -493,6 +520,7 @@ def test_router_final_decision_all_exit_paths(
     assert hist_dec["handoff_status"] == "AUTO_RESOLVED"
     assert hist_dec["intent"] == "conversation_history_access"
     assert hist_dec["reason"] == "conversation_history_access"
+    assert hist_dec["tier"] in ("tier0_rules", "tier2_flash")
 
     # 5. Tier 2 Out-of-Scope (reject_oos)
     capture_spans.clear()

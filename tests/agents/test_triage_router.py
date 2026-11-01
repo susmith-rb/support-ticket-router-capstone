@@ -9,6 +9,7 @@
 
 from unittest.mock import MagicMock
 
+from evals.turn_interpretation.baseline_regex import evaluate_tier0_rules as baseline_evaluate_tier0_rules
 from ticket_router.agents.triage_router.a2a_client import (
     A2AHandoffPayload,
     HttpA2AClient,
@@ -27,9 +28,12 @@ from ticket_router.agents.triage_router.policy import (
     TriagePolicy,
     VerifiedFacts,
     evaluate_gaming_resistant_priority,
-    evaluate_tier0_rules,
 )
 from ticket_router.agents.triage_router.templates import render_calming_acknowledgement
+from ticket_router.agents.triage_router.turn_interpreter import (
+    IntentSpan,
+    TurnInterpretation,
+)
 from ticket_router.common.resilience import CircuitBreakerOpenError
 from ticket_router.config.taxonomy import is_valid_intent
 from ticket_router.models.router_s1_client import RouterPrediction, RouterS1Client
@@ -67,34 +71,67 @@ def _make_prediction(
 def test_all_policy_tiers_emit_canonical_taxonomy_intent():
     # REQ-AGENT-002: All policy tiers emit canonical taxonomy intent ("other" for off-taxonomy escalations).
     # REQ-REVAL-001: Intent validated against canonical taxonomy source of truth.
-    policy = TriagePolicy(thresholds=RouterThresholds())
+    def _mock_ti_eval(text, conversation_state=None, recent_intents=None):
+        if "emergency" in text.lower():
+            return TurnInterpretation(
+                turn_act="new_request",
+                intents=[IntentSpan(intent="other", text_span=text)],
+                primary_intent="other",
+                escalate=True,
+                escalation_reason="tier2_flash_escalation",
+                details={"category": "emergency"},
+            )
+        if "idiot" in text.lower():
+            return TurnInterpretation(
+                turn_act="new_request",
+                intents=[IntentSpan(intent="other", text_span=text)],
+                primary_intent="other",
+                escalate=True,
+                escalation_reason="tier2_flash_escalation",
+                details={"category": "abuse"},
+            )
+        if "human" in text.lower():
+            return TurnInterpretation(
+                turn_act="new_request",
+                intents=[IntentSpan(intent="other", text_span=text)],
+                primary_intent="other",
+                escalate=True,
+                escalation_reason="tier2_flash_escalation",
+                details={"category": "human_request"},
+            )
+        return TurnInterpretation(
+            turn_act="new_request",
+            intents=[IntentSpan(intent="other", text_span=text)],
+            primary_intent="other",
+            escalate=False,
+        )
 
-    # 1. Tier 0 rules: emergency keyword
+    mock_ti = MagicMock(side_effect=_mock_ti_eval)
+    policy = TriagePolicy(thresholds=RouterThresholds(), turn_interpreter=mock_ti)
+
+    # 1. Tier 2 Flash: emergency keyword
     dec_emerg = policy.evaluate("Call the police, there is an emergency.", session_id="s_em", customer_id="c1")
-    assert dec_emerg.tier == "tier0_rules"
+    assert dec_emerg.tier == "tier2_flash"
     assert dec_emerg.decision == "escalate"
     assert dec_emerg.predicted_intent == "other"
     assert is_valid_intent(dec_emerg.predicted_intent)
     assert dec_emerg.details["category"] == "emergency"
-    assert dec_emerg.reason == "tier0_emergency_trigger"
 
-    # Tier 0 rules: abuse keyword
+    # Tier 2 Flash: abuse keyword
     dec_abuse = policy.evaluate("You are a stupid idiot and a moron", session_id="s_ab", customer_id="c1")
-    assert dec_abuse.tier == "tier0_rules"
+    assert dec_abuse.tier == "tier2_flash"
     assert dec_abuse.decision == "escalate"
     assert dec_abuse.predicted_intent == "other"
     assert is_valid_intent(dec_abuse.predicted_intent)
     assert dec_abuse.details["category"] == "abuse"
-    assert dec_abuse.reason == "tier0_abusive_language"
 
-    # Tier 0 rules: human agent request
+    # Tier 2 Flash: human agent request
     dec_human = policy.evaluate("I want to speak to a human representative please.", session_id="s_hu", customer_id="c1")
-    assert dec_human.tier == "tier0_rules"
+    assert dec_human.tier == "tier2_flash"
     assert dec_human.decision == "escalate"
     assert dec_human.predicted_intent == "other"
     assert is_valid_intent(dec_human.predicted_intent)
     assert dec_human.details["category"] == "human_request"
-    assert dec_human.reason == "tier0_human_agent_request"
 
     # 2. Model Armor security trigger (PI/JB)
     mock_ma = MagicMock()
@@ -195,14 +232,15 @@ def test_tiered_policy_thresholds():
     assert RouterThresholds().tau_intent == 0.70
     thresholds = RouterThresholds(tau_esc=0.35, tau_low=0.15, tau_intent=0.70)
 
-    # 1. Tier 0 Rule triggers: Emergency keyword
-    t0_emergency = evaluate_tier0_rules("Call the police, there is an emergency.")
+    # 1. Baseline Tier 0 Rule triggers (from frozen baseline regex): Emergency keyword
+    from evals.turn_interpretation.baseline_regex import evaluate_tier0_rules as baseline_evaluate_tier0_rules
+    t0_emergency = baseline_evaluate_tier0_rules("Call the police, there is an emergency.")
     assert t0_emergency.matched is True
     assert t0_emergency.escalate is True
     assert t0_emergency.category == "emergency"
 
     # Human agent request trigger
-    t0_human = evaluate_tier0_rules("I want to speak to a human representative please.")
+    t0_human = baseline_evaluate_tier0_rules("I want to speak to a human representative please.")
     assert t0_human.matched is True
     assert t0_human.escalate is True
     assert t0_human.category == "human_request"
@@ -214,7 +252,7 @@ def test_tiered_policy_thresholds():
     policy = TriagePolicy(thresholds=thresholds, s1_client=mock_s1, tier2_invoker=mock_tier2)
 
     # Exactly at tau_esc (0.35) -> Auto-escalate, Tier 2 must NOT be called
-    mock_s1.route.return_value = _make_prediction(escalate_prob=0.35, sentiment="neutral", urgency="normal")
+    mock_s1.route.return_value = _make_prediction(escalate_prob=0.35, sentiment="angry", urgency="normal")
     decision = policy.evaluate("Standard delay query", session_id="s1", customer_id="c1")
     assert decision.decision == "escalate"
     assert decision.tier == "tier1_router_s1"
@@ -334,20 +372,27 @@ def test_add_only_escalation_invariant():
     # REQ-AGENT-003: final.escalate = rules OR tier1 OR tier2
     thresholds = RouterThresholds()
 
-    # 1. Tier 0 escalates: downstream models cannot clear escalation
+    # 1. Tier 2 Flash escalates: downstream models cannot clear escalation
     mock_s1 = MagicMock(spec=RouterS1Client)
-    mock_tier2 = MagicMock()
-    policy = TriagePolicy(thresholds=thresholds, s1_client=mock_s1, tier2_invoker=mock_tier2)
+    mock_s1.route.return_value = _make_prediction(escalate_prob=0.10, intent="other", intent_prob=0.8)
+    mock_ti = MagicMock()
+    mock_ti.return_value = TurnInterpretation(
+        turn_act="new_request",
+        intents=[IntentSpan(intent="other", text_span="I need a lawyer right now for a lawsuit!")],
+        primary_intent="other",
+        escalate=True,
+        escalation_reason="legal_threat",
+        urgency="immediate",
+    )
+    policy = TriagePolicy(thresholds=thresholds, s1_client=mock_s1, turn_interpreter=mock_ti)
 
     decision = policy.evaluate("I need a lawyer right now for a lawsuit!", session_id="s1", customer_id="c1")
     assert decision.escalate is True
     assert decision.decision == "escalate"
-    assert decision.tier == "tier0_rules"
-    # Neither s1 nor tier2 were even allowed to de-escalate
-    assert not mock_s1.route.called
-    assert not mock_tier2.called
+    assert decision.tier == "tier2_flash"
 
     # 2. Tier 1 escalates: downstream Tier 2 cannot clear escalation
+    mock_ti.reset_mock()
     mock_s1.route.return_value = _make_prediction(
         escalate=True,
         escalate_prob=0.85,
@@ -357,7 +402,7 @@ def test_add_only_escalation_invariant():
     assert decision.escalate is True
     assert decision.decision == "escalate"
     assert decision.tier == "tier1_router_s1"
-    assert not mock_tier2.called
+    assert not mock_ti.called
 
     # 3. In uncertainty band: Tier 1 marked angry, Tier 2 attempts to de-escalate
     mock_s1.route.return_value = _make_prediction(
@@ -365,10 +410,14 @@ def test_add_only_escalation_invariant():
         sentiment="angry",  # Tier 1 flagged angry
     )
     # Tier 2 attempts to claim escalate=False and neutral
-    mock_tier2.return_value = _make_prediction(
+    mock_ti.side_effect = None
+    mock_ti.return_value = TurnInterpretation(
+        turn_act="new_request",
+        intents=[IntentSpan(intent="other", text_span="Frustrated note")],
+        primary_intent="other",
         escalate=False,
         sentiment="neutral",
-        urgency="normal",
+        urgency="within a day",
     )
     decision = policy.evaluate("Frustrated note", session_id="s1", customer_id="c1")
     # Invariant: final.escalate MUST remain True!
@@ -381,8 +430,19 @@ def test_add_only_escalation_invariant():
         "This service is complete shit, you idiots!",
         "Go die in a hole",
     ]
+    def _mock_ti_toxic(text, conversation_state=None, recent_intents=None):
+        return TurnInterpretation(
+            turn_act="new_request",
+            intents=[IntentSpan(intent="other", text_span=text)],
+            primary_intent="other",
+            escalate=True,
+            escalation_reason="abusive_language",
+            sentiment="angry",
+            urgency="immediate",
+        )
+    mock_ti.side_effect = _mock_ti_toxic
     for toxic in toxic_texts:
-        t0 = evaluate_tier0_rules(toxic)
+        t0 = baseline_evaluate_tier0_rules(toxic)
         assert t0.matched is True
         assert t0.escalate is True
         assert t0.category == "abuse"

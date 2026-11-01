@@ -11,6 +11,7 @@ import logging
 import threading
 import time
 from typing import Any, Dict, Optional
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -20,6 +21,7 @@ from ticket_router.agents.triage_router.adk_agent import TriageRouterAdkAgent
 from ticket_router.agents.triage_router.agent import TriageRouterAgent
 from ticket_router.agents.triage_router.mcp_client import InMemoryTicketDbMcpClient
 from ticket_router.agents.triage_router.policy import RouterDecision, TriagePolicy
+from ticket_router.agents.triage_router.turn_interpreter import TurnInterpretation
 from ticket_router.common.observability import get_current_traceparent, is_pii_clean
 from ticket_router.identity import ResolvedCustomerContext
 
@@ -88,6 +90,7 @@ def test_triage_parallel_io_and_nonfatal_upsert(
             customer_id: str,
             verified_facts: Any = None,
             ticket_id: Optional[str] = None,
+            **kwargs: Any,
         ) -> RouterDecision:
             with lock:
                 traceparents_seen["policy_evaluate"] = get_current_traceparent()
@@ -239,8 +242,15 @@ def test_nonfatal_upsert_across_escalate_greeting_oos_and_a2a_degraded(caplog: p
 
     # 1. Greeting path: 1 _safe_upsert (2 attempts), returns friendly reply
     mcp_greet = AlwaysTimeoutMcp()
+    mock_ti_greet = MagicMock(return_value=TurnInterpretation(
+        turn_act="other",
+        intents=[],
+        primary_intent="other",
+        escalate=False,
+        details={"category": "greeting"},
+    ))
     agent_greet = TriageRouterAgent(
-        policy=TriagePolicy(),
+        policy=TriagePolicy(turn_interpreter=mock_ti_greet),
         mcp_client=mcp_greet,
         a2a_client=InMemoryA2AClient(),
     )
@@ -252,8 +262,15 @@ def test_nonfatal_upsert_across_escalate_greeting_oos_and_a2a_degraded(caplog: p
 
     # 2. Escalate path: 1 _safe_upsert (2 attempts), returns calming ack
     mcp_esc = AlwaysTimeoutMcp()
+    mock_ti_esc = MagicMock(return_value=TurnInterpretation(
+        turn_act="new_request",
+        intents=[],
+        primary_intent="other",
+        escalate=True,
+        escalation_reason="human_request",
+    ))
     agent_esc = TriageRouterAgent(
-        policy=TriagePolicy(),
+        policy=TriagePolicy(turn_interpreter=mock_ti_esc),
         mcp_client=mcp_esc,
         a2a_client=InMemoryA2AClient(),
     )

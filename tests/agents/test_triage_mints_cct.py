@@ -58,16 +58,29 @@ class _CountingSigner:
 
 def _auto_rag_policy(intent: str = "order_status") -> TriagePolicy:
     mock_s1 = MagicMock(spec=RouterS1Client)
-    mock_s1.route.return_value = RouterPrediction(
-        escalate=False,
-        escalate_prob=0.03,
-        sentiment="neutral",
-        sentiment_prob=0.95,
-        urgency="normal",
-        urgency_prob=0.95,
-        intent=intent,
-        intent_prob=0.95,
-    )
+    def _route(text: str) -> RouterPrediction:
+        if "human representative" in text.lower() or "representative" in text.lower():
+            return RouterPrediction(
+                escalate=True,
+                escalate_prob=0.95,
+                sentiment="angry",
+                sentiment_prob=0.95,
+                urgency="immediate",
+                urgency_prob=0.95,
+                intent="other",
+                intent_prob=0.95,
+            )
+        return RouterPrediction(
+            escalate=False,
+            escalate_prob=0.03,
+            sentiment="neutral",
+            sentiment_prob=0.95,
+            urgency="normal",
+            urgency_prob=0.95,
+            intent=intent,
+            intent_prob=0.95,
+        )
+    mock_s1.route.side_effect = _route
     return TriagePolicy(thresholds=RouterThresholds(), s1_client=mock_s1)
 
 

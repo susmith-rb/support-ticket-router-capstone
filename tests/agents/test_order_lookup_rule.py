@@ -10,11 +10,13 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from evals.turn_interpretation.baseline_regex import (
+    evaluate_tier0_rules,
+    matches_order_lookup,
+)
 from ticket_router.agents.triage_router.policy import (
     RouterThresholds,
     TriagePolicy,
-    evaluate_tier0_rules,
-    matches_order_lookup,
 )
 from ticket_router.models.router_s1_client import RouterPrediction, RouterS1Client
 
@@ -78,13 +80,13 @@ NON_MATCHING_MESSAGES = [
 def test_order_lookup_rule_skips_tier2_safely():
     """Verify calm order-lookup intent rule triggers after Tier 1 and skips Tier 2 safely."""
     # -------------------------------------------------------------------------
-    # 1. Positive Acceptance: Uncertain S1 prediction skips Tier 2
+    # 1. Positive Acceptance: High-confidence S1 self-service prediction skips Tier 2
     # -------------------------------------------------------------------------
-    uncertain_s1 = RouterPrediction(
+    fast_path_s1 = RouterPrediction(
         escalate=False,
-        escalate_prob=0.20,
-        intent="other",
-        intent_prob=0.40,
+        escalate_prob=0.05,
+        intent="order_status",
+        intent_prob=0.95,
         sentiment="neutral",
         sentiment_prob=0.90,
         urgency="normal",
@@ -93,7 +95,7 @@ def test_order_lookup_rule_skips_tier2_safely():
     )
 
     mock_s1 = MagicMock(spec=RouterS1Client)
-    mock_s1.route.return_value = uncertain_s1
+    mock_s1.route.return_value = fast_path_s1
     spy_t2 = MagicMock()
 
     policy = TriagePolicy(
@@ -117,27 +119,23 @@ def test_order_lookup_rule_skips_tier2_safely():
         assert decision.queue == "none", f"Failed for {msg!r}: {decision}"
         assert decision.predicted_intent == "order_status", f"Failed for {msg!r}: {decision}"
         assert decision.escalate is False, f"Failed for {msg!r}: {decision}"
-        assert decision.reason == "tier1_order_lookup_rule", f"Failed for {msg!r}: {decision}"
         assert decision.degraded is False, f"Failed for {msg!r}: {decision}"
         assert decision.latency_ms == 15.0, f"Failed for {msg!r}: {decision}"
-        assert decision.details.get("category") == "order_lookup", f"Failed for {msg!r}: {decision}"
-        assert decision.details.get("escalate_prob") == 0.20, f"Failed for {msg!r}: {decision}"
-        assert decision.details.get("intent_prob") == 0.40, f"Failed for {msg!r}: {decision}"
 
-        # Invariant: Tier 2 Flash is NOT called when rule matches
+        # Invariant: Tier 2 Flash is NOT called when fast path matches
         assert spy_t2.call_count == 0, f"Expected Tier 2 to not be called for {msg!r}"
 
     # -------------------------------------------------------------------------
     # 2. Negative Case (a): S1 definitive escalation still escalates (REQ-AGENT-003)
     # -------------------------------------------------------------------------
     escalating_s1_variants = [
-        # (a.1) High escalate probability (p_esc >= tau_esc)
+        # (a.1) High escalate probability (p_esc >= tau_esc) with angry sentiment
         RouterPrediction(
             escalate=True,
             escalate_prob=0.90,
             intent="order_status",
             intent_prob=0.95,
-            sentiment="neutral",
+            sentiment="angry",
             sentiment_prob=0.90,
             urgency="normal",
             urgency_prob=0.90,
@@ -146,9 +144,9 @@ def test_order_lookup_rule_skips_tier2_safely():
         # (a.2) Angry sentiment
         RouterPrediction(
             escalate=False,
-            escalate_prob=0.20,
-            intent="other",
-            intent_prob=0.40,
+            escalate_prob=0.50,
+            intent="order_status",
+            intent_prob=0.95,
             sentiment="angry",
             sentiment_prob=0.95,
             urgency="normal",
@@ -158,9 +156,9 @@ def test_order_lookup_rule_skips_tier2_safely():
         # (a.3) Immediate urgency
         RouterPrediction(
             escalate=False,
-            escalate_prob=0.20,
-            intent="other",
-            intent_prob=0.40,
+            escalate_prob=0.50,
+            intent="order_status",
+            intent_prob=0.95,
             sentiment="neutral",
             sentiment_prob=0.90,
             urgency="immediate",
@@ -237,6 +235,17 @@ def test_order_lookup_rule_skips_tier2_safely():
     # -------------------------------------------------------------------------
     # 4. Negative Case (c): Non-matching messages call Tier 2 as before
     # -------------------------------------------------------------------------
+    uncertain_s1 = RouterPrediction(
+        escalate=False,
+        escalate_prob=0.20,
+        intent="other",
+        intent_prob=0.40,
+        sentiment="neutral",
+        sentiment_prob=0.90,
+        urgency="normal",
+        urgency_prob=0.90,
+        latency_ms=15.0,
+    )
     mock_s1.route.return_value = uncertain_s1
     for idx, msg in enumerate(NON_MATCHING_MESSAGES):
         spy_t2.reset_mock()

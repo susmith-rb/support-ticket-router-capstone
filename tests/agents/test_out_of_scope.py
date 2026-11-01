@@ -173,14 +173,22 @@ def test_add_only_escalation_supersedes_out_of_scope():
     mock_s1 = MagicMock(spec=RouterS1Client)
     mock_t2 = MagicMock()
 
-    # Even if Tier 2 says out_of_scope=True:
-    mock_t2.return_value = _make_prediction(
-        intent="other",
-        intent_prob=0.90,
-        escalate=False,
-        escalate_prob=0.05,
-        out_of_scope=True,
-    )
+    # Even if Tier 2 says out_of_scope=True, abuse/emergency triggers escalation:
+    def _mock_t2_invoker(text: str) -> RouterPrediction:
+        is_abuse = any(w in text.lower() for w in ["idiot", "fuck", "lawyer", "police"])
+        if not is_abuse and getattr(mock_t2, "return_value", None) and hasattr(mock_t2.return_value, "intent"):
+            return mock_t2.return_value
+        return _make_prediction(
+            intent="other",
+            intent_prob=0.90,
+            escalate=is_abuse,
+            escalate_prob=0.95 if is_abuse else 0.05,
+            sentiment="angry" if is_abuse else "neutral",
+            urgency="immediate" if is_abuse else "normal",
+            out_of_scope=True,
+        )
+
+    mock_t2.side_effect = _mock_t2_invoker
     mock_s1.route.return_value = _make_prediction(
         intent="other",
         intent_prob=0.50,

@@ -32,9 +32,11 @@ from ticket_router.agents.triage_router.a2a_client import (
     HttpA2AClient,
     InMemoryA2AClient,
 )
+from ticket_router.agents.triage_router.conversation_state import (
+    assemble_conversation_state,
+)
 from ticket_router.agents.triage_router.history import (
     HISTORY_MEMORY_TIMEOUT_S,
-    is_cross_customer_history_request,
 )
 from ticket_router.agents.triage_router.mcp_client import (
     HttpTicketDbMcpClient,
@@ -42,7 +44,6 @@ from ticket_router.agents.triage_router.mcp_client import (
     TicketDbMcpClientProtocol,
     compute_idempotency_key,
 )
-from ticket_router.agents.triage_router.multi_intent import detect_sub_questions
 from ticket_router.agents.triage_router.policy import (
     RouterDecision,
     RouterThresholds,
@@ -51,7 +52,8 @@ from ticket_router.agents.triage_router.policy import (
     _extract_blocked_card_info_types,
 )
 from ticket_router.agents.triage_router.security_intents import (
-    detect_security_intent,
+    AUTH_BYPASS_REFUSAL,
+    ORDER_CROSS_CUSTOMER_REFUSAL,
     emit_security_refusal_log,
     get_security_intent_reply,
 )
@@ -62,6 +64,10 @@ from ticket_router.agents.triage_router.templates import (
     render_followup_calming_reply,
     render_out_of_scope_refusal,
     render_security_blocked_reply,
+)
+from ticket_router.agents.triage_router.turn_interpreter import (
+    TurnInterpreter,
+    create_turn_interpreter,
 )
 from ticket_router.common.hedging import hedged_call
 from ticket_router.common.observability import (
@@ -402,102 +408,6 @@ def _is_explicit_ticket_reference(text: str) -> bool:
     )
 
 
-def _is_conditional_resolution(text: str) -> bool:
-    """Check if message is a conditional resolution statement (REQ-SAFE-004).
-
-    e.g. 'if it arrives tomorrow then we are good', 'if it comes friday it's fine'
-    """
-    t = text.strip().lower()
-    if not t:
-        return False
-    if re.search(r"\bif\b.*\b(?:good|fine|ok|okay|all\s+set|resolved|helped)\b", t):
-        return True
-    if re.search(r"\b(?:hopefully|assuming|provided)\b.*\b(?:arrives?|comes?|delivers?)\b", t):
-        return True
-    return False
-
-
-def _is_unconditional_resolved(text: str) -> bool:
-    """Check if customer reports the item arrived or issue is resolved without conditions (REQ-SAFE-004)."""
-    t = text.strip().lower()
-    if not t:
-        return False
-    if _is_conditional_resolution(t):
-        return False
-    patterns = [
-        r"\b(?:it|package|order|item)\s+(?:arrived|was\s+delivered|came\s+in|is\s+here)\b",
-        r"\b(?:i\s+received\s+it|received\s+my\s+package|received\s+my\s+order)\b",
-        r"\b(?:everything\s+is\s+resolved|my\s+issue\s+is\s+resolved|problem\s+is\s+fixed)\b",
-    ]
-    return any(re.search(p, t) for p in patterns)
-
-
-def _is_affirmative_resolution(text: str) -> bool:
-    """Check if message is an affirmative confirmation that resolves an issue."""
-    t = text.strip().lower()
-    if not t:
-        return False
-    if _is_conditional_resolution(t):
-        return False
-    if re.search(
-        r"\b(but|however|still|not|didn't|does not|unresolved|haven't|problem|issue|broken|help|urgent|agent|human|here)\b",
-        t,
-    ):
-        return False
-    patterns = [
-        r"^yes[!.?]*$",
-        r"^yep[!.?]*$",
-        r"^yeah[!.?]*$",
-        r"^yes\s+(?:thank\s+you|thanks|please)[!.?]*$",
-        r"^(?:yes\s*,?\s*)?(?:that\s+(?:helped|resolved\s+it|fixed\s+it)|all\s+(?:good|set))(?:\s*,?\s*(?:thank\s+you|thanks))?[!.?]*$",
-        r"^(?:yes\s*,?\s*)?(?:close\s+ticket|mark\s+as\s+resolved|issue\s+resolved)(?:\s*,?\s*(?:thank\s+you|thanks))?[!.?]*$",
-        r"^(?:yes\s*,?\s*)?(?:that\s+helped\s+close\s+ticket)(?:\s*,?\s*(?:thank\s+you|thanks))?[!.?]*$",
-    ]
-    return any(re.match(p, t) for p in patterns)
-
-
-def _is_conversational_followup_for_held_ticket(
-    text: str,
-    active_ticket: Optional[Dict[str, Any]] = None,
-) -> bool:
-    """Determine if message is a conversational follow-up to an active human-held ticket."""
-    if _is_explicit_ticket_reference(text):
-        return True
-    t = text.strip().lower()
-    if not t:
-        return True
-    # Conversational connectives indicating follow-up to existing dialogue
-    if re.match(r"^(also|and|by the way|additionally|as well|furthermore|update:|regarding)\b", t):
-        return True
-    # Phrases indicating elaboration, ongoing wait, or specialist inquiry
-    followup_phrases = (
-        "while you review",
-        "review this",
-        "waiting",
-        "when will",
-        "follow up with me",
-        "get back to me",
-        "for updates",
-        "my alternate email",
-        "my email is",
-        "my phone is",
-        "here is",
-        "receipt",
-        "purchase receipt",
-        "attached",
-        "i am here",
-        "i'm here",
-        "still waiting",
-        "just checking",
-    )
-    if any(p in t for p in followup_phrases):
-        return True
-    # Short acknowledgments in an active human queue
-    if re.match(r"^(yes|yep|yeah|ok|okay|sure|thanks|thank you)\b", t):
-        return True
-    return False
-
-
 def _derive_customer_ticket_id(
     tid: str,
     session_id: str,
@@ -552,6 +462,17 @@ class TriageResult:
     latency_ms: float = 0.0
     status_code: int = 200
     error: Optional[str] = None
+
+    @property
+    def reply_text(self) -> str:
+        """Customer-facing reply text, falling back across calming_ack and handoff answer."""
+        if self.calming_ack:
+            return self.calming_ack
+        if self.handoff_response:
+            ans = self.handoff_response.get("answer") or self.handoff_response.get("reply_text")
+            if ans:
+                return str(ans)
+        return ""
 
     def __getitem__(self, item: str) -> Any:
         return self.to_dict()[item]
@@ -874,6 +795,7 @@ class TriageRouterAgent:
         human_handoff: Optional[HumanHandoff] = None,
         redaction_sealer: Optional[RedactionSealer] = None,
         memory_client: Optional[BaseMemoryBankClient] = None,
+        turn_interpreter: Optional[TurnInterpreter] = None,
     ) -> None:
         self._policy = policy
         self._mcp_client = mcp_client
@@ -882,6 +804,7 @@ class TriageRouterAgent:
         self._human_handoff = human_handoff
         self._redaction_sealer = redaction_sealer
         self._memory_client = memory_client
+        self._turn_interpreter = turn_interpreter
         self.logger = logger or StructuredJsonLogger(name="triage_router")
         self.lazy_init = lazy_init
         self._injected_signer: Optional[Signer] = cct_signer if cct_signer is not None else signer
@@ -915,10 +838,15 @@ class TriageRouterAgent:
                 project=settings.project,
                 location=settings.location,
             )
+            ti = self._turn_interpreter or create_turn_interpreter(
+                project=settings.project,
+                location=settings.location,
+            )
             self._policy = TriagePolicy(
                 thresholds=RouterThresholds.from_tuning_config(),
                 s1_client=s1_client,
                 tier2_invoker=tier2_invoker,
+                turn_interpreter=ti,
                 model_armor_client=self._model_armor_client,
             )
             self._mcp_client = HttpTicketDbMcpClient(
@@ -930,10 +858,12 @@ class TriageRouterAgent:
             )
         else:
             if self._policy is None:
+                ti = self._turn_interpreter or create_turn_interpreter()
                 self._policy = TriagePolicy(
                     thresholds=RouterThresholds.from_tuning_config(),
                     s1_client=RouterS1Client(),
                     tier2_invoker=create_tier2_invoker("router_tier2"),
+                    turn_interpreter=ti,
                     model_armor_client=self._model_armor_client,
                 )
             if self._mcp_client is None:
@@ -1129,6 +1059,35 @@ class TriageRouterAgent:
                 )
             )
 
+    def handle_turn(
+        self,
+        session_id: str,
+        message_text: str,
+        customer_id: Optional[str] = None,
+        customer_id_token: Optional[str] = None,
+        verified_facts: Optional[VerifiedFacts] = None,
+        channel: str = "web",
+        ticket_id: Optional[str] = None,
+        memory_summary: str = "",
+        oauth_access_token: Optional[str] = None,
+        caller_user_id: Optional[str] = None,
+        customer_verified: Optional[bool] = None,
+    ) -> TriageResult:
+        """Handle customer turn with (session_id, message_text) ordering."""
+        return self.triage(
+            session_id=session_id,
+            customer_id=customer_id,
+            message_text=message_text,
+            customer_id_token=customer_id_token,
+            verified_facts=verified_facts,
+            channel=channel,
+            ticket_id=ticket_id,
+            memory_summary=memory_summary,
+            oauth_access_token=oauth_access_token,
+            caller_user_id=caller_user_id,
+            customer_verified=customer_verified,
+        )
+
     def triage(
         self,
         session_id: str,
@@ -1141,6 +1100,7 @@ class TriageRouterAgent:
         memory_summary: str = "",
         oauth_access_token: Optional[str] = None,
         caller_user_id: Optional[str] = None,
+        customer_verified: Optional[bool] = None,
     ) -> TriageResult:
         """Execute end-to-end triage evaluation, persistence, and dispatch."""
         self._ensure_initialized()
@@ -1311,13 +1271,20 @@ class TriageRouterAgent:
                     error=None,
                 )
 
-            # REQ-AGENT-027: Run identity resolution concurrently with policy evaluation on every turn
+            # REQ-AGENT-027 / REQ-TURN-002: Run identity resolution concurrently with policy evaluation on every turn
+            conv_state = assemble_conversation_state(
+                mcp_client=mcp_client,
+                session_id=session_id,
+                customer_id=customer_id,
+                customer_verified=False,
+            )
             eval_kwargs = {
                 "text": message_text,
                 "session_id": session_id,
                 "customer_id": placeholder_cid,
                 "verified_facts": verified_facts,
                 "ticket_id": t_id,
+                "conversation_state": conv_state,
             }
             try:
                 sig = inspect.signature(policy.evaluate)
@@ -1347,8 +1314,13 @@ class TriageRouterAgent:
                 cust_ctx = id_fut.result()
                 decision = pol_fut.result()
 
-            ticket_customer_id = cust_ctx.customer_id if cust_ctx.verified else placeholder_cid
-            customer_verified = cust_ctx.verified
+            if customer_verified is not None:
+                effective_customer_verified = customer_verified
+                ticket_customer_id = customer_id or (cust_ctx.customer_id if cust_ctx.verified else placeholder_cid)
+            else:
+                effective_customer_verified = cust_ctx.verified
+                ticket_customer_id = cust_ctx.customer_id if cust_ctx.verified else placeholder_cid
+            customer_verified = effective_customer_verified
             identity_issuer = cust_ctx.issuer if cust_ctx.verified else None
             identity_reason = cust_ctx.reason
 
@@ -1415,15 +1387,24 @@ class TriageRouterAgent:
                     error=None,
                 )
 
-            # REQ-SAFE-002: Deterministic Tier 0 security intents check
-            sec_intent = detect_security_intent(message_text) or (
-                decision.predicted_intent
-                if decision.predicted_intent in ("cross_customer_data_request", "authorization_bypass_attempt")
-                else None
-            )
+            # REQ-SAFE-002 / REQ-TURN-004: Security intents refusal check
+            sec_flags = (decision.details.get("turn_interpretation") or {}).get("security") or {}
+            sec_intent = None
+            if sec_flags.get("cross_customer_data_request") or decision.predicted_intent == "cross_customer_data_request":
+                sec_intent = "cross_customer_data_request"
+            elif sec_flags.get("authorization_bypass_attempt") or decision.predicted_intent == "authorization_bypass_attempt":
+                sec_intent = "authorization_bypass_attempt"
+            elif decision.reason.startswith("security_refusal"):
+                sec_intent = decision.predicted_intent
             if sec_intent:
-                sec_intent_name = sec_intent[0] if isinstance(sec_intent, tuple) else sec_intent
-                sec_reply = sec_intent[1] if isinstance(sec_intent, tuple) else get_security_intent_reply(sec_intent, message_text)
+                sec_intent_name = sec_intent[0] if isinstance(sec_intent, tuple) else (
+                    sec_intent if isinstance(sec_intent, str) else decision.predicted_intent
+                )
+                sec_reply = (
+                    decision.calming_ack
+                    or (sec_intent[1] if isinstance(sec_intent, tuple) else get_security_intent_reply(sec_intent_name, message_text))
+                    or (ORDER_CROSS_CUSTOMER_REFUSAL if sec_intent_name == "cross_customer_data_request" else AUTH_BYPASS_REFUSAL)
+                )
                 trace_id_val = traceparent.split("-")[1] if traceparent and "-" in traceparent else (traceparent or "unknown")
                 emit_security_refusal_log(
                     trace_id=trace_id_val,
@@ -1434,7 +1415,7 @@ class TriageRouterAgent:
                 )
                 elapsed_ms = (time.monotonic() - start_time) * 1000.0
                 turn_span.set_attribute("decision", "auto_rag")
-                turn_span.set_attribute("tier", "tier0_rules")
+                turn_span.set_attribute("tier", decision.tier)
                 turn_span.set_attribute("queue", "none")
                 turn_span.set_attribute("degraded", False)
                 turn_span.set_attribute("predicted_intent", sec_intent_name)
@@ -1442,13 +1423,13 @@ class TriageRouterAgent:
                 sec_decision = replace(
                     decision,
                     decision="auto_rag",
-                    tier="tier0_rules",
+                    tier=decision.tier,
                     queue="none",
                     predicted_intent=sec_intent_name,
                     escalate=False,
                     sentiment="neutral",
                     urgency="normal",
-                    reason=f"tier0_security_{sec_intent_name}",
+                    reason=f"security_refusal_{sec_intent_name}",
                     degraded=False,
                     calming_ack=sec_reply,
                     latency_ms=elapsed_ms,
@@ -1458,7 +1439,7 @@ class TriageRouterAgent:
                     ticket_id=t_id,
                     session_id=session_id,
                     decision="auto_rag",
-                    tier="tier0_rules",
+                    tier=decision.tier,
                     queue="none",
                     degraded=False,
                     latency_ms=elapsed_ms,
@@ -1487,9 +1468,14 @@ class TriageRouterAgent:
                     error=None,
                 )
 
-            # REQ-SAFE-004: Conditional resolution statement handling (e.g. "if it arrives tomorrow...")
-            if _is_conditional_resolution(message_text):
-                cond_ack = "Understood! Please keep us posted once your package arrives, or let us know if anything else comes up."
+            # REQ-SAFE-004 / REQ-TURN-004: Conditional resolution statement handling (e.g. "if it arrives tomorrow...")
+            is_cond = (
+                decision.reason == "conditional_resolution_acknowledgement"
+                or decision.details.get("condition_detected")
+                or decision.details.get("turn_act") == "conditional_resolution"
+            )
+            if is_cond:
+                cond_ack = decision.calming_ack or "Understood! Please keep us posted once your package arrives, or let us know if anything else comes up."
                 elapsed_ms = (time.monotonic() - start_time) * 1000.0
                 turn_span.set_attribute("decision", "auto_rag")
                 turn_span.set_attribute("tier", "ticket_lifecycle")
@@ -1529,6 +1515,18 @@ class TriageRouterAgent:
                     "ticket_id": t_id,
                     "status_code": 200,
                 }
+                _record_turn_final_span_attributes(turn_span, cond_decision, handoff_cond)
+                return TriageResult(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision=cond_decision,
+                    calming_ack=cond_ack,
+                    handoff_response=handoff_cond,
+                    idempotency_key=idempotency_key,
+                    latency_ms=elapsed_ms,
+                    status_code=200,
+                    error=None,
+                )
                 _record_turn_final_span_attributes(turn_span, cond_decision, handoff_cond)
                 return TriageResult(
                     ticket_id=t_id,
@@ -1611,9 +1609,62 @@ class TriageRouterAgent:
                             error=None,
                         )
 
-            # REQ-LIFE-002 / REQ-SAFE-004: Customer resolution confirmation flow
-            is_affirmative = _is_affirmative_resolution(message_text)
-            is_uncond = _is_unconditional_resolved(message_text)
+            # REQ-LIFE-002 / REQ-SAFE-004 / REQ-TURN-004 / REQ-TURN-005: Customer resolution confirmation flow
+            turn_act = decision.details.get("turn_act")
+            is_conf_no = (turn_act == "confirmation_no")
+            is_affirmative = (turn_act == "confirmation_yes")
+            is_uncond = (turn_act == "resolution_report")
+
+            if is_conf_no:
+                cand_tid = t_id
+                if conv_state.pending_confirmation:
+                    cand_tid = conv_state.pending_confirmation.issue_reference or conv_state.pending_confirmation.ticket_uuid
+                ack = "Understood. Your ticket remains open. Could you tell us more about what still needs attention?"
+                elapsed_ms = (time.monotonic() - start_time) * 1000.0
+                turn_span.set_attribute("decision", "auto_rag")
+                turn_span.set_attribute("tier", "ticket_lifecycle")
+                turn_span.set_attribute("queue", "none")
+                turn_span.set_attribute("predicted_intent", "confirmation")
+
+                no_dec = RouterDecision(
+                    ticket_id=cand_tid,
+                    session_id=session_id,
+                    decision="auto_rag",
+                    tier="ticket_lifecycle",
+                    queue="none",
+                    predicted_intent="confirmation",
+                    escalate=False,
+                    sentiment="neutral",
+                    urgency="normal",
+                    reason="confirmation_no_remains_open",
+                    degraded=False,
+                    calming_ack=ack,
+                    latency_ms=elapsed_ms,
+                    details={"category": "support", "ticket_id": cand_tid},
+                    customer_verified=customer_verified,
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
+                )
+                handoff_no = {
+                    "status": "AUTO_RESOLVED",
+                    "route": "confirmation_no",
+                    "answer": ack,
+                    "ticket_id": cand_tid,
+                    "status_code": 200,
+                }
+                _record_turn_final_span_attributes(turn_span, no_dec, handoff_no)
+                return TriageResult(
+                    ticket_id=cand_tid,
+                    session_id=session_id,
+                    decision=no_dec,
+                    calming_ack=ack,
+                    handoff_response=handoff_no,
+                    idempotency_key=idempotency_key,
+                    latency_ms=elapsed_ms,
+                    status_code=200,
+                    error=None,
+                )
+
             if is_affirmative or is_uncond:
                 cand_ticket: Optional[Dict[str, Any]] = None
                 if ref_tid:
@@ -1716,10 +1767,11 @@ class TriageRouterAgent:
                             error=None,
                         )
 
-                    # 2. For affirmative resolution on bot ticket, require pending-confirmation marker (REQ-LIFE-002)
+                    # 2. For affirmative resolution on bot ticket, require pending-confirmation marker (REQ-LIFE-002, REQ-TURN-004 §4)
                     cand_st = str(cand_ticket.get("status") or "").lower()
                     if (
                         is_affirmative
+                        and conv_state.pending_confirmation is None
                         and not cand_ticket.get("resolution_confirmation_requested")
                         and cand_st != "resolved_by_customer"
                     ):
@@ -1997,19 +2049,6 @@ class TriageRouterAgent:
                     "price_match",
                 }
 
-                is_explicit_ref = bool((ref_tid and ref_tid == holding_tid) or _is_explicit_ticket_reference(message_text))
-
-                if is_explicit_ref:
-                    should_continue = True
-                elif cur_intent in ("followup", "other"):
-                    should_continue = _is_conversational_followup_for_held_ticket(message_text, active_ticket)
-                elif held_intent and cur_intent == held_intent:
-                    should_continue = True
-                elif cur_intent in actionable_intents:
-                    should_continue = False
-                else:
-                    should_continue = False
-
                 is_held = (
                     is_holding_ticket(
                         status=active_ticket.get("status"),
@@ -2021,6 +2060,24 @@ class TriageRouterAgent:
                     and holding_cat not in ("security", "fraud")
                     and is_human_owned(active_ticket)
                 )
+
+                is_explicit_ref = bool((ref_tid and ref_tid == holding_tid) or _is_explicit_ticket_reference(message_text))
+
+                if is_explicit_ref:
+                    should_continue = True
+                elif cur_intent in ("followup", "other"):
+                    turn_act = decision.details.get("turn_act")
+                    should_continue = (
+                        turn_act == "followup_to_active_ticket"
+                        or decision.tier == "human_holding"
+                        or (is_held and turn_act != "new_request")
+                    )
+                elif held_intent and cur_intent == held_intent:
+                    should_continue = True
+                elif cur_intent in actionable_intents:
+                    should_continue = False
+                else:
+                    should_continue = False
 
                 if should_continue and is_held:
                     body_to_persist = tokenized_text or sanitized_text or message_text
@@ -2138,7 +2195,12 @@ class TriageRouterAgent:
                     else None
                 )
 
-                if is_cross_customer_history_request(message_text, verified_customer_id=verified_cid):
+                ti_sec = (decision.details.get("turn_interpretation") or {}).get("security") or {}
+                is_cross_cust = bool(
+                    ti_sec.get("cross_customer_data_request")
+                    or decision.details.get("security_flags", {}).get("cross_customer_data_request")
+                )
+                if is_cross_cust:
                     outcome = "cross_customer_refused"
                     reply_text = (
                         "You can only view your own conversation history. Access to other users' conversations is not permitted."
@@ -2468,7 +2530,12 @@ class TriageRouterAgent:
                             customer_id=verified_cid,
                             ticket_id=t_id,
                         )
-                        sub_q = detect_sub_questions(message_text)
+                        sub_q = None
+                        if decision.details.get("turn_interpretation"):
+                            ti_dict = decision.details["turn_interpretation"]
+                            intents_list = ti_dict.get("intents") or []
+                            if len(intents_list) >= 2:
+                                sub_q = [{"text": s.get("text_span", ""), "intent": s.get("intent", "other")} for s in intents_list]
                         payload = A2AHandoffPayload(
                             ticket_id=t_id,
                             session_id=session_id,
@@ -2497,6 +2564,8 @@ class TriageRouterAgent:
                                 conf_question = f"\n\nDid that resolve your issue? Reply yes to close ticket #{t_id}."
                                 handoff_resp["confirmation_question"] = conf_question.strip()
                                 handoff_resp["resolution_prompt"] = conf_question.strip()
+                                if "reply_text" in handoff_resp and conf_question.strip() not in handoff_resp["reply_text"]:
+                                    handoff_resp["reply_text"] = handoff_resp["reply_text"] + conf_question
                             if isinstance(handoff_resp, dict) and handoff_resp.get("status") == "ESCALATED":
                                 if handoff_resp.get("handoff_done"):
                                     # REQ-AGENT-030: FaqResolver completed HumanHandoff; do not publish again
