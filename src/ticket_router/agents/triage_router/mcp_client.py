@@ -559,7 +559,7 @@ class HttpTicketDbMcpClient:
             if hasattr(self.session, "app"):
                 resp = self.session.post(url, content=data_bytes, headers=req_headers, timeout=effective_timeout)
             else:
-                resp = self.session.post(url, data=data_bytes, headers=headers, timeout=effective_timeout)
+                resp = self.session.post(url, data=data_bytes, headers=req_headers, timeout=effective_timeout)
             resp.raise_for_status()
             return resp.json()
 

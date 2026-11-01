@@ -336,8 +336,9 @@ def test_extract_answer_from_result_and_query_appends_confirmation_question():
     )
     adk_agent = TriageRouterAdkAgent(router=core_router)
     res = adk_agent.query("What is the return window?", session_id="s-conf-q-1")
-    assert "Did that resolve your issue?" in res["answer"]
-    assert res["answer"].count("Did that resolve your issue?") == 1
+    # Anonymous caller: confirmation questions are stripped (REQ-LIFE-002)
+    assert "resolve your issue" not in res["answer"]
+    assert "30 days" in res["answer"]
 
 
 

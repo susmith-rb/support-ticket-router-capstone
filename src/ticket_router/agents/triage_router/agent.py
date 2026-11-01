@@ -1774,7 +1774,15 @@ class TriageRouterAgent:
                         )
                         try:
                             handoff_resp = self.a2a_client.handoff(payload)
-                            if isinstance(handoff_resp, dict) and handoff_resp.get("status") == "AUTO_RESOLVED":
+                            # REQ-LIFE-002: only verified customers may confirm, so only ask them.
+                            if isinstance(handoff_resp, dict) and not customer_verified:
+                                handoff_resp.pop("confirmation_question", None)
+                                handoff_resp.pop("resolution_prompt", None)
+                            if (
+                                customer_verified
+                                and isinstance(handoff_resp, dict)
+                                and handoff_resp.get("status") == "AUTO_RESOLVED"
+                            ):
                                 conf_question = f"\n\nDid that resolve your issue? Reply yes to close ticket #{t_id}."
                                 handoff_resp["confirmation_question"] = conf_question.strip()
                                 handoff_resp["resolution_prompt"] = conf_question.strip()

@@ -241,11 +241,8 @@ def test_scenario_2_benign_to_malicious_to_benign():
     res1 = agent.triage(session_id=session_id, message_text="what is your return policy?")
     assert res1.decision.decision == "auto_rag"
     assert "30 days" in (res1.handoff_response or {}).get("answer", "")
-    assert "Did that resolve your issue?" in str(
-        res1.calming_ack
-        or (res1.handoff_response or {}).get("confirmation_question", "")
-        or (res1.handoff_response or {}).get("answer", "")
-    )
+    # Anonymous caller: no resolution confirmation (only verified owners may confirm, REQ-LIFE-002)
+    assert "confirmation_question" not in (res1.handoff_response or {})
 
     # Turn 2: Prompt injection
     res2 = agent.triage(

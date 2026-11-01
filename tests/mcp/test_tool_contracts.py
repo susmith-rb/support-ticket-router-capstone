@@ -516,3 +516,24 @@ def test_ticket_db_save_redaction_map_unknown_ticket_404():
     assert resp.status_code == 404
     assert resp.json()["detail"] == "ticket_not_found"
 
+
+
+# REQ-AGENT-016: production uses a requests-style session (no `.app`); the ID token
+# must be sent on that path too (regression: 385e043 dropped Authorization -> Cloud Run 403).
+@pytest.mark.parametrize("extra_headers", [None, {"X-Customer-ID": "cust_1001", "X-Customer-Verified": "true"}])
+def test_http_ticket_db_client_requests_session_sends_id_token(extra_headers):
+    from unittest.mock import MagicMock
+
+    session = MagicMock(spec=["post"])
+    session.post.return_value.json.return_value = {"ok": True}
+    client = HttpTicketDbMcpClient(
+        base_url="https://ticket-db-mcp.example",
+        token_provider=lambda _aud: "mock-oidc-token",
+        session=session,
+    )
+    client._post_tool("resolve_customer", {"issuer": "i", "subject": "s"}, headers=extra_headers)
+    sent = session.post.call_args.kwargs["headers"]
+    assert sent["Authorization"] == "Bearer mock-oidc-token"
+    assert sent["Content-Type"] == "application/json"
+    if extra_headers:
+        assert sent["X-Customer-ID"] == "cust_1001"
