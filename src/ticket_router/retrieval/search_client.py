@@ -11,6 +11,7 @@ Supports:
 """
 
 import json
+import os
 import pathlib
 import re
 import time
@@ -21,18 +22,32 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 from ticket_router.common.auth import get_access_token
+from ticket_router.common.deploy_defaults import get_deploy_default
 from ticket_router.common.resilience import DISCOVERY_ENGINE_RANK_TIMEOUT_S
 from ticket_router.config.models import model_id
 from ticket_router.retrieval.de_endpoint import api_base, data_store_name, search_url
 
-DEFAULT_PROJECT = "susmith-fde-ticket-router"
-DEFAULT_ENGINE = "support-kb-search"
-DEFAULT_DATA_STORE = "faq-articles"
-DEFAULT_LOCATION = "global"
+DEFAULT_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT") or get_deploy_default(
+    "project"
+)
+DEFAULT_ENGINE = os.environ.get("DISCOVERY_ENGINE_ID") or get_deploy_default(
+    "discovery_engine.engine_id", "support-kb-search"
+)
+DEFAULT_DATA_STORE = os.environ.get("DISCOVERY_DATA_STORE_ID") or get_deploy_default(
+    "discovery_engine.data_store_id", "faq-articles"
+)
+DEFAULT_LOCATION = os.environ.get("DISCOVERY_LOCATION") or get_deploy_default(
+    "discovery_engine.location", "global"
+)
 
 DEFAULT_ALLOWED_STATUSES = ["active", "draft"]
+_DEFAULT_FALLBACK_FAQ_DIR = (
+    pathlib.Path(__file__).resolve().parents[3] / "rag" / "corpus_v2" / "docs"
+)
 DEFAULT_FAQ_DOCS_DIR = pathlib.Path(
-    "/usr/local/google/home/susmith/.gemini/jetski/brain/92e6895e-6aa0-4668-8e1e-5cb583072600/scratch/rag/faq_v2p/docs"
+    os.environ.get("FAQ_DOCS_DIR")
+    or get_deploy_default("faq.docs_dir")
+    or str(_DEFAULT_FALLBACK_FAQ_DIR)
 )
 VALID_INTENT_FAMILIES = [
     "account_payment",

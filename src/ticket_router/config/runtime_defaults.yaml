@@ -1,0 +1,42 @@
+# src/ticket_router/config/runtime_defaults.yaml
+# Single authoritative source of deploy-time environment defaults.
+# These values are injected in production through Terraform outputs, Cloud Build substitutions,
+# or runtime service environments. Application code in src/ reads these defaults via
+# ticket_router.common.deploy_defaults so that src/ contains zero hardcoded environment literals.
+
+project: "susmith-fde-ticket-router"
+project_number: "620485621180"
+region: "us-central1"
+
+service_accounts:
+  triage: "sa-triage@susmith-fde-ticket-router.iam.gserviceaccount.com"
+  faq: "sa-faq@susmith-fde-ticket-router.iam.gserviceaccount.com"
+
+endpoints:
+  router_s1_endpoint: "projects/susmith-fde-ticket-router/locations/us-central1/endpoints/router-s1-dedicated"
+  router_s1_base_url: "https://router-s1-dedicated.us-central1-620485621180.prediction.vertexai.goog"
+  router_s1_legacy_endpoint: "projects/susmith-fde-ticket-router/locations/us-central1/endpoints/router-s1"
+
+services:
+  ticket_db_url: "https://ticket-db-mcp-34mwh7k34a-uc.a.run.app"
+  order_lookup_url: "https://order-lookup-mcp-34mwh7k34a-uc.a.run.app"
+  human_queue_url: "https://human-queue-34mwh7k34a-uc.a.run.app"
+  human_queue_topic: "human-queue"
+  faq_resolver_url: "https://faq.8-232-184-225.sslip.io"
+  faq_resolver_audience: "https://faq.8-232-184-225.sslip.io"
+
+security:
+  redaction_kms_key: "projects/susmith-fde-ticket-router/locations/us-central1/keyRings/ticket-router-identity/cryptoKeys/redaction-map-wrapper"
+  cct_key_version: "projects/susmith-fde-ticket-router/locations/us-central1/keyRings/ticket-router-identity/cryptoKeys/customer-context-signer/cryptoKeyVersions/1"
+  cct_key_prefix: "projects/susmith-fde-ticket-router/locations/us-central1/keyRings/ticket-router-identity/cryptoKeys/customer-context-signer/"
+  cct_issuer: "triage-router"
+  cct_audience: "order-lookup-mcp"
+  cct_ttl_s: "300"
+  model_armor_template: "projects/susmith-fde-ticket-router/locations/us-central1/templates/support-router-lean"
+
+memory_bank:
+  default_engine: "projects/620485621180/locations/us-central1/reasoningEngines/2170218524805431296"
+
+faq:
+  docs_dir: "/usr/local/google/home/susmith/.gemini/jetski/brain/92e6895e-6aa0-4668-8e1e-5cb583072600/scratch/rag/faq_v2p/docs"
+

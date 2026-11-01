@@ -5,31 +5,9 @@ This specification defines the multi-agent runtime topology, inter-agent communi
 The service is composed of three cooperative agents and two dedicated MCP servers partitioned across Google Cloud managed runtimes by architectural responsibility:
 
 ```
-Inbound Support Ticket (Session-authenticated)
-                   │
-                   ▼
-┌────────────────────────────────────────────────────────┐
-│ TriageRouterAgent                                      │
-│ Runtime: GEAP Agent Runtime (Cloud Run fallback)       │
-│ Identity: sa-triage@ (PredictionUser, MCP Invoker, PS) │
-└────────────┬─────────────────────────────┬─────────────┘
-             │                             │
-    [p_esc < 0.15 & faq]          [p_esc >= 0.50 | urgent]
-             ▼                             ▼
-┌───────────────────────────┐ ┌───────────────────────────┐
-│ FaqResolverAgent          │ │ HumanQueueAgent           │
-│ Runtime: GKE Autopilot    │ │ Runtime: Cloud Run        │
-│ Deployment + HPA (2-10)   │ │ Identity: sa-queue@       │
-│ Identity: sa-faq@ (WI)    │ │ View: Ops Console / GE App│
-└──────┬──────────────┬─────┘ └────────────┬──────────────┘
-       │              │                    │
-       ▼              ▼                    ▼
-┌──────────────┐ ┌───────────────┐ ┌──────────────────────┐
-│ Agent Search │ │order-lookup   │ │ticket-db             │
-│ Engine (us)  │ │MCP Server     │ │MCP Server            │
-│ + Laya Rerank│ │(Cloud Run)    │ │(Cloud Run)           │
-│ (router-s1)  │ │sa-order-mcp@  │ │sa-ticket-mcp@        │
-└──────────────┘ └───────────────┘ └──────────────────────┘
+Inbound Ticket -> TriageRouterAgent (GEAP Agent Runtime / sa-triage@)
+  ├── [auto_rag] -> FaqResolverAgent (GKE Autopilot / sa-faq@) -> Agent Search, order-lookup-mcp
+  └── [escalate] -> HumanQueueAgent (Cloud Run / sa-queue@) -> ticket-db-mcp
 ```
 
 ### Runtime Topology and Service Account Mapping
@@ -86,6 +64,8 @@ The package is structured as `src/ticket_router/agents/{triage_router,faq_resolv
 | `REQ-AGENT-035` | Cloud Run Warm Fallback Agent Host (triage-fallback) | `done` | `tests/agents/test_fallback_host.py::test_query_endpoint_e2e_mocked` |
 | `REQ-AGENT-036` | Vertex AI Agent Engine Memory Bank Integration | `done` | `tests/memory/test_memory_bank.py::test_verified_customer_retrieve_and_summary_injected` |
 | `REQ-AGENT-037` | Ticket Lifecycle and Deterministic Issue Continuation | `done` | `tests/agents/test_ticket_lifecycle.py::test_reproduce_production_defect_security_escalation_captures_benign_order_lookup` |
+| `REQ-AGENT-038` | Centralized Runtime and Deployment Defaults Decoupling | `done` | `tests/common/test_settings.py` |
+| `REQ-AGENT-039` | Staged Linear Pipeline Architecture and Function LOC Boundaries | `done` | `tests/agents/test_triage_golden_replay.py` |
 ---
 ## 3. Detailed Requirements
 
@@ -375,5 +355,23 @@ The package is structured as `src/ticket_router/agents/{triage_router,faq_resolv
 - **Statement**: `TriageRouterAgent` MUST enforce the deterministic continuation policy (`CONTINUE` vs `NEW_ISSUE`) and customer resolution confirmation flow defined in `specs/ticket-lifecycle.md` (`REQ-LIFE-001`, `REQ-LIFE-002`, `REQ-LIFE-003`): (1) Ingress card block and Model Armor PI/JB evaluation precede holding; (2) Human-owned ordinary tickets continue on explicit reference or related intent, whereas distinct actionable requests route as `NEW_ISSUE`; (3) Customer affirmative resolution on bot-owned support tickets calls `update_ticket_status` via `ticket-db-mcp` with ownership and transition checks.
 - **Rationale**: TDD §3, §4.2, §7.1. Pointer specification linking agent service to ticket lifecycle spec.
 - **Acceptance**: `tests/agents/test_ticket_lifecycle.py::test_reproduce_production_defect_security_escalation_captures_benign_order_lookup`
+- **Status**: done
+- **Owner**: agent-service
+
+### REQ-AGENT-038: Centralized Runtime and Deployment Defaults Decoupling
+- **Statement**: All deployment target identifiers (GCP project IDs, region/location IDs, Cloud Run service URLs, Vertex AI Agent Engine reasoning engine resource names, Cloud Pub/Sub topic and subscription IDs, BigQuery dataset IDs, and Discovery Engine datastore specs) MUST be declared strictly within `src/ticket_router/config/runtime_defaults.yaml` (packaged with the code; `deploy/` is not in the container image) and loaded via `ticket_router.common.deploy_defaults`. Application source code under `src/` MUST NOT contain hardcoded deployment environment string literals as fallbacks; all environment fallback resolution MUST defer to `get_deploy_default(key, default)`. Local testing environments and test suites remain hermetic via explicit environment overrides and monkeypatching without touching production resource identifiers.
+- **Rationale**: TDD §1, §3.5. Eliminates fragile split configuration between source code literals and deployment configurations, enforcing clean 12-factor application decoupling.
+- **Acceptance**: `tests/common/test_settings.py` and codebase literal audit (`src/` scan).
+- **Status**: done
+- **Owner**: platform
+
+### REQ-AGENT-039: Staged Linear Pipeline Architecture and Function LOC Boundaries
+- **Statement**: Complex multi-stage agent workflows MUST be decomposed into staged, linear, functional pipelines where no individual function or method exceeds 120 lines of code (LOC), adhering to clean functional boundaries:
+  1. `TriageRouterAgent.triage()` MUST delegate turn processing to distinct pipeline stages in `ticket_router.agents.triage_router.pipeline`: Stage 1 Ingress Guard (`ingress_guard`), Stage 2 Identity & State Assembly (`resolve_turn_identity`), Stage 3 Customer Memory Injection (`read_memory_bank_context`), Stage 4 Policy Evaluation (`evaluate_turn_policy`), Stage 5 Turn Acts & Special Intent Handling (`handle_turn_acts_and_special_intents`), Stage 6 Route Dispatch & Persistence (`dispatch_route_and_persist`), and Stage 7 Turn Finalization & Audit (`finalize_triage_turn`).
+  2. `TriagePolicy.evaluate()` MUST be decomposed into distinct evaluation stages in `ticket_router.agents.triage_router.policy`: Stage 1 Run Model Armor & S1 (`_run_model_armor_and_s1`), Stage 2 Model Armor Triggers (`_evaluate_model_armor_triggers`), Stage 3 Laya Fast Path (`_evaluate_laya_fast_path`), Stage 4 Turn Interpretation (`_evaluate_turn_interpretation`), and Stage 5 Degraded Fallback (`_evaluate_degraded_fallback`).
+  3. `FaqResolverAgent._resolve_impl()` MUST be decomposed into cohesive single-purpose methods in `ticket_router.agents.faq_resolver.agent`: argument validation, circuit breaker guards, retrieval query extraction, search & rerank, context formatting, prompt assembly, bounded generation with hedged execution, citation extraction, citation validation, and fallback escalation.
+  4. Silent `except ...: pass` exception swallows are strictly prohibited; unexpected exceptions MUST log structured debug/warning events (`logger.debug`/`logger.warning`). Duck typing via `hasattr(...)` on structured client interfaces is eliminated in favor of explicit `isinstance` and protocol contract checks.
+- **Rationale**: TDD §3.1, §3.5. Transforms monolithic, untestable god functions into modular, inspectable pipelines with strict LOC limits and zero functional deviation.
+- **Acceptance**: `tests/agents/test_triage_golden_replay.py` (27/27 golden scenarios pass byte-for-byte), `tests/agents/test_triage_router.py`, `tests/agents/test_faq_resolver.py`, and AST LOC verification script confirming all functions $\le 120$ LOC.
 - **Status**: done
 - **Owner**: agent-service

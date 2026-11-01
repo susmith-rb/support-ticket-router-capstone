@@ -23,6 +23,7 @@ from google.auth.transport.requests import AuthorizedSession
 from requests.adapters import HTTPAdapter
 
 from ticket_router.common.auth import get_access_token
+from ticket_router.common.deploy_defaults import get_deploy_default
 from ticket_router.common.google_http import create_google_session, to_mtls_url
 from ticket_router.common.resilience import (
     LAYA_RERANK_TIMEOUT_S,
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 _SERVING_CFG = get_serving_config("router_s1")
 DEFAULT_ENDPOINT_RESOURCE = _SERVING_CFG.get(
     "default_endpoint",
-    "projects/susmith-fde-ticket-router/locations/us-central1/endpoints/router-s1",
+    get_deploy_default("endpoints.router_s1_legacy_endpoint"),
 )
 DEFAULT_ROUTE_TIMEOUT_S = float(_SERVING_CFG.get("route_timeout_s", ROUTER_S1_TIMEOUT_S))
 DEFAULT_RERANK_TIMEOUT_S = float(_SERVING_CFG.get("rerank_timeout_s", LAYA_RERANK_TIMEOUT_S))

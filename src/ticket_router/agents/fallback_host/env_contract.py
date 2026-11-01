@@ -16,26 +16,28 @@ from __future__ import annotations
 import os
 from typing import Dict, List
 
-DEFAULT_PROJECT = "susmith-fde-ticket-router"
-DEFAULT_REGION = "us-central1"
-DEFAULT_SERVICE_ACCOUNT = "sa-triage@susmith-fde-ticket-router.iam.gserviceaccount.com"
+from ticket_router.common.deploy_defaults import get_deploy_default
 
-# Default endpoints and service URLs
-DEFAULT_ROUTER_ENDPOINT = "projects/susmith-fde-ticket-router/locations/us-central1/endpoints/router-s1-dedicated"
-DEFAULT_ROUTER_BASE_URL = "https://router-s1-dedicated.us-central1-620485621180.prediction.vertexai.goog"
-DEFAULT_TICKET_DB_URL = "https://ticket-db-mcp-34mwh7k34a-uc.a.run.app"
-DEFAULT_ORDER_LOOKUP_URL = "https://order-lookup-mcp-34mwh7k34a-uc.a.run.app"
-DEFAULT_HUMAN_QUEUE_URL = "https://human-queue-34mwh7k34a-uc.a.run.app"
-DEFAULT_HUMAN_QUEUE_TOPIC = "human-queue"
-DEFAULT_REDACTION_KMS_KEY = "projects/susmith-fde-ticket-router/locations/us-central1/keyRings/ticket-router-identity/cryptoKeys/redaction-map-wrapper"
-DEFAULT_FAQ_RESOLVER_URL = "https://faq.8-232-184-225.sslip.io"
-DEFAULT_FAQ_RESOLVER_AUDIENCE = "https://faq.8-232-184-225.sslip.io"
+DEFAULT_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT") or get_deploy_default("project")
+DEFAULT_REGION = os.environ.get("GOOGLE_CLOUD_LOCATION") or get_deploy_default("region", "us-central1")
+DEFAULT_SERVICE_ACCOUNT = os.environ.get("SERVICE_ACCOUNT") or get_deploy_default("service_accounts.triage")
 
-DEFAULT_CCT_KEY_VERSION = "projects/susmith-fde-ticket-router/locations/us-central1/keyRings/ticket-router-identity/cryptoKeys/customer-context-signer/cryptoKeyVersions/1"
-DEFAULT_CCT_ISSUER = "triage-router"
-DEFAULT_CCT_AUDIENCE = "order-lookup-mcp"
-DEFAULT_CCT_TTL_S = "300"
-DEFAULT_MODEL_ARMOR_TEMPLATE = "projects/susmith-fde-ticket-router/locations/us-central1/templates/support-router-lean"
+# Default endpoints and service URLs derived from environment or deploy defaults
+DEFAULT_ROUTER_ENDPOINT = os.environ.get("ROUTER_S1_ENDPOINT") or get_deploy_default("endpoints.router_s1_endpoint")
+DEFAULT_ROUTER_BASE_URL = os.environ.get("ROUTER_S1_BASE_URL") or get_deploy_default("endpoints.router_s1_base_url")
+DEFAULT_TICKET_DB_URL = os.environ.get("TICKET_DB_MCP_URL") or get_deploy_default("services.ticket_db_url")
+DEFAULT_ORDER_LOOKUP_URL = os.environ.get("ORDER_LOOKUP_MCP_URL") or get_deploy_default("services.order_lookup_url")
+DEFAULT_HUMAN_QUEUE_URL = os.environ.get("HUMAN_QUEUE_URL") or get_deploy_default("services.human_queue_url")
+DEFAULT_HUMAN_QUEUE_TOPIC = os.environ.get("HUMAN_QUEUE_TOPIC") or get_deploy_default("services.human_queue_topic", "human-queue")
+DEFAULT_REDACTION_KMS_KEY = os.environ.get("REDACTION_KMS_KEY") or get_deploy_default("security.redaction_kms_key")
+DEFAULT_FAQ_RESOLVER_URL = os.environ.get("FAQ_RESOLVER_URL") or get_deploy_default("services.faq_resolver_url")
+DEFAULT_FAQ_RESOLVER_AUDIENCE = os.environ.get("FAQ_RESOLVER_AUDIENCE") or get_deploy_default("services.faq_resolver_audience")
+
+DEFAULT_CCT_KEY_VERSION = os.environ.get("CCT_KEY_VERSION") or get_deploy_default("security.cct_key_version")
+DEFAULT_CCT_ISSUER = os.environ.get("CCT_ISSUER") or get_deploy_default("security.cct_issuer", "triage-router")
+DEFAULT_CCT_AUDIENCE = os.environ.get("CCT_AUDIENCE") or get_deploy_default("security.cct_audience", "order-lookup-mcp")
+DEFAULT_CCT_TTL_S = os.environ.get("CCT_TTL_S") or get_deploy_default("security.cct_ttl_s", "300")
+DEFAULT_MODEL_ARMOR_TEMPLATE = os.environ.get("MODEL_ARMOR_TEMPLATE") or get_deploy_default("security.model_armor_template")
 
 # Canonical list of contract environment variable keys
 TRIAGE_ENV_KEYS: List[str] = [

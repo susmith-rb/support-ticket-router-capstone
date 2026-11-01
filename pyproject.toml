@@ -104,7 +104,7 @@ packages = [
 ]
 
 [tool.setuptools.package-data]
-"ticket_router.config" = ["models.yaml", "taxonomy.yaml", "agent_tuning.yaml"]
+"ticket_router.config" = ["models.yaml", "taxonomy.yaml", "agent_tuning.yaml", "runtime_defaults.yaml"]
 "evals.latency" = ["cases_v1.jsonl"]
 
 [tool.coverage.run]

@@ -113,7 +113,7 @@ def test_triage_mints_cct_only_for_verified_customers(
     }
 
     monkeypatch.setattr(
-        "ticket_router.agents.triage_router.agent.resolve_identity",
+        "ticket_router.agents.triage_router.pipeline.resolve_identity",
         lambda **_kwargs: current_identity["ctx"],
     )
 
@@ -251,7 +251,7 @@ def test_minting_disabled_when_cct_key_version_empty(
 
     monkeypatch.delenv("CCT_KEY_VERSION", raising=False)
     monkeypatch.setattr(
-        "ticket_router.agents.triage_router.agent.resolve_identity",
+        "ticket_router.agents.triage_router.pipeline.resolve_identity",
         lambda **_kwargs: ResolvedCustomerContext(
             customer_id="cust_1001",
             verified=True,
@@ -303,7 +303,7 @@ def test_default_kms_signer_lazily_constructed(
     monkeypatch.setenv("CCT_KEY_VERSION", KID)
     monkeypatch.setattr("ticket_router.agents.triage_router.agent.KmsSigner", _FakeKmsSigner)
     monkeypatch.setattr(
-        "ticket_router.agents.triage_router.agent.resolve_identity",
+        "ticket_router.agents.triage_router.pipeline.resolve_identity",
         lambda **_kwargs: ResolvedCustomerContext(
             customer_id="cust_1002",
             verified=True,
@@ -363,7 +363,7 @@ def test_signer_exception_fails_safe_and_logs_without_pii_or_token(
             raise RuntimeError("KMS asymmetricSign failed for cust_secret_999")
 
     monkeypatch.setattr(
-        "ticket_router.agents.triage_router.agent.resolve_identity",
+        "ticket_router.agents.triage_router.pipeline.resolve_identity",
         lambda **_kwargs: ResolvedCustomerContext(
             customer_id="cust_secret_999",
             verified=True,
@@ -424,7 +424,7 @@ def test_minted_token_never_appears_in_captured_logs(
     signer = LocalEcSigner(private_key=priv_key, kid=KID)
 
     monkeypatch.setattr(
-        "ticket_router.agents.triage_router.agent.resolve_identity",
+        "ticket_router.agents.triage_router.pipeline.resolve_identity",
         lambda **_kwargs: ResolvedCustomerContext(
             customer_id="cust_private_777",
             verified=True,

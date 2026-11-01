@@ -437,44 +437,28 @@ class TriagePolicy:
 
         return ma_verdict, sanitized_text, tokenized_text, pii_mapping
 
-    def evaluate(
+    def _run_model_armor_and_s1(
         self,
         text: str,
-        session_id: str = "default_session",
-        customer_id: Optional[str] = None,
-        verified_facts: Optional[VerifiedFacts] = None,
-        ticket_id: Optional[str] = None,
         precomputed_ma: Optional[
             Tuple[Optional[ModelArmorVerdict], Optional[str], Optional[str], Dict[str, str]]
         ] = None,
-        conversation_state: Optional[ConversationState] = None,
-        recent_intents: Optional[List[str]] = None,
-    ) -> RouterDecision:
-        """Execute tiered routing policy on inbound message text (REQ-TURN-003)."""
-        t_id = ticket_id or legacy_session_issue_reference(session_id)
-        s1_summary: Optional[Dict[str, Any]] = None
-        tokenized_text: Optional[str] = None
-        pii_mapping: Dict[str, str] = {}
-        prompt_safety_shadow: Optional[Dict[str, Any]] = None
-
-        # ---------------------------------------------------------------------
-        # Tier 1 & Model Armor: Execution (REQ-MA-003, REQ-MA-005)
-        # ---------------------------------------------------------------------
-        ma_verdict: Optional[ModelArmorVerdict] = None
-        s1_pred: Optional[RouterPrediction] = None
-        s1_error: Optional[str] = None
-        sanitized_text: Optional[str] = None
-        tokenized_text: Optional[str] = None
-        pii_mapping: Dict[str, str] = {}
-        prompt_safety_shadow: Optional[Dict[str, Any]] = None
-
+    ) -> Tuple[
+        Optional[ModelArmorVerdict],
+        Optional[RouterPrediction],
+        Optional[str],
+        Optional[str],
+        Optional[str],
+        Dict[str, str],
+    ]:
+        """Execute Model Armor inspection and System 1 (router-s1) scoring concurrently or sequentially."""
         if precomputed_ma is not None:
             ma_verdict, sanitized_text, tokenized_text, pii_mapping = precomputed_ma
             s1_pred, s1_error = self._call_s1(text)
         elif self.model_armor_client is not None:
             if self._custom_turn_interpreter:
-                # Sequential guard for custom/mock turn interpreter tests (REQ-TURN-003)
                 ma_verdict, sanitized_text, tokenized_text, pii_mapping = self._run_model_armor(text)
+                s1_pred, s1_error = None, None
             else:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                     ma_future = executor.submit(self._run_model_armor, text)
@@ -482,16 +466,137 @@ class TriagePolicy:
                     ma_verdict, sanitized_text, tokenized_text, pii_mapping = ma_future.result()
                     s1_pred, s1_error = s1_future.result()
         else:
+            ma_verdict, sanitized_text, tokenized_text, pii_mapping = None, None, None, {}
             s1_pred, s1_error = self._call_s1(text)
 
-        ma_details: Dict[str, Any] = {}
-        if ma_verdict is not None:
-            ma_details = ma_verdict.to_summary_dict()
+        return ma_verdict, s1_pred, s1_error, sanitized_text, tokenized_text, pii_mapping
 
-            # 0. Payment Card Data -> Ingress Guard Hard Block (TDD §4.2 C4, REQ-MA-007)
-            blocked_types = _extract_blocked_card_info_types(ma_verdict)
-            if blocked_types:
-                return RouterDecision(
+    def _evaluate_ma_security_violations(
+        self,
+        t_id: str,
+        session_id: str,
+        ma_verdict: ModelArmorVerdict,
+        sanitized_text: Optional[str],
+        tokenized_text: Optional[str],
+        pii_mapping: Dict[str, str],
+        ma_details: Dict[str, Any],
+        verified_facts: Optional[VerifiedFacts],
+    ) -> Tuple[Optional[RouterDecision], Dict[str, Any]]:
+        """Evaluate prompt injection, malicious URI, and RAI security violations (REQ-MA-003, REQ-MA-004)."""
+        # 1. Prompt Injection or Jailbreak -> Security Refusal Block (REQ-MA-003)
+        if ma_verdict.has_pi_jb:
+            sec_ack = render_security_blocked_reply()
+            return (
+                RouterDecision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="security_blocked",
+                    tier="model_armor",
+                    queue="none",
+                    predicted_intent="other",
+                    escalate=False,
+                    sentiment="neutral",
+                    urgency="normal",
+                    reason="prompt_injection_or_jailbreak",
+                    degraded=False,
+                    calming_ack=sec_ack,
+                    details={
+                        "category": "security",
+                        "model_armor": ma_details,
+                        "sanitized_text": sanitized_text,
+                    },
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
+                ),
+                ma_details,
+            )
+
+        # 2. Malicious URI -> Hard Security Escalation to Human Review
+        if ma_verdict.has_malicious_uri:
+            sec_queue = evaluate_gaming_resistant_priority(
+                facts=verified_facts,
+                sentiment="neutral",
+                urgency="normal",
+            )
+            return (
+                RouterDecision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="escalate",
+                    tier="model_armor",
+                    queue=sec_queue.value,
+                    predicted_intent="other",
+                    escalate=True,
+                    sentiment="neutral",
+                    urgency="normal",
+                    reason="model_armor_security_trigger",
+                    degraded=False,
+                    details={
+                        "category": "security",
+                        "model_armor": ma_details,
+                        "sanitized_text": sanitized_text,
+                    },
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
+                ),
+                ma_details,
+            )
+
+        # 3. Responsible AI Filter Violation -> Hard Security Escalation
+        if ma_verdict.has_rai_violation:
+            sec_queue = evaluate_gaming_resistant_priority(
+                facts=verified_facts,
+                sentiment="angry",
+                urgency="normal",
+            )
+            return (
+                RouterDecision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="escalate",
+                    tier="model_armor",
+                    queue=sec_queue.value,
+                    predicted_intent="other",
+                    escalate=True,
+                    sentiment="angry",
+                    urgency="normal",
+                    reason="model_armor_rai_trigger",
+                    degraded=False,
+                    details={
+                        "category": "abuse",
+                        "model_armor": ma_details,
+                        "sanitized_text": sanitized_text,
+                    },
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
+                ),
+                ma_details,
+            )
+        return None, ma_details
+
+    def _evaluate_model_armor_triggers(
+        self,
+        t_id: str,
+        session_id: str,
+        ma_verdict: Optional[ModelArmorVerdict],
+        sanitized_text: Optional[str],
+        tokenized_text: Optional[str],
+        pii_mapping: Dict[str, str],
+        verified_facts: Optional[VerifiedFacts],
+    ) -> Tuple[Optional[RouterDecision], Dict[str, Any], Optional[Dict[str, Any]]]:
+        """Evaluate Model Armor card data, prompt injection, malicious URI, RAI violation, and degradation."""
+        ma_details: Dict[str, Any] = {}
+        prompt_safety_shadow: Optional[Dict[str, Any]] = None
+        if ma_verdict is None:
+            return None, ma_details, prompt_safety_shadow
+
+        ma_details = ma_verdict.to_summary_dict()
+
+        # 0. Payment Card Data -> Ingress Guard Hard Block (TDD §4.2 C4, REQ-MA-007)
+        blocked_types = _extract_blocked_card_info_types(ma_verdict)
+        if blocked_types:
+            return (
+                RouterDecision(
                     ticket_id=t_id,
                     session_id=session_id,
                     decision="blocked",
@@ -506,115 +611,51 @@ class TriagePolicy:
                     details={"blocked_info_types": blocked_types},
                     tokenized_text=None,
                     pii_mapping={},
-                )
+                ),
+                ma_details,
+                prompt_safety_shadow,
+            )
 
-            delegated = self._is_prompt_safety_delegated()
-            if delegated and (ma_verdict.has_pi_jb or ma_verdict.has_malicious_uri or ma_verdict.has_rai_violation):
-                prompt_safety_shadow = {
-                    "shadow_mode": True,
-                    "pi_jb_tripped": ma_verdict.has_pi_jb,
-                    "malicious_uri_tripped": ma_verdict.has_malicious_uri,
-                    "rai_tripped": ma_verdict.has_rai_violation,
-                }
-                ma_details["prompt_safety_shadow"] = prompt_safety_shadow
-                logger.info(
-                    "prompt_safety_shadow: verdict tripped (pi_jb=%s, malicious_uri=%s, rai=%s), "
-                    "delegated to gateway ingress, monitor-only (not escalating)",
-                    ma_verdict.has_pi_jb,
-                    ma_verdict.has_malicious_uri,
-                    ma_verdict.has_rai_violation,
-                    extra={
-                        "event": "prompt_safety_shadow",
-                        "model_armor": ma_details,
-                        "session_id": session_id,
-                        "ticket_id": t_id,
-                    },
-                )
-            else:
-                # 1. Prompt Injection or Jailbreak -> Security Refusal Block (REQ-MA-003)
-                if ma_verdict.has_pi_jb:
-                    sec_ack = render_security_blocked_reply()
-                    return RouterDecision(
-                        ticket_id=t_id,
-                        session_id=session_id,
-                        decision="security_blocked",
-                        tier="model_armor",
-                        queue="none",
-                        predicted_intent="other",
-                        escalate=False,
-                        sentiment="neutral",
-                        urgency="normal",
-                        reason="prompt_injection_or_jailbreak",
-                        degraded=False,
-                        calming_ack=sec_ack,
-                        details={
-                            "category": "security",
-                            "model_armor": ma_details,
-                            "sanitized_text": sanitized_text,
-                        },
-                        tokenized_text=tokenized_text,
-                        pii_mapping=pii_mapping,
-                    )
+        delegated = self._is_prompt_safety_delegated()
+        if delegated and (ma_verdict.has_pi_jb or ma_verdict.has_malicious_uri or ma_verdict.has_rai_violation):
+            prompt_safety_shadow = {
+                "shadow_mode": True,
+                "pi_jb_tripped": ma_verdict.has_pi_jb,
+                "malicious_uri_tripped": ma_verdict.has_malicious_uri,
+                "rai_tripped": ma_verdict.has_rai_violation,
+            }
+            ma_details["prompt_safety_shadow"] = prompt_safety_shadow
+            logger.info(
+                "prompt_safety_shadow: verdict tripped (pi_jb=%s, malicious_uri=%s, rai=%s), "
+                "delegated to gateway ingress, monitor-only (not escalating)",
+                ma_verdict.has_pi_jb,
+                ma_verdict.has_malicious_uri,
+                ma_verdict.has_rai_violation,
+                extra={
+                    "event": "prompt_safety_shadow",
+                    "model_armor": ma_details,
+                    "session_id": session_id,
+                    "ticket_id": t_id,
+                },
+            )
+        else:
+            sec_dec, ma_details = self._evaluate_ma_security_violations(
+                t_id=t_id,
+                session_id=session_id,
+                ma_verdict=ma_verdict,
+                sanitized_text=sanitized_text,
+                tokenized_text=tokenized_text,
+                pii_mapping=pii_mapping,
+                ma_details=ma_details,
+                verified_facts=verified_facts,
+            )
+            if sec_dec is not None:
+                return sec_dec, ma_details, prompt_safety_shadow
 
-                # 2. Malicious URI -> Hard Security Escalation to Human Review
-                if ma_verdict.has_malicious_uri:
-                    sec_queue = evaluate_gaming_resistant_priority(
-                        facts=verified_facts,
-                        sentiment="neutral",
-                        urgency="normal",
-                    )
-                    return RouterDecision(
-                        ticket_id=t_id,
-                        session_id=session_id,
-                        decision="escalate",
-                        tier="model_armor",
-                        queue=sec_queue.value,
-                        predicted_intent="other",
-                        escalate=True,
-                        sentiment="neutral",
-                        urgency="normal",
-                        reason="model_armor_security_trigger",
-                        degraded=False,
-                        details={
-                            "category": "security",
-                            "model_armor": ma_details,
-                            "sanitized_text": sanitized_text,
-                        },
-                        tokenized_text=tokenized_text,
-                        pii_mapping=pii_mapping,
-                    )
-
-                # 3. Responsible AI (RAI) Harassment / Abuse -> Boundary Ack + Human Review
-                if ma_verdict.has_rai_violation:
-                    queue = evaluate_gaming_resistant_priority(
-                        facts=verified_facts,
-                        sentiment="angry",
-                        urgency="normal",
-                    )
-                    return RouterDecision(
-                        ticket_id=t_id,
-                        session_id=session_id,
-                        decision="escalate",
-                        tier="model_armor",
-                        queue=queue.value,
-                        predicted_intent="other",
-                        escalate=True,
-                        sentiment="angry",
-                        urgency="normal",
-                        reason="model_armor_rai_trigger",
-                        degraded=False,
-                        details={
-                            "category": "abuse",
-                            "model_armor": ma_details,
-                            "sanitized_text": sanitized_text,
-                        },
-                        tokenized_text=tokenized_text,
-                        pii_mapping=pii_mapping,
-                    )
-
-            # 4. Model Armor Degraded / Timeout -> Fail-safe to human-standard (never drop)
-            if ma_verdict.degraded:
-                return RouterDecision(
+        # 4. Model Armor Degraded Fallback Mode
+        if ma_verdict.degraded:
+            return (
+                RouterDecision(
                     ticket_id=t_id,
                     session_id=session_id,
                     decision="escalate",
@@ -632,20 +673,32 @@ class TriagePolicy:
                     },
                     tokenized_text=tokenized_text,
                     pii_mapping=pii_mapping,
-                )
+                ),
+                ma_details,
+                prompt_safety_shadow,
+            )
 
-        # ---------------------------------------------------------------------
-        # 2. System 1 (router-s1): Laya Fast Path (REQ-TURN-003)
-        # ---------------------------------------------------------------------
-        if s1_pred is None and self.s1_client is not None:
-            s1_pred, s1_error = self._call_s1(text)
+        return None, ma_details, prompt_safety_shadow
 
-        s1_summary = _summarize_s1_prediction(s1_pred)
+    def _evaluate_laya_fast_path(
+        self,
+        t_id: str,
+        session_id: str,
+        s1_pred: Optional[RouterPrediction],
+        has_pending: bool,
+        has_held_tickets: bool,
+        verified_facts: Optional[VerifiedFacts],
+        s1_summary: Optional[Dict[str, Any]],
+        ma_details: Dict[str, Any],
+        sanitized_text: Optional[str],
+        prompt_safety_shadow: Optional[Dict[str, Any]],
+        tokenized_text: Optional[str],
+        pii_mapping: Dict[str, str],
+    ) -> Optional[RouterDecision]:
+        """Evaluate Laya fast paths: definitive escalation or definitive auto-RAG."""
+        if s1_pred is None or has_pending or has_held_tickets:
+            return None
 
-        has_pending = conversation_state is not None and conversation_state.pending_confirmation is not None
-        has_held_tickets = conversation_state is not None and len(conversation_state.active_tickets) > 0
-
-        # A. Definitive escalation fast path (REQ-AGENT-002, REQ-REVAL-011)
         s1_esc_prob = getattr(s1_pred, "escalate_prob", None)
         is_esc_prob = isinstance(s1_esc_prob, (int, float)) and s1_esc_prob >= self.thresholds.tau_esc
         s1_intent_prob = getattr(s1_pred, "intent_prob", None)
@@ -654,26 +707,14 @@ class TriagePolicy:
         s1_urgency = str(getattr(s1_pred, "urgency", "")).lower()
         s1_intent = str(getattr(s1_pred, "intent", ""))
 
-        # Laya fast path never decides security or history requests: route to the interpreter
-        # whenever Laya intent is "other" or confidence < tau_intent.
-        # Confident self-service Laya decisions cannot carry cross-customer requests.
+        # A. Definitive escalation fast path (REQ-AGENT-002, REQ-REVAL-011)
         is_confident_escalation_candidate = (
             s1_intent != "other"
             and (s1_intent in _SELF_SERVICE_INTENTS or s1_intent == "complaint")
             and is_intent_prob
         )
 
-        if (
-            not has_pending
-            and not has_held_tickets
-            and s1_pred is not None
-            and is_confident_escalation_candidate
-            and (
-                is_esc_prob
-                or s1_sentiment == "angry"
-                or s1_urgency == "immediate"
-            )
-        ):
+        if is_confident_escalation_candidate and (is_esc_prob or s1_sentiment == "angry" or s1_urgency == "immediate"):
             queue = evaluate_gaming_resistant_priority(
                 facts=verified_facts,
                 sentiment=s1_sentiment or "neutral",
@@ -686,7 +727,6 @@ class TriagePolicy:
                 details_esc["sentiment_prob"] = float(s1_pred.sentiment_prob)
             if isinstance(getattr(s1_pred, "intent_prob", None), (int, float)):
                 details_esc["intent_prob"] = float(s1_pred.intent_prob)
-
             if s1_summary is not None:
                 details_esc["s1_prediction"] = s1_summary
             if ma_details:
@@ -715,25 +755,13 @@ class TriagePolicy:
             )
 
         # B. Definitive auto-RAG fast path (REQ-TURN-003)
-        s1_intent_prob = getattr(s1_pred, "intent_prob", None)
-        is_intent_prob = isinstance(s1_intent_prob, (int, float)) and s1_intent_prob >= self.thresholds.tau_intent
         is_rag_prob = isinstance(s1_esc_prob, (int, float)) and s1_esc_prob < self.thresholds.tau_low
-        s1_intent = str(getattr(s1_pred, "intent", ""))
-
-        if (
-            not has_pending
-            and not has_held_tickets
-            and s1_pred is not None
-            and s1_intent in _SELF_SERVICE_INTENTS
-            and is_intent_prob
-            and is_rag_prob
-        ):
+        if s1_intent in _SELF_SERVICE_INTENTS and is_intent_prob and is_rag_prob:
             details_rag: Dict[str, Any] = {}
             if isinstance(s1_esc_prob, (int, float)):
                 details_rag["escalate_prob"] = float(s1_esc_prob)
             if isinstance(s1_intent_prob, (int, float)):
                 details_rag["intent_prob"] = float(s1_intent_prob)
-
             if s1_summary is not None:
                 details_rag["s1_prediction"] = s1_summary
             if ma_details:
@@ -761,9 +789,388 @@ class TriagePolicy:
                 pii_mapping=pii_mapping,
             )
 
-        # ---------------------------------------------------------------------
-        # 3. System 2: Gemini Flash Turn Interpreter (REQ-TURN-001, REQ-TURN-003)
-        # ---------------------------------------------------------------------
+        return None
+
+    def _evaluate_ti_security_intents(
+        self,
+        t_id: str,
+        session_id: str,
+        ti_interpretation: TurnInterpretation,
+        eff_latency_ms: float,
+        details_ti: Dict[str, Any],
+        tokenized_text: Optional[str],
+        pii_mapping: Dict[str, str],
+        ti_error: Optional[str],
+        ti_timed_out: bool,
+        ti_latency_ms: float,
+    ) -> Optional[Tuple[RouterDecision, Optional[str], bool, float]]:
+        """Evaluate Tier 2 security refusal and conversation history intents (REQ-SAFE-002, REQ-HIST-001)."""
+        if (
+            ti_interpretation.security.conversation_history_request
+            or ti_interpretation.primary_intent == "conversation_history_access"
+        ):
+            return (
+                RouterDecision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="auto_rag",
+                    tier="tier2_flash",
+                    queue="none",
+                    predicted_intent="conversation_history_access",
+                    escalate=False,
+                    sentiment="neutral",
+                    urgency="normal",
+                    reason="conversation_history_access",
+                    degraded=False,
+                    latency_ms=eff_latency_ms,
+                    details=details_ti,
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
+                ),
+                ti_error,
+                ti_timed_out,
+                ti_latency_ms,
+            )
+
+        if ti_interpretation.security.cross_customer_data_request:
+            return (
+                RouterDecision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="auto_rag",
+                    tier="tier2_flash",
+                    queue="none",
+                    predicted_intent="cross_customer_data_request",
+                    escalate=False,
+                    sentiment="neutral",
+                    urgency="normal",
+                    reason="security_refusal_cross_customer_data_request",
+                    degraded=False,
+                    calming_ack=ORDER_CROSS_CUSTOMER_REFUSAL,
+                    latency_ms=eff_latency_ms,
+                    details=details_ti,
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
+                ),
+                ti_error,
+                ti_timed_out,
+                ti_latency_ms,
+            )
+
+        if ti_interpretation.security.authorization_bypass_attempt:
+            return (
+                RouterDecision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="auto_rag",
+                    tier="tier2_flash",
+                    queue="none",
+                    predicted_intent="authorization_bypass_attempt",
+                    escalate=False,
+                    sentiment="neutral",
+                    urgency="normal",
+                    reason="security_refusal_authorization_bypass_attempt",
+                    calming_ack=AUTH_BYPASS_REFUSAL,
+                    latency_ms=eff_latency_ms,
+                    details=details_ti,
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
+                ),
+                ti_error,
+                ti_timed_out,
+                ti_latency_ms,
+            )
+
+        return None
+
+    def _handle_followup_turn_act(
+        self,
+        t_id: str,
+        session_id: str,
+        ti_interpretation: TurnInterpretation,
+        eff_latency_ms: float,
+        details_ti: Dict[str, Any],
+        tokenized_text: Optional[str],
+        pii_mapping: Dict[str, str],
+        s1_error: Optional[str],
+        ti_error: Optional[str],
+        ti_timed_out: bool,
+        ti_latency_ms: float,
+        conversation_state: Optional[ConversationState],
+    ) -> Tuple[RouterDecision, Optional[str], bool, float]:
+        """Handle followup turn act routing to active human holding ticket."""
+        held_ticket = (
+            conversation_state.active_tickets[0]
+            if (conversation_state and conversation_state.active_tickets)
+            else None
+        )
+        ref_id = held_ticket.issue_reference or held_ticket.ticket_uuid if held_ticket else t_id
+        holding_queue = (
+            held_ticket.owner.replace("queue:", "")
+            if (held_ticket and held_ticket.owner.startswith("queue:"))
+            else "human-standard"
+        )
+        return (
+            RouterDecision(
+                ticket_id=ref_id,
+                session_id=session_id,
+                decision="escalate",
+                tier="human_holding",
+                queue=holding_queue,
+                predicted_intent="followup",
+                escalate=True,
+                sentiment=ti_interpretation.sentiment,
+                urgency=ti_interpretation.urgency,
+                reason="human_ticket_followup",
+                degraded=bool(s1_error),
+                calming_ack=render_followup_calming_reply(ref_id),
+                latency_ms=eff_latency_ms,
+                details={
+                    **details_ti,
+                    "holding_ticket_id": ref_id,
+                    "holding_ticket_uuid": held_ticket.ticket_uuid if held_ticket else ref_id,
+                },
+                tokenized_text=tokenized_text,
+                pii_mapping=pii_mapping,
+            ),
+            ti_error,
+            ti_timed_out,
+            ti_latency_ms,
+        )
+
+    def _evaluate_ti_turn_acts(
+        self,
+        t_id: str,
+        session_id: str,
+        ti_interpretation: TurnInterpretation,
+        eff_latency_ms: float,
+        details_ti: Dict[str, Any],
+        tokenized_text: Optional[str],
+        pii_mapping: Dict[str, str],
+        s1_error: Optional[str],
+        ti_error: Optional[str],
+        ti_timed_out: bool,
+        ti_latency_ms: float,
+        conversation_state: Optional[ConversationState],
+    ) -> Optional[Tuple[RouterDecision, Optional[str], bool, float]]:
+        """Evaluate Turn Acts: conditional resolution, confirmation, resolution report, and followup (REQ-TURN-003, REQ-AGENT-033)."""
+        # 2. Turn Acts: Conditional Resolution
+        if ti_interpretation.turn_act == "conditional_resolution":
+            return (
+                RouterDecision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="auto_rag",
+                    tier="ticket_lifecycle",
+                    queue="none",
+                    predicted_intent="status_inquiry",
+                    escalate=False,
+                    sentiment="neutral",
+                    urgency="normal",
+                    reason="conditional_resolution_acknowledgement",
+                    degraded=False,
+                    calming_ack="Understood! Please keep us posted once your package arrives, or let us know if anything else comes up.",
+                    latency_ms=eff_latency_ms,
+                    details={**details_ti, "condition_detected": True},
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
+                ),
+                ti_error,
+                ti_timed_out,
+                ti_latency_ms,
+            )
+
+        # 3. Turn Acts: Confirmation Yes / No
+        if ti_interpretation.turn_act in ("confirmation_yes", "confirmation_no"):
+            return (
+                RouterDecision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="auto_rag",
+                    tier="ticket_lifecycle",
+                    queue="none",
+                    predicted_intent="confirmation",
+                    escalate=False,
+                    sentiment="neutral",
+                    urgency="normal",
+                    reason=f"turn_act_{ti_interpretation.turn_act}",
+                    degraded=False,
+                    latency_ms=eff_latency_ms,
+                    details=details_ti,
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
+                ),
+                ti_error,
+                ti_timed_out,
+                ti_latency_ms,
+            )
+
+        # 4. Turn Act: Resolution Report
+        if ti_interpretation.turn_act == "resolution_report":
+            return (
+                RouterDecision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="auto_rag",
+                    tier="ticket_lifecycle",
+                    queue="none",
+                    predicted_intent="status_inquiry",
+                    escalate=False,
+                    sentiment=ti_interpretation.sentiment,
+                    urgency=ti_interpretation.urgency,
+                    reason="resolution_report_received",
+                    degraded=bool(s1_error),
+                    latency_ms=eff_latency_ms,
+                    details=details_ti,
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
+                ),
+                ti_error,
+                ti_timed_out,
+                ti_latency_ms,
+            )
+
+        # 5. Turn Act: Follow-up to active holding ticket
+        if ti_interpretation.turn_act == "followup_to_active_ticket":
+            return self._handle_followup_turn_act(
+                t_id=t_id, session_id=session_id, ti_interpretation=ti_interpretation,
+                eff_latency_ms=eff_latency_ms, details_ti=details_ti,
+                tokenized_text=tokenized_text, pii_mapping=pii_mapping,
+                s1_error=s1_error, ti_error=ti_error, ti_timed_out=ti_timed_out,
+                ti_latency_ms=ti_latency_ms, conversation_state=conversation_state,
+            )
+
+        return None
+
+    def _evaluate_ti_routing_decision(
+        self,
+        t_id: str,
+        session_id: str,
+        ti_interpretation: TurnInterpretation,
+        s1_pred: Optional[RouterPrediction],
+        s1_error: Optional[str],
+        eff_latency_ms: float,
+        details_ti: Dict[str, Any],
+        tokenized_text: Optional[str],
+        pii_mapping: Dict[str, str],
+        ti_error: Optional[str],
+        ti_timed_out: bool,
+        ti_latency_ms: float,
+        verified_facts: Optional[VerifiedFacts],
+    ) -> Tuple[RouterDecision, Optional[str], bool, float]:
+        """Evaluate final routing decision (escalation invariant, out-of-scope, or auto-rag) (REQ-AGENT-003, REQ-AGENT-004)."""
+        # Escalation Invariant
+        s1_esc = (
+            s1_pred is not None
+            and isinstance(getattr(s1_pred, "escalate_prob", None), (int, float))
+            and (
+                s1_pred.escalate_prob >= self.thresholds.tau_esc
+                or s1_pred.sentiment == "angry"
+                or s1_pred.urgency == "immediate"
+            )
+        )
+        final_escalate = (
+            ti_interpretation.escalate
+            or s1_esc
+            or ti_interpretation.sentiment == "angry"
+            or ti_interpretation.urgency == "immediate"
+        )
+        if final_escalate:
+            queue = evaluate_gaming_resistant_priority(
+                facts=verified_facts,
+                sentiment=ti_interpretation.sentiment,
+                urgency=ti_interpretation.urgency,
+            )
+            return (
+                RouterDecision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="escalate",
+                    tier="tier2_flash",
+                    queue=queue.value,
+                    predicted_intent=ti_interpretation.primary_intent,
+                    escalate=True,
+                    sentiment=ti_interpretation.sentiment,
+                    urgency=ti_interpretation.urgency,
+                    reason=ti_interpretation.escalation_reason or "tier2_flash_escalation",
+                    degraded=bool(s1_error),
+                    latency_ms=eff_latency_ms,
+                    details=details_ti,
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
+                ),
+                ti_error,
+                ti_timed_out,
+                ti_latency_ms,
+            )
+
+        # Out-of-Scope Queries
+        if ti_interpretation.out_of_scope:
+            return (
+                RouterDecision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="reject_oos",
+                    tier="tier2_flash",
+                    queue="none",
+                    predicted_intent="other",
+                    escalate=False,
+                    sentiment=ti_interpretation.sentiment,
+                    urgency=ti_interpretation.urgency,
+                    reason="tier2_out_of_scope",
+                    degraded=False,
+                    latency_ms=eff_latency_ms,
+                    details={**details_ti, "out_of_scope": True},
+                    tokenized_text=tokenized_text,
+                    pii_mapping=pii_mapping,
+                ),
+                ti_error,
+                ti_timed_out,
+                ti_latency_ms,
+            )
+
+        # Standard Auto-RAG path
+        return (
+            RouterDecision(
+                ticket_id=t_id,
+                session_id=session_id,
+                decision="auto_rag",
+                tier="tier2_flash",
+                queue="none",
+                predicted_intent=ti_interpretation.primary_intent,
+                escalate=False,
+                sentiment=ti_interpretation.sentiment,
+                urgency=ti_interpretation.urgency,
+                reason="tier2_flash_auto_rag",
+                degraded=bool(s1_error),
+                latency_ms=eff_latency_ms,
+                details=details_ti,
+                tokenized_text=tokenized_text,
+                pii_mapping=pii_mapping,
+            ),
+            ti_error,
+            ti_timed_out,
+            ti_latency_ms,
+        )
+
+    def _evaluate_turn_interpretation(
+        self,
+        t_id: str,
+        session_id: str,
+        text: str,
+        conversation_state: Optional[ConversationState],
+        recent_intents: Optional[List[str]],
+        verified_facts: Optional[VerifiedFacts],
+        s1_pred: Optional[RouterPrediction],
+        s1_summary: Optional[Dict[str, Any]],
+        s1_error: Optional[str],
+        ma_details: Dict[str, Any],
+        sanitized_text: Optional[str],
+        prompt_safety_shadow: Optional[Dict[str, Any]],
+        tokenized_text: Optional[str],
+        pii_mapping: Dict[str, str],
+    ) -> Tuple[Optional[RouterDecision], Optional[str], bool, float]:
+        """Invoke System 2 Turn Interpreter and evaluate turn acts, security refusals, and escalation."""
         text_for_ti = tokenized_text if tokenized_text is not None else text
         ti_interpretation: Optional[TurnInterpretation] = None
         ti_error: Optional[str] = None
@@ -786,312 +1193,123 @@ class TriagePolicy:
 
         ti_latency_ms = (time.monotonic() - t_ti_start) * 1000.0
 
-        if ti_interpretation is not None:
-            # Deterministic Turn Acts and Security Refusals (REQ-TURN-004)
-            details_ti: Dict[str, Any] = {
-                "s1_error": s1_error,
-                "turn_act": ti_interpretation.turn_act,
-                "confidence": ti_interpretation.confidence,
-                "turn_interpretation": ti_interpretation.model_dump(),
-            }
-            if ti_interpretation.details:
-                details_ti.update(ti_interpretation.details)
-            if s1_summary is not None:
-                details_ti["s1_prediction"] = s1_summary
-            if ma_details:
-                details_ti["model_armor"] = ma_details
-            if sanitized_text:
-                details_ti["sanitized_text"] = sanitized_text
-            if prompt_safety_shadow:
-                details_ti["prompt_safety_shadow"] = prompt_safety_shadow
+        if ti_interpretation is None:
+            return None, ti_error, ti_timed_out, ti_latency_ms
 
-            # 1. Security Refusals & Conversation History Access
-            if (
-                ti_interpretation.security.conversation_history_request
-                or ti_interpretation.primary_intent == "conversation_history_access"
-            ):
-                return RouterDecision(
-                    ticket_id=t_id,
-                    session_id=session_id,
-                    decision="auto_rag",
-                    tier="tier2_flash",
-                    queue="none",
-                    predicted_intent="conversation_history_access",
-                    escalate=False,
-                    sentiment="neutral",
-                    urgency="normal",
-                    reason="conversation_history_access",
-                    degraded=False,
-                    latency_ms=ti_interpretation.latency_ms or ti_latency_ms,
-                    details=details_ti,
-                    tokenized_text=tokenized_text,
-                    pii_mapping=pii_mapping,
-                )
+        details_ti: Dict[str, Any] = {
+            "s1_error": s1_error,
+            "turn_act": ti_interpretation.turn_act,
+            "confidence": ti_interpretation.confidence,
+            "turn_interpretation": ti_interpretation.model_dump(),
+        }
+        if ti_interpretation.details:
+            details_ti.update(ti_interpretation.details)
+        if s1_summary is not None:
+            details_ti["s1_prediction"] = s1_summary
+        if ma_details:
+            details_ti["model_armor"] = ma_details
+        if sanitized_text:
+            details_ti["sanitized_text"] = sanitized_text
+        if prompt_safety_shadow:
+            details_ti["prompt_safety_shadow"] = prompt_safety_shadow
 
-            if ti_interpretation.security.cross_customer_data_request:
-                return RouterDecision(
-                    ticket_id=t_id,
-                    session_id=session_id,
-                    decision="auto_rag",
-                    tier="tier2_flash",
-                    queue="none",
-                    predicted_intent="cross_customer_data_request",
-                    escalate=False,
-                    sentiment="neutral",
-                    urgency="normal",
-                    reason="security_refusal_cross_customer_data_request",
-                    degraded=False,
-                    calming_ack=ORDER_CROSS_CUSTOMER_REFUSAL,
-                    latency_ms=ti_interpretation.latency_ms or ti_latency_ms,
-                    details=details_ti,
-                    tokenized_text=tokenized_text,
-                    pii_mapping=pii_mapping,
-                )
+        eff_latency_ms = ti_interpretation.latency_ms or ti_latency_ms
 
-            if ti_interpretation.security.authorization_bypass_attempt:
-                return RouterDecision(
-                    ticket_id=t_id,
-                    session_id=session_id,
-                    decision="auto_rag",
-                    tier="tier2_flash",
-                    queue="none",
-                    predicted_intent="authorization_bypass_attempt",
-                    escalate=False,
-                    sentiment="neutral",
-                    urgency="normal",
-                    reason="security_refusal_authorization_bypass_attempt",
-                    calming_ack=AUTH_BYPASS_REFUSAL,
-                    latency_ms=ti_interpretation.latency_ms or ti_latency_ms,
-                    details=details_ti,
-                    tokenized_text=tokenized_text,
-                    pii_mapping=pii_mapping,
-                )
-
-            # 2. Turn Acts: Conditional Resolution
-            if ti_interpretation.turn_act == "conditional_resolution":
-                return RouterDecision(
-                    ticket_id=t_id,
-                    session_id=session_id,
-                    decision="auto_rag",
-                    tier="ticket_lifecycle",
-                    queue="none",
-                    predicted_intent="status_inquiry",
-                    escalate=False,
-                    sentiment="neutral",
-                    urgency="normal",
-                    reason="conditional_resolution_acknowledgement",
-                    degraded=False,
-                    calming_ack="Understood! Please keep us posted once your package arrives, or let us know if anything else comes up.",
-                    latency_ms=ti_interpretation.latency_ms or ti_latency_ms,
-                    details={**details_ti, "condition_detected": True},
-                    tokenized_text=tokenized_text,
-                    pii_mapping=pii_mapping,
-                )
-
-            # 3. Turn Acts: Confirmation Yes / No
-            if ti_interpretation.turn_act in ("confirmation_yes", "confirmation_no"):
-                return RouterDecision(
-                    ticket_id=t_id,
-                    session_id=session_id,
-                    decision="auto_rag",
-                    tier="ticket_lifecycle",
-                    queue="none",
-                    predicted_intent="confirmation",
-                    escalate=False,
-                    sentiment="neutral",
-                    urgency="normal",
-                    reason=f"turn_act_{ti_interpretation.turn_act}",
-                    degraded=False,
-                    latency_ms=ti_interpretation.latency_ms or ti_latency_ms,
-                    details=details_ti,
-                    tokenized_text=tokenized_text,
-                    pii_mapping=pii_mapping,
-                )
-
-            # 4. Turn Act: Resolution Report (REQ-TURN-004 item 7)
-            if ti_interpretation.turn_act == "resolution_report":
-                return RouterDecision(
-                    ticket_id=t_id,
-                    session_id=session_id,
-                    decision="auto_rag",
-                    tier="ticket_lifecycle",
-                    queue="none",
-                    predicted_intent="status_inquiry",
-                    escalate=False,
-                    sentiment=ti_interpretation.sentiment,
-                    urgency=ti_interpretation.urgency,
-                    reason="resolution_report_received",
-                    degraded=bool(s1_error),
-                    latency_ms=ti_interpretation.latency_ms or ti_latency_ms,
-                    details=details_ti,
-                    tokenized_text=tokenized_text,
-                    pii_mapping=pii_mapping,
-                )
-
-            # 5. Turn Act: Follow-up to active holding ticket (REQ-TURN-004 item 8, REQ-AGENT-033)
-            if ti_interpretation.turn_act == "followup_to_active_ticket":
-                held_ticket = (
-                    conversation_state.active_tickets[0]
-                    if (conversation_state and conversation_state.active_tickets)
-                    else None
-                )
-                ref_id = (
-                    held_ticket.issue_reference or held_ticket.ticket_uuid
-                    if held_ticket
-                    else t_id
-                )
-                holding_queue = (
-                    held_ticket.owner.replace("queue:", "")
-                    if (held_ticket and held_ticket.owner.startswith("queue:"))
-                    else "human-standard"
-                )
-                return RouterDecision(
-                    ticket_id=ref_id,
-                    session_id=session_id,
-                    decision="escalate",
-                    tier="human_holding",
-                    queue=holding_queue,
-                    predicted_intent="followup",
-                    escalate=True,
-                    sentiment=ti_interpretation.sentiment,
-                    urgency=ti_interpretation.urgency,
-                    reason="human_ticket_followup",
-                    degraded=bool(s1_error),
-                    calming_ack=render_followup_calming_reply(ref_id),
-                    latency_ms=ti_interpretation.latency_ms or ti_latency_ms,
-                    details={
-                        **details_ti,
-                        "holding_ticket_id": ref_id,
-                        "holding_ticket_uuid": held_ticket.ticket_uuid if held_ticket else ref_id,
-                    },
-                    tokenized_text=tokenized_text,
-                    pii_mapping=pii_mapping,
-                )
-
-            # 4. Escalation Invariant (REQ-AGENT-003: Add-only escalation)
-            s1_esc = (
-                s1_pred is not None
-                and isinstance(getattr(s1_pred, "escalate_prob", None), (int, float))
-                and (
-                    s1_pred.escalate_prob >= self.thresholds.tau_esc
-                    or s1_pred.sentiment == "angry"
-                    or s1_pred.urgency == "immediate"
-                )
-            )
-            final_escalate = (
-                ti_interpretation.escalate
-                or s1_esc
-                or ti_interpretation.sentiment == "angry"
-                or ti_interpretation.urgency == "immediate"
-            )
-
-            if final_escalate:
-                queue = evaluate_gaming_resistant_priority(
-                    facts=verified_facts,
-                    sentiment=ti_interpretation.sentiment,
-                    urgency=ti_interpretation.urgency,
-                )
-                return RouterDecision(
-                    ticket_id=t_id,
-                    session_id=session_id,
-                    decision="escalate",
-                    tier="tier2_flash",
-                    queue=queue.value,
-                    predicted_intent=ti_interpretation.primary_intent,
-                    escalate=True,
-                    sentiment=ti_interpretation.sentiment,
-                    urgency=ti_interpretation.urgency,
-                    reason=ti_interpretation.escalation_reason or "tier2_flash_escalation",
-                    degraded=bool(s1_error),
-                    latency_ms=ti_interpretation.latency_ms or ti_latency_ms,
-                    details=details_ti,
-                    tokenized_text=tokenized_text,
-                    pii_mapping=pii_mapping,
-                )
-
-            # 5. Out-of-Scope Queries
-            if ti_interpretation.out_of_scope:
-                return RouterDecision(
-                    ticket_id=t_id,
-                    session_id=session_id,
-                    decision="reject_oos",
-                    tier="tier2_flash",
-                    queue="none",
-                    predicted_intent="other",
-                    escalate=False,
-                    sentiment=ti_interpretation.sentiment,
-                    urgency=ti_interpretation.urgency,
-                    reason="tier2_out_of_scope",
-                    degraded=False,
-                    latency_ms=ti_interpretation.latency_ms or ti_latency_ms,
-                    details={**details_ti, "out_of_scope": True},
-                    tokenized_text=tokenized_text,
-                    pii_mapping=pii_mapping,
-                )
-
-            # 6. Auto-RAG path
-            return RouterDecision(
-                ticket_id=t_id,
-                session_id=session_id,
-                decision="auto_rag",
-                tier="tier2_flash",
-                queue="none",
-                predicted_intent=ti_interpretation.primary_intent,
-                escalate=False,
-                sentiment=ti_interpretation.sentiment,
-                urgency=ti_interpretation.urgency,
-                reason="tier2_flash_auto_rag",
-                degraded=bool(s1_error),
-                latency_ms=ti_interpretation.latency_ms or ti_latency_ms,
-                details=details_ti,
-                tokenized_text=tokenized_text,
-                pii_mapping=pii_mapping,
-            )
-
-        # ---------------------------------------------------------------------
-        # 4. Degraded Fallback Hierarchy (REQ-TURN-003 §7, REQ-AGENT-011)
-        # ---------------------------------------------------------------------
-        # A. Usable Laya encoder prediction
-        has_usable_s1 = (
-            s1_pred is not None
-            and s1_pred.intent in _SELF_SERVICE_INTENTS
-            and s1_pred.intent_prob >= self.thresholds.tau_usable_laya
-            and s1_pred.escalate_prob < self.thresholds.tau_esc
-            and s1_pred.sentiment != "angry"
-            and s1_pred.urgency != "immediate"
+        # 1. Security Refusals & Conversation History Access
+        sec_res = self._evaluate_ti_security_intents(
+            t_id=t_id, session_id=session_id, ti_interpretation=ti_interpretation,
+            eff_latency_ms=eff_latency_ms, details_ti=details_ti,
+            tokenized_text=tokenized_text, pii_mapping=pii_mapping,
+            ti_error=ti_error, ti_timed_out=ti_timed_out, ti_latency_ms=ti_latency_ms,
         )
-        if has_usable_s1:
-            details_s1_deg: Dict[str, Any] = {
-                "s1_error": s1_error,
-                "turn_interpreter_error": ti_error,
-                "turn_interpreter_timed_out": ti_timed_out,
-                "t2_error": ti_error,
-            }
-            if s1_summary is not None:
-                details_s1_deg["s1_prediction"] = s1_summary
-            if ma_details:
-                details_s1_deg["model_armor"] = ma_details
-            if sanitized_text:
-                details_s1_deg["sanitized_text"] = sanitized_text
+        if sec_res is not None:
+            return sec_res
 
-            return RouterDecision(
-                ticket_id=t_id,
-                session_id=session_id,
-                decision="auto_rag",
-                tier="tier1_router_s1",
-                queue="none",
-                predicted_intent=s1_pred.intent,
-                escalate=False,
-                sentiment=s1_pred.sentiment,
-                urgency=s1_pred.urgency,
-                reason="tier2_unavailable_used_tier1",
-                degraded=True,
-                latency_ms=ti_latency_ms,
-                details=details_s1_deg,
-                tokenized_text=tokenized_text,
-                pii_mapping=pii_mapping,
-            )
+        # 2. Turn Acts Evaluation
+        act_res = self._evaluate_ti_turn_acts(
+            t_id=t_id, session_id=session_id, ti_interpretation=ti_interpretation,
+            eff_latency_ms=eff_latency_ms, details_ti=details_ti,
+            tokenized_text=tokenized_text, pii_mapping=pii_mapping,
+            s1_error=s1_error, ti_error=ti_error, ti_timed_out=ti_timed_out,
+            ti_latency_ms=ti_latency_ms, conversation_state=conversation_state,
+        )
+        if act_res is not None:
+            return act_res
 
+        return self._evaluate_ti_routing_decision(
+            t_id=t_id, session_id=session_id, ti_interpretation=ti_interpretation,
+            s1_pred=s1_pred, s1_error=s1_error, eff_latency_ms=eff_latency_ms,
+            details_ti=details_ti, tokenized_text=tokenized_text,
+            pii_mapping=pii_mapping, ti_error=ti_error, ti_timed_out=ti_timed_out,
+            ti_latency_ms=ti_latency_ms, verified_facts=verified_facts,
+        )
+
+    def _evaluate_s1_degraded_fallback(
+        self,
+        t_id: str,
+        session_id: str,
+        s1_pred: RouterPrediction,
+        s1_error: Optional[str],
+        s1_summary: Optional[Dict[str, Any]],
+        ti_error: Optional[str],
+        ti_timed_out: bool,
+        ti_latency_ms: float,
+        ma_details: Dict[str, Any],
+        sanitized_text: Optional[str],
+        tokenized_text: Optional[str],
+        pii_mapping: Dict[str, str],
+    ) -> RouterDecision:
+        """Route turn using usable router-s1 encoder prediction during Tier 2 degradation."""
+        details_s1_deg: Dict[str, Any] = {
+            "s1_error": s1_error,
+            "turn_interpreter_error": ti_error,
+            "turn_interpreter_timed_out": ti_timed_out,
+            "t2_error": ti_error,
+        }
+        if s1_summary is not None:
+            details_s1_deg["s1_prediction"] = s1_summary
+        if ma_details:
+            details_s1_deg["model_armor"] = ma_details
+        if sanitized_text:
+            details_s1_deg["sanitized_text"] = sanitized_text
+
+        return RouterDecision(
+            ticket_id=t_id,
+            session_id=session_id,
+            decision="auto_rag",
+            tier="tier1_router_s1",
+            queue="none",
+            predicted_intent=s1_pred.intent,
+            escalate=False,
+            sentiment=s1_pred.sentiment,
+            urgency=s1_pred.urgency,
+            reason="tier2_unavailable_used_tier1",
+            degraded=True,
+            latency_ms=ti_latency_ms,
+            details=details_s1_deg,
+            tokenized_text=tokenized_text,
+            pii_mapping=pii_mapping,
+        )
+
+
+
+    def _evaluate_pending_or_holding_fallback(
+        self,
+        t_id: str,
+        session_id: str,
+        has_pending: bool,
+        conversation_state: Optional[ConversationState],
+        s1_error: Optional[str],
+        s1_summary: Optional[Dict[str, Any]],
+        ti_error: Optional[str],
+        ti_timed_out: bool,
+        ti_latency_ms: float,
+        ma_details: Dict[str, Any],
+        sanitized_text: Optional[str],
+        tokenized_text: Optional[str],
+        pii_mapping: Dict[str, str],
+    ) -> Optional[RouterDecision]:
+        """Evaluate pending confirmation retention and active human holding ticket during degradation (REQ-TURN-005, REQ-AGENT-033)."""
         # B. Pending confirmation active -> Retain ticket, do NOT close!
         if has_pending:
             details_deg: Dict[str, Any] = {
@@ -1170,6 +1388,58 @@ class TriagePolicy:
                 pii_mapping=pii_mapping,
             )
 
+        return None
+
+    def _evaluate_degraded_fallback(
+        self,
+        t_id: str,
+        session_id: str,
+        s1_pred: Optional[RouterPrediction],
+        s1_error: Optional[str],
+        s1_summary: Optional[Dict[str, Any]],
+        ti_error: Optional[str],
+        ti_timed_out: bool,
+        ti_latency_ms: float,
+        has_pending: bool,
+        conversation_state: Optional[ConversationState],
+        verified_facts: Optional[VerifiedFacts],
+        ma_details: Dict[str, Any],
+        sanitized_text: Optional[str],
+        prompt_safety_shadow: Optional[Dict[str, Any]],
+        tokenized_text: Optional[str],
+        pii_mapping: Dict[str, str],
+    ) -> RouterDecision:
+        """Execute degraded fallback hierarchy when Turn Interpreter is unavailable or timed out."""
+        # A. Usable Laya encoder prediction
+        has_usable_s1 = (
+            s1_pred is not None
+            and s1_pred.intent in _SELF_SERVICE_INTENTS
+            and s1_pred.intent_prob >= self.thresholds.tau_usable_laya
+            and s1_pred.escalate_prob < self.thresholds.tau_esc
+            and s1_pred.sentiment != "angry"
+            and s1_pred.urgency != "immediate"
+        )
+        if has_usable_s1:
+            return self._evaluate_s1_degraded_fallback(
+                t_id=t_id, session_id=session_id, s1_pred=s1_pred,
+                s1_error=s1_error, s1_summary=s1_summary, ti_error=ti_error,
+                ti_timed_out=ti_timed_out, ti_latency_ms=ti_latency_ms,
+                ma_details=ma_details, sanitized_text=sanitized_text,
+                tokenized_text=tokenized_text, pii_mapping=pii_mapping,
+            )
+
+        # B. Pending confirmation active or active human holding ticket
+        held_res = self._evaluate_pending_or_holding_fallback(
+            t_id=t_id, session_id=session_id, has_pending=has_pending,
+            conversation_state=conversation_state, s1_error=s1_error,
+            s1_summary=s1_summary, ti_error=ti_error, ti_timed_out=ti_timed_out,
+            ti_latency_ms=ti_latency_ms, ma_details=ma_details,
+            sanitized_text=sanitized_text, tokenized_text=tokenized_text,
+            pii_mapping=pii_mapping,
+        )
+        if held_res is not None:
+            return held_res
+
         # C. Total degradation -> Route to human queue, NEVER drop ticket!
         fallback_queue = evaluate_gaming_resistant_priority(facts=verified_facts)
         details_fb: Dict[str, Any] = {
@@ -1201,6 +1471,105 @@ class TriagePolicy:
             degraded=True,
             latency_ms=ti_latency_ms,
             details=details_fb,
+            tokenized_text=tokenized_text,
+            pii_mapping=pii_mapping,
+        )
+
+    def evaluate(
+        self,
+        text: str,
+        session_id: str = "default_session",
+        customer_id: Optional[str] = None,
+        verified_facts: Optional[VerifiedFacts] = None,
+        ticket_id: Optional[str] = None,
+        precomputed_ma: Optional[
+            Tuple[Optional[ModelArmorVerdict], Optional[str], Optional[str], Dict[str, str]]
+        ] = None,
+        conversation_state: Optional[ConversationState] = None,
+        recent_intents: Optional[List[str]] = None,
+    ) -> RouterDecision:
+        """Execute tiered routing policy on inbound message text (REQ-TURN-003)."""
+        t_id = ticket_id or legacy_session_issue_reference(session_id)
+
+        # Stage 1: Run Model Armor and System 1 (router-s1)
+        ma_verdict, s1_pred, s1_error, sanitized_text, tokenized_text, pii_mapping = (
+            self._run_model_armor_and_s1(text=text, precomputed_ma=precomputed_ma)
+        )
+
+        # Stage 2: Evaluate Model Armor triggers (ingress guard, security block, abuse)
+        ma_decision, ma_details, prompt_safety_shadow = self._evaluate_model_armor_triggers(
+            t_id=t_id,
+            session_id=session_id,
+            ma_verdict=ma_verdict,
+            sanitized_text=sanitized_text,
+            tokenized_text=tokenized_text,
+            pii_mapping=pii_mapping,
+            verified_facts=verified_facts,
+        )
+        if ma_decision is not None:
+            return ma_decision
+
+        if s1_pred is None and self.s1_client is not None:
+            s1_pred, s1_error = self._call_s1(text)
+        s1_summary = _summarize_s1_prediction(s1_pred)
+
+        has_pending = conversation_state is not None and conversation_state.pending_confirmation is not None
+        has_held_tickets = conversation_state is not None and len(conversation_state.active_tickets) > 0
+
+        # Stage 3: Evaluate System 1 Laya Fast Paths
+        laya_decision = self._evaluate_laya_fast_path(
+            t_id=t_id,
+            session_id=session_id,
+            s1_pred=s1_pred,
+            has_pending=has_pending,
+            has_held_tickets=has_held_tickets,
+            verified_facts=verified_facts,
+            s1_summary=s1_summary,
+            ma_details=ma_details,
+            sanitized_text=sanitized_text,
+            prompt_safety_shadow=prompt_safety_shadow,
+            tokenized_text=tokenized_text,
+            pii_mapping=pii_mapping,
+        )
+        if laya_decision is not None:
+            return laya_decision
+
+        # Stage 4: Evaluate System 2 Turn Interpreter
+        ti_decision, ti_error, ti_timed_out, ti_latency_ms = self._evaluate_turn_interpretation(
+            t_id=t_id,
+            session_id=session_id,
+            text=text,
+            conversation_state=conversation_state,
+            recent_intents=recent_intents,
+            verified_facts=verified_facts,
+            s1_pred=s1_pred,
+            s1_summary=s1_summary,
+            s1_error=s1_error,
+            ma_details=ma_details,
+            sanitized_text=sanitized_text,
+            prompt_safety_shadow=prompt_safety_shadow,
+            tokenized_text=tokenized_text,
+            pii_mapping=pii_mapping,
+        )
+        if ti_decision is not None:
+            return ti_decision
+
+        # Stage 5: Degraded Fallback Hierarchy
+        return self._evaluate_degraded_fallback(
+            t_id=t_id,
+            session_id=session_id,
+            s1_pred=s1_pred,
+            s1_error=s1_error,
+            s1_summary=s1_summary,
+            ti_error=ti_error,
+            ti_timed_out=ti_timed_out,
+            ti_latency_ms=ti_latency_ms,
+            has_pending=has_pending,
+            conversation_state=conversation_state,
+            verified_facts=verified_facts,
+            ma_details=ma_details,
+            sanitized_text=sanitized_text,
+            prompt_safety_shadow=prompt_safety_shadow,
             tokenized_text=tokenized_text,
             pii_mapping=pii_mapping,
         )

@@ -16,12 +16,13 @@ import os
 import sys
 from typing import Any, Dict, List, Optional, Protocol, Sequence
 
+from ticket_router.common.deploy_defaults import get_deploy_default
 from ticket_router.common.resilience import MEMORY_BANK_TIMEOUT_S
 
 logger = logging.getLogger("ticket_router.memory")
 
 DEFAULT_MEMORY_BANK_ENGINE = (
-    "projects/620485621180/locations/us-central1/reasoningEngines/2170218524805431296"
+    os.environ.get("MEMORY_BANK_ENGINE_NAME") or get_deploy_default("memory_bank.default_engine")
 )
 DEFAULT_RETRIEVAL_TIMEOUT_S = MEMORY_BANK_TIMEOUT_S  # Hard timeout (~300 ms)
 MAX_MEMORY_SUMMARY_CHARS = 400
@@ -125,7 +126,7 @@ class VertexMemoryBankClient:
             or os.environ.get("MEMORY_BANK_ENGINE_NAME")
             or DEFAULT_MEMORY_BANK_ENGINE
         )
-        self.project = project or os.environ.get("GOOGLE_CLOUD_PROJECT") or "susmith-fde-ticket-router"
+        self.project = project or os.environ.get("GOOGLE_CLOUD_PROJECT") or get_deploy_default("project")
         self.region = region or os.environ.get("GOOGLE_CLOUD_LOCATION") or "us-central1"
         self._client = client
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="mem_bank")

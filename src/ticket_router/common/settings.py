@@ -10,14 +10,16 @@ import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
+from ticket_router.common.deploy_defaults import get_deploy_default
 from ticket_router.config.models import get_serving_config
 
-DEFAULT_PROJECT: str = "susmith-fde-ticket-router"
-DEFAULT_LOCATION: str = "us-central1"
+DEFAULT_PROJECT: str = os.environ.get("GOOGLE_CLOUD_PROJECT") or get_deploy_default("project")
+DEFAULT_LOCATION: str = os.environ.get("GOOGLE_CLOUD_LOCATION") or get_deploy_default("region", "us-central1")
 DEFAULT_AGENT_SEARCH_LOCATION: str = "global"
 DEFAULT_AGENT_SEARCH_ENGINE_ID: str = "support-kb-search"
-DEFAULT_CCT_KEY_PREFIX: str = (
-    f"projects/{DEFAULT_PROJECT}/locations/{DEFAULT_LOCATION}/keyRings/ticket-router-identity/cryptoKeys/customer-context-signer/"
+DEFAULT_CCT_KEY_PREFIX: str = os.environ.get("CCT_KEY_PREFIX") or get_deploy_default(
+    "security.cct_key_prefix",
+    f"projects/{DEFAULT_PROJECT}/locations/{DEFAULT_LOCATION}/keyRings/ticket-router-identity/cryptoKeys/customer-context-signer/",
 )
 
 
@@ -149,9 +151,7 @@ class Settings:
             cct_ttl_s = 300
 
         cct_key_version = environ.get("CCT_KEY_VERSION", "").strip()
-        default_cct_prefix = (
-            "projects/susmith-fde-ticket-router/locations/us-central1/keyRings/ticket-router-identity/cryptoKeys/customer-context-signer/"
-        )
+        default_cct_prefix = DEFAULT_CCT_KEY_PREFIX
         cct_key_prefix = environ.get("CCT_KEY_PREFIX", default_cct_prefix).strip() or default_cct_prefix
 
         raw_cct_issuers = environ.get("CCT_ALLOWED_ISSUERS")

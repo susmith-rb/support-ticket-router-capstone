@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, 
 from pydantic import BaseModel, ConfigDict, Field
 
 from ticket_router.agents.human_queue.agent import HumanQueueAgent
+from ticket_router.common.deploy_defaults import get_deploy_default
 from ticket_router.store.interfaces import TicketRepository
 
 logger = logging.getLogger("ticket_router.agents.human_queue.server")
@@ -142,8 +143,8 @@ def verify_review_ui_caller(request: Request) -> str:
     allowed_raw = os.environ.get("REVIEW_UI_CALLER_EMAILS", "")
     allowed_callers = {e.strip() for e in allowed_raw.split(",") if e.strip()}
     if not allowed_callers:
-        project_id = os.environ.get("PROJECT_ID", "susmith-fde-ticket-router")
-        allowed_callers = {f"sa-review-ui@{project_id}.iam.gserviceaccount.com"}
+        project_id = os.environ.get("PROJECT_ID") or os.environ.get("GOOGLE_CLOUD_PROJECT") or get_deploy_default("project")
+        allowed_callers = {f"sa-review-ui@{project_id}.iam.gserviceaccount.com"} if project_id else set()
 
     if caller_email not in allowed_callers:
         raise HTTPException(

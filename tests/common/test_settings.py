@@ -2,6 +2,7 @@
 
 # REQ-AGENT-001: Multi-Agent Package Structure and Deployment Topology
 # REQ-AGENT-013: Centralized Model Configuration Resolution
+# REQ-AGENT-038: Centralized Runtime and Deployment Defaults Decoupling
 """
 
 import pytest

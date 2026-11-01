@@ -8,10 +8,12 @@ Delegates to RouterS1Client for persistent keep-alive connection pooling and cir
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ticket_router.agents.faq_resolver.protocols import RerankerProtocol
+from ticket_router.common.deploy_defaults import get_deploy_default
 from ticket_router.common.resilience import (
     LAYA_RERANK_TIMEOUT_S,
     CircuitBreaker,
@@ -26,14 +28,14 @@ class VertexLayaReranker(RerankerProtocol):
     def __init__(
         self,
         endpoint_url: str = "",
-        project: str = "susmith-fde-ticket-router",
+        project: Optional[str] = None,
         location: str = "us-central1",
         timeout_s: float = LAYA_RERANK_TIMEOUT_S,
         circuit_breaker: Optional[CircuitBreaker] = None,
         client: Optional[RouterS1Client] = None,
     ) -> None:
         self.endpoint_url = endpoint_url
-        self.project = project
+        self.project = project or os.environ.get("GOOGLE_CLOUD_PROJECT") or get_deploy_default("project")
         self.location = location
         self.timeout_s = timeout_s
         self.circuit_breaker = circuit_breaker

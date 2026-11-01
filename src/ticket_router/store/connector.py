@@ -7,7 +7,10 @@ without requiring authorized networks, compliant with org policy.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Optional
+
+from ticket_router.common.deploy_defaults import get_deploy_default
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +29,8 @@ class CloudSqlConnectionManager:
 
     def __init__(
         self,
-        project_id: str = "susmith-fde-ticket-router",
-        region: str = "us-central1",
+        project_id: Optional[str] = None,
+        region: Optional[str] = None,
         instance_name: str = "ticket-store",
         database: str = "support",
         user: Optional[str] = None,
@@ -42,7 +45,17 @@ class CloudSqlConnectionManager:
                 "Install with: pip install '.[db]'"
             )
 
-        self.instance_connection_name = f"{project_id}:{region}:{instance_name}"
+        resolved_project = (
+            project_id
+            or os.environ.get("GOOGLE_CLOUD_PROJECT")
+            or get_deploy_default("project")
+        )
+        resolved_region = (
+            region
+            or os.environ.get("GOOGLE_CLOUD_REGION")
+            or get_deploy_default("region")
+        )
+        self.instance_connection_name = f"{resolved_project}:{resolved_region}:{instance_name}"
         self.database = database
         self.user = user
         self.password = password

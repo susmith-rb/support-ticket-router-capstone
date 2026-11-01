@@ -54,3 +54,10 @@ Production telemetry revealed several routing failure modes that compromise user
 - **Acceptance**: `tests/agents/test_turn_interpretation.py::test_deterministic_turn_act_enforcement`
 - **Status**: done
 - **Owner**: agent-service
+
+### REQ-SAFE-006: Staged Triage Pipeline and Golden Replay Verification Invariant
+- **Statement**: Any refactoring of `TriageRouterAgent.triage()`, `TriagePolicy.evaluate()`, or `FaqResolverAgent._resolve_impl()` MUST preserve 100% byte-for-byte behavioral equivalence across all routing decisions, queues, customer-facing text, security refusals, and trace attributes. Equivalence MUST be verified against a comprehensive golden scenario replay harness (`tests/agents/test_triage_golden_replay.py` and `tests/agents/golden/triage_golden_v1.json`) containing at least 25 golden production turns covering: normal self-service intents, explicit escalations, Model Armor security triggers, payment card ingress blocks, conversation holding follow-ups, and multi-turn resolution flows.
+- **Rationale**: TDD §3, §4.2, §14. Prevents subtle behavioral regressions during architectural pipeline decoupling.
+- **Acceptance**: `tests/agents/test_triage_golden_replay.py` (27/27 scenarios exact match).
+- **Status**: done
+- **Owner**: agent-service

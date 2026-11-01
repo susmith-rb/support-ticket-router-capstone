@@ -108,7 +108,7 @@ def assemble_conversation_state(
 
     # 1. Query pending resolution confirmation (REQ-TURN-005)
     conf_ticket: Optional[Dict[str, Any]] = None
-    if mcp_client is not None and hasattr(mcp_client, "get_pending_confirmation"):
+    if mcp_client is not None:
         try:
             conf_resp = mcp_client.get_pending_confirmation(
                 session_id=session_id,

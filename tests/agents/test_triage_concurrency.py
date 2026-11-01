@@ -80,7 +80,7 @@ def test_triage_parallel_io_and_nonfatal_upsert(
             reason="ok",
         )
 
-    monkeypatch.setattr("ticket_router.agents.triage_router.agent.resolve_identity", slow_resolve_identity)
+    monkeypatch.setattr("ticket_router.agents.triage_router.pipeline.resolve_identity", slow_resolve_identity)
 
     class SlowPolicy:
         def evaluate(

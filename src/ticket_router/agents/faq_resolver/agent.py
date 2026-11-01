@@ -24,7 +24,7 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ticket_router.agents.faq_resolver.mcp_client import (
     BolaViolationError,
@@ -278,8 +278,8 @@ class GeminiAnswerClient(LLMClientProtocol):
                     call_kwargs["config"] = genai_types.GenerateContentConfig(
                         thinking_config=genai_types.ThinkingConfig(thinking_level=thinking_lvl)
                     )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Failed to set thinking_config on GenerateContentConfig: %s", exc)
 
         def _invoke_generate() -> Any:
             call_args = dict(call_kwargs)
@@ -317,8 +317,8 @@ class GeminiAnswerClient(LLMClientProtocol):
             parsed = json.loads(clean_text)
             if isinstance(parsed, dict) and "answer" in parsed:
                 return parsed
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to parse LLM response as JSON: %s", exc)
 
         return {
             "answer": clean_text,
@@ -624,8 +624,8 @@ class FaqResolverAgent:
             try:
                 if float(doc_score) < float(min_score):
                     return False
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as exc:
+                logger.debug("Failed to compare doc_score '%s' to min_score '%s': %s", doc_score, min_score, exc)
 
         return True
 
@@ -767,56 +767,11 @@ class FaqResolverAgent:
         finally:
             _active_ticket_uuid.reset(token)
 
-    def _resolve_impl(
-        self,
-        ticket_id: str,
-        session_id: str,
-        message: str,
-        customer_id: Optional[str] = None,
-        customer_verified: Optional[bool] = None,
-        identity_issuer: Optional[str] = None,
-        predicted_intent: Optional[str] = None,
-        memory_summary: Optional[str] = None,
-        untrusted_customer_id: Optional[str] = None,
-        customer_context_token: Optional[str] = None,
-        traceparent: Optional[str] = None,
-        sub_questions: Optional[List[Dict[str, str]]] = None,
-    ) -> ResolutionResult:
-        t_start = self._clock()
-
-        tool_calls_count = 0
-        retrieval_passes_count = 0
-        regeneration_count = 0
-
-        # Enforce initial budget check
-        if self._is_budget_exhausted(t_start):
-            return self._escalate(
-                ticket_id=ticket_id,
-                queue="human-standard",
-                reason="budget_exceeded",
-                degraded=False,
-                message=ESCALATE_BUDGET_EXCEEDED_PRE_MESSAGE,
-                tool_calls_count=0,
-                retrieval_passes_count=0,
-                regeneration_count=0,
-                latency_ms=self._elapsed_ms(t_start),
-                traceparent=traceparent,
-                customer_id=customer_id,
-                session_id=session_id,
-                body_redacted=message,
-            )
-
-        # Determine verification status (REQ-IDENT-004, REQ-IDENT-005)
-        is_verified = (
-            customer_verified
-            if customer_verified is not None
-            else bool(customer_id and not str(customer_id).startswith("anon:"))
-        )
-
-        # -----------------------------------------------------------------
-        # Step 1: Order Lookup (if inquiry requires order status)
-        # -----------------------------------------------------------------
-        # Multi-intent sub-question handling (REQ-SAFE-005)
+    @staticmethod
+    def _classify_sub_questions(
+        sub_questions: Optional[List[Dict[str, str]]],
+    ) -> Tuple[Optional[Dict[str, str]], Optional[Dict[str, str]]]:
+        """Classify sub-questions into FAQ and Order-specific inquiries."""
         faq_sub_q: Optional[Dict[str, str]] = None
         order_sub_q: Optional[Dict[str, str]] = None
         if sub_questions and len(sub_questions) > 1:
@@ -835,10 +790,17 @@ class FaqResolverAgent:
                     "refund",
                 ):
                     faq_sub_q = sq
+        return faq_sub_q, order_sub_q
 
-        order_info: Optional[Dict[str, Any]] = None
-        order_id = self._extract_order_id(message)
-        is_order_specific = bool(order_id) or bool(order_sub_q) or (
+    @staticmethod
+    def _is_order_specific_inquiry(
+        message: str,
+        order_id: Optional[str],
+        order_sub_q: Optional[Dict[str, str]],
+        predicted_intent: Optional[str],
+    ) -> bool:
+        """Determine if an inquiry is specific to an order."""
+        return bool(order_id) or bool(order_sub_q) or (
             predicted_intent is not None
             and predicted_intent in (
                 "shipping",
@@ -872,50 +834,128 @@ class FaqResolverAgent:
             )
         )
 
+    def _handle_unverified_order_inquiry(
+        self,
+        is_order_specific: bool,
+        t_start: float,
+        tool_calls_count: int,
+    ) -> Tuple[Optional[ResolutionResult], Optional[Dict[str, Any]], int]:
+        """Handle unverified order inquiry with sign-in prompt (REQ-IDENT-004, REQ-IDENT-005)."""
+        if not is_order_specific:
+            return None, None, tool_calls_count
+        return (
+            ResolutionResult(
+                status="AUTO_RESOLVED",
+                route="resolved",
+                answer=(
+                    "Please sign in to check your order details and track shipments. "
+                    "If you need further assistance, I can also connect you with a human support specialist."
+                ),
+                message=(
+                    "Please sign in to check your order details and track shipments. "
+                    "If you need further assistance, I can also connect you with a human support specialist."
+                ),
+                citations=[],
+                degraded=False,
+                tool_calls_count=0,
+                retrieval_passes_count=0,
+                regeneration_count=0,
+                latency_ms=self._elapsed_ms(t_start),
+            ),
+            None,
+            tool_calls_count,
+        )
+
+    def _lookup_order(
+        self,
+        ticket_id: str,
+        session_id: str,
+        message: str,
+        customer_id: Optional[str],
+        is_verified: bool,
+        is_order_specific: bool,
+        order_id: Optional[str],
+        untrusted_customer_id: Optional[str],
+        customer_context_token: Optional[str],
+        traceparent: Optional[str],
+        t_start: float,
+        tool_calls_count: int,
+    ) -> Tuple[Optional[ResolutionResult], Optional[Dict[str, Any]], int]:
+        """Perform order lookup with BOLA / IDOR protection and verified identity checks."""
+        order_info: Optional[Dict[str, Any]] = None
         if not is_verified:
-            if is_order_specific:
-                # REQ-IDENT-004, REQ-IDENT-005: Unverified customer attempting order-specific inquiry
-                # Never invoke order lookup; return polite sign-in prompt with human handoff option
-                return ResolutionResult(
-                    status="AUTO_RESOLVED",
-                    route="resolved",
-                    answer=(
-                        "Please sign in to check your order details and track shipments. "
-                        "If you need further assistance, I can also connect you with a human support specialist."
+            return self._handle_unverified_order_inquiry(
+                is_order_specific, t_start, tool_calls_count
+            )
+
+        # Verified customer: invoke order lookup if order_id present
+        if (
+            order_id
+            and self.order_client is not None
+            and tool_calls_count < self.max_tool_calls
+            and not self._is_budget_exhausted(t_start)
+        ):
+            tool_calls_count += 1
+            try:
+                # BOLA / IDOR Protection: customer_id is verified session context
+                get_order_kwargs: Dict[str, Any] = {
+                    "order_id": order_id,
+                    "customer_id": customer_id or "",
+                    "untrusted_customer_id": untrusted_customer_id,
+                }
+                if customer_context_token is not None and customer_context_token != "":
+                    get_order_kwargs["customer_context_token"] = customer_context_token
+                order_info = self.order_client.get_order(**get_order_kwargs)
+            except BolaViolationError:
+                return (
+                    self._escalate(
+                        ticket_id=ticket_id,
+                        queue="human-standard",
+                        reason="bola_violation",
+                        degraded=False,
+                        message=ESCALATE_ACCOUNT_VERIFICATION_MESSAGE,
+                        tool_calls_count=tool_calls_count,
+                        retrieval_passes_count=0,
+                        regeneration_count=0,
+                        latency_ms=self._elapsed_ms(t_start),
+                        traceparent=traceparent,
+                        customer_id=customer_id,
+                        session_id=session_id,
+                        body_redacted=message,
                     ),
-                    message=(
-                        "Please sign in to check your order details and track shipments. "
-                        "If you need further assistance, I can also connect you with a human support specialist."
-                    ),
-                    citations=[],
-                    degraded=False,
-                    tool_calls_count=0,
-                    retrieval_passes_count=0,
-                    regeneration_count=0,
-                    latency_ms=self._elapsed_ms(t_start),
+                    None,
+                    tool_calls_count,
                 )
-            # If not order-specific, unverified customer continues to Step 2 for generic FAQ answers
-        else:
-            # Verified customer: invoke order lookup if order_id present
-            if (
-                order_id
-                and self.order_client is not None
-                and tool_calls_count < self.max_tool_calls
-                and not self._is_budget_exhausted(t_start)
-            ):
-                tool_calls_count += 1
-                try:
-                    # BOLA / IDOR Protection: customer_id is verified session context
-                    get_order_kwargs: Dict[str, Any] = {
-                        "order_id": order_id,
+            except LookupError:
+                order_info = {"order_id": order_id, "status": "NOT_FOUND"}
+            except Exception as exc:
+                logger.warning("Order lookup failed gracefully: %s", exc)
+                order_info = {"order_id": order_id, "status": "UNAVAILABLE"}
+        elif (
+            is_order_specific
+            and self.order_client is not None
+            and hasattr(self.order_client, "list_orders")
+            and tool_calls_count < self.max_tool_calls
+            and not self._is_budget_exhausted(t_start)
+        ):
+            tool_calls_count += 1
+            try:
+                with start_span("faq_resolver.list_orders", {"ticket_id": ticket_id}):
+                    list_orders_kwargs: Dict[str, Any] = {
                         "customer_id": customer_id or "",
-                        "untrusted_customer_id": untrusted_customer_id,
+                        "limit": 5,
                     }
                     if customer_context_token is not None and customer_context_token != "":
-                        get_order_kwargs["customer_context_token"] = customer_context_token
-                    order_info = self.order_client.get_order(**get_order_kwargs)
-                except BolaViolationError:
-                    return self._escalate(
+                        list_orders_kwargs["customer_context_token"] = customer_context_token
+                    listed = self.order_client.list_orders(**list_orders_kwargs)
+                if isinstance(listed, dict) and "orders" in listed:
+                    if listed.get("orders"):
+                        order_info = listed
+                    else:
+                        order_info = {"orders": [], "status": "NO_ORDERS_FOUND"}
+            except BolaViolationError:
+                return (
+                    self._escalate(
                         ticket_id=ticket_id,
                         queue="human-standard",
                         reason="bola_violation",
@@ -929,56 +969,30 @@ class FaqResolverAgent:
                         customer_id=customer_id,
                         session_id=session_id,
                         body_redacted=message,
-                    )
-                except LookupError:
-                    order_info = {"order_id": order_id, "status": "NOT_FOUND"}
-                except Exception as exc:
-                    logger.warning("Order lookup failed gracefully: %s", exc)
-                    order_info = {"order_id": order_id, "status": "UNAVAILABLE"}
-            elif (
-                is_order_specific
-                and self.order_client is not None
-                and hasattr(self.order_client, "list_orders")
-                and tool_calls_count < self.max_tool_calls
-                and not self._is_budget_exhausted(t_start)
-            ):
-                tool_calls_count += 1
-                try:
-                    with start_span("faq_resolver.list_orders", {"ticket_id": ticket_id}):
-                        list_orders_kwargs: Dict[str, Any] = {
-                            "customer_id": customer_id or "",
-                            "limit": 5,
-                        }
-                        if customer_context_token is not None and customer_context_token != "":
-                            list_orders_kwargs["customer_context_token"] = customer_context_token
-                        listed = self.order_client.list_orders(**list_orders_kwargs)
-                    if isinstance(listed, dict) and "orders" in listed:
-                        if listed.get("orders"):
-                            order_info = listed
-                        else:
-                            order_info = {"orders": [], "status": "NO_ORDERS_FOUND"}
-                except BolaViolationError:
-                    return self._escalate(
-                        ticket_id=ticket_id,
-                        queue="human-standard",
-                        reason="bola_violation",
-                        degraded=False,
-                        message=ESCALATE_ACCOUNT_VERIFICATION_MESSAGE,
-                        tool_calls_count=tool_calls_count,
-                        retrieval_passes_count=0,
-                        regeneration_count=0,
-                        latency_ms=self._elapsed_ms(t_start),
-                        traceparent=traceparent,
-                        customer_id=customer_id,
-                        session_id=session_id,
-                        body_redacted=message,
-                    )
-                except Exception as exc:
-                    logger.warning("Natural order lookup (list_orders) failed gracefully: %s", exc)
+                    ),
+                    None,
+                    tool_calls_count,
+                )
+            except Exception as exc:
+                logger.warning("Natural order lookup (list_orders) failed gracefully: %s", exc)
 
-        # -----------------------------------------------------------------
-        # Step 2: Agent Search Retrieval Pass
-        # -----------------------------------------------------------------
+        return None, order_info, tool_calls_count
+
+    def _retrieve_knowledge(
+        self,
+        ticket_id: str,
+        session_id: str,
+        message: str,
+        customer_id: Optional[str],
+        faq_sub_q: Optional[Dict[str, str]],
+        predicted_intent: Optional[str],
+        traceparent: Optional[str],
+        t_start: float,
+        tool_calls_count: int,
+        retrieval_passes_count: int,
+        regeneration_count: int,
+    ) -> Tuple[Optional[ResolutionResult], Dict[str, Dict[str, Any]], List[str], int, int]:
+        """Execute Agent Search retrieval pass with circuit breaking."""
         retrieved_docs_map: Dict[str, Dict[str, Any]] = {}
         ordered_doc_ids: List[str] = []
 
@@ -1002,20 +1016,26 @@ class FaqResolverAgent:
 
             # Agent Search failure -> degraded escalation
             if not search_res.success or search_res.degraded:
-                return self._escalate(
-                    ticket_id=ticket_id,
-                    queue="human-standard",
-                    reason="search_failure",
-                    degraded=True,
-                    message=ESCALATE_KB_DEGRADED_MESSAGE,
-                    tool_calls_count=tool_calls_count,
-                    retrieval_passes_count=retrieval_passes_count,
-                    regeneration_count=regeneration_count,
-                    latency_ms=self._elapsed_ms(t_start),
-                    traceparent=traceparent,
-                    customer_id=customer_id,
-                    session_id=session_id,
-                    body_redacted=message,
+                return (
+                    self._escalate(
+                        ticket_id=ticket_id,
+                        queue="human-standard",
+                        reason="search_failure",
+                        degraded=True,
+                        message=ESCALATE_KB_DEGRADED_MESSAGE,
+                        tool_calls_count=tool_calls_count,
+                        retrieval_passes_count=retrieval_passes_count,
+                        regeneration_count=regeneration_count,
+                        latency_ms=self._elapsed_ms(t_start),
+                        traceparent=traceparent,
+                        customer_id=customer_id,
+                        session_id=session_id,
+                        body_redacted=message,
+                    ),
+                    retrieved_docs_map,
+                    ordered_doc_ids,
+                    tool_calls_count,
+                    retrieval_passes_count,
                 )
 
             for doc_id, doc in search_res.documents.items():
@@ -1028,9 +1048,17 @@ class FaqResolverAgent:
                 }
             ordered_doc_ids = list(search_res.document_ids)
 
-        # -----------------------------------------------------------------
-        # Step 3: Candidate Reranking via router-s1
-        # -----------------------------------------------------------------
+        return None, retrieved_docs_map, ordered_doc_ids, tool_calls_count, retrieval_passes_count
+
+    def _rerank_candidates(
+        self,
+        query: str,
+        retrieved_docs_map: Dict[str, Dict[str, Any]],
+        ordered_doc_ids: List[str],
+        t_start: float,
+        tool_calls_count: int,
+    ) -> Tuple[List[str], int]:
+        """Rerank retrieved candidates using router-s1 cross-encoder."""
         if (
             self.reranker is not None
             and retrieved_docs_map
@@ -1039,38 +1067,35 @@ class FaqResolverAgent:
         ):
             tool_calls_count += 1
             candidates = [retrieved_docs_map[did] for did in ordered_doc_ids if did in retrieved_docs_map]
-            rerank_query = faq_sub_q["text"] if faq_sub_q and faq_sub_q.get("text") else message
             with start_span("faq_resolver.rerank"):
-                reranked, _ = self.reranker.rerank(query=rerank_query, candidates=candidates)
+                reranked, _ = self.reranker.rerank(query=query, candidates=candidates)
             if reranked:
                 ordered_doc_ids = [r["id"] for r in reranked if "id" in r]
                 for r in reranked:
                     rid = r.get("id")
                     if rid and rid in retrieved_docs_map and "score" in r:
                         retrieved_docs_map[rid]["score"] = r["score"]
+        return ordered_doc_ids, tool_calls_count
 
-        # -----------------------------------------------------------------
-        # Step 4: Grounded Answer Synthesis & Mandatory Citations
-        # -----------------------------------------------------------------
-        if self._is_budget_exhausted(t_start):
-            return self._escalate(
-                ticket_id=ticket_id,
-                queue="human-standard",
-                reason="budget_exceeded",
-                degraded=False,
-                message=ESCALATE_BUDGET_EXCEEDED_RETRIEVAL_MESSAGE,
-                tool_calls_count=tool_calls_count,
-                retrieval_passes_count=retrieval_passes_count,
-                regeneration_count=regeneration_count,
-                latency_ms=self._elapsed_ms(t_start),
-                traceparent=traceparent,
-                customer_id=customer_id,
-                session_id=session_id,
-                body_redacted=message,
-            )
-
-        candidate_docs_list = [retrieved_docs_map[did] for did in ordered_doc_ids if did in retrieved_docs_map]
-
+    def _generate_initial_answer(
+        self,
+        ticket_id: str,
+        session_id: str,
+        message: str,
+        customer_id: Optional[str],
+        order_info: Optional[Dict[str, Any]],
+        order_id: Optional[str],
+        predicted_intent: Optional[str],
+        candidate_docs_list: List[Dict[str, Any]],
+        retrieved_docs_map: Dict[str, Dict[str, Any]],
+        ordered_doc_ids: List[str],
+        traceparent: Optional[str],
+        t_start: float,
+        tool_calls_count: int,
+        retrieval_passes_count: int,
+        regeneration_count: int,
+    ) -> Tuple[Optional[ResolutionResult], Dict[str, Any], bool]:
+        """Generate initial candidate answer with LLM or static fallback."""
         if self.llm_client is None:
             self.llm_client = FakeLLMClient()
 
@@ -1100,7 +1125,71 @@ class FaqResolverAgent:
                 ordered_doc_ids=ordered_doc_ids,
                 retrieved_docs_map=retrieved_docs_map,
             ):
-                return self._execute_static_fallback(
+                return (
+                    self._execute_static_fallback(
+                        message=message,
+                        ordered_doc_ids=ordered_doc_ids,
+                        retrieved_docs_map=retrieved_docs_map,
+                        tool_calls_count=tool_calls_count,
+                        retrieval_passes_count=retrieval_passes_count,
+                        regeneration_count=regeneration_count,
+                        t_start=t_start,
+                        ticket_id=ticket_id,
+                        traceparent=traceparent,
+                        customer_id=customer_id,
+                        session_id=session_id,
+                    ),
+                    {},
+                    True,
+                )
+            return (
+                self._escalate(
+                    ticket_id=ticket_id,
+                    queue="human-standard",
+                    reason="uncited_answer",
+                    degraded=True,
+                    message=ESCALATE_ACCURACY_MESSAGE,
+                    tool_calls_count=tool_calls_count,
+                    retrieval_passes_count=retrieval_passes_count,
+                    regeneration_count=regeneration_count,
+                    latency_ms=self._elapsed_ms(t_start),
+                    traceparent=traceparent,
+                    customer_id=customer_id,
+                    session_id=session_id,
+                    body_redacted=message,
+                ),
+                {},
+                True,
+            )
+        return None, answer_payload, False
+
+    def _execute_budget_skip_fallback(
+        self,
+        predicted_intent: Optional[str],
+        order_info: Optional[Dict[str, Any]],
+        order_id: Optional[str],
+        ordered_doc_ids: List[str],
+        retrieved_docs_map: Dict[str, Dict[str, Any]],
+        message: str,
+        tool_calls_count: int,
+        retrieval_passes_count: int,
+        regeneration_count: int,
+        t_start: float,
+        ticket_id: str,
+        traceparent: Optional[str],
+        customer_id: Optional[str],
+        session_id: str,
+    ) -> Tuple[Optional[ResolutionResult], Dict[str, Any], int, bool]:
+        """Execute static fallback or escalate when remaining budget is too low for regeneration."""
+        if self._is_static_fallback_eligible(
+            predicted_intent=predicted_intent,
+            order_info=order_info,
+            order_id=order_id,
+            ordered_doc_ids=ordered_doc_ids,
+            retrieved_docs_map=retrieved_docs_map,
+        ):
+            return (
+                self._execute_static_fallback(
                     message=message,
                     ordered_doc_ids=ordered_doc_ids,
                     retrieved_docs_map=retrieved_docs_map,
@@ -1112,12 +1201,17 @@ class FaqResolverAgent:
                     traceparent=traceparent,
                     customer_id=customer_id,
                     session_id=session_id,
-                )
-            return self._escalate(
+                ),
+                {},
+                regeneration_count,
+                True,
+            )
+        return (
+            self._escalate(
                 ticket_id=ticket_id,
                 queue="human-standard",
                 reason="uncited_answer",
-                degraded=True,
+                degraded=False,
                 message=ESCALATE_ACCURACY_MESSAGE,
                 tool_calls_count=tool_calls_count,
                 retrieval_passes_count=retrieval_passes_count,
@@ -1127,100 +1221,94 @@ class FaqResolverAgent:
                 customer_id=customer_id,
                 session_id=session_id,
                 body_redacted=message,
+            ),
+            {},
+            regeneration_count,
+            True,
+        )
+
+    def _run_answer_regeneration(
+        self,
+        ticket_id: str,
+        session_id: str,
+        message: str,
+        customer_id: Optional[str],
+        order_info: Optional[Dict[str, Any]],
+        order_id: Optional[str],
+        predicted_intent: Optional[str],
+        candidate_docs_list: List[Dict[str, Any]],
+        retrieved_docs_map: Dict[str, Dict[str, Any]],
+        ordered_doc_ids: List[str],
+        traceparent: Optional[str],
+        t_start: float,
+        tool_calls_count: int,
+        retrieval_passes_count: int,
+        regeneration_count: int,
+        val_result: Any,
+    ) -> Tuple[Optional[ResolutionResult], Dict[str, Any], int, bool]:
+        """Run conditional 1-time answer regeneration with feedback (REQ-AGENT-029)."""
+        elapsed = self._elapsed_s(t_start)
+        remaining_budget = self.total_budget_s - elapsed
+        min_budget_for_regen = ANSWER_HEDGE_AFTER_S + 2.0
+
+        if remaining_budget < min_budget_for_regen:
+            logger.info(
+                "Skipping regeneration: remaining budget %.2f s < min required %.2f s",
+                remaining_budget,
+                min_budget_for_regen,
+            )
+            return self._execute_budget_skip_fallback(
+                predicted_intent=predicted_intent,
+                order_info=order_info,
+                order_id=order_id,
+                ordered_doc_ids=ordered_doc_ids,
+                retrieved_docs_map=retrieved_docs_map,
+                message=message,
+                tool_calls_count=tool_calls_count,
+                retrieval_passes_count=retrieval_passes_count,
+                regeneration_count=regeneration_count,
+                t_start=t_start,
+                ticket_id=ticket_id,
+                traceparent=traceparent,
+                customer_id=customer_id,
+                session_id=session_id,
             )
 
-        val_result = self.validator.validate(answer_payload, retrieved_docs_map)
-
-        # -----------------------------------------------------------------
-        # Step 5: Conditional 1-Time Answer Regeneration (REQ-AGENT-029)
-        # -----------------------------------------------------------------
-        if (
-            not llm_failed
-            and not val_result.is_valid
-            and regeneration_count < self.max_regenerations
-        ):
-            elapsed = self._elapsed_s(t_start)
-            remaining_budget = self.total_budget_s - elapsed
-            min_budget_for_regen = ANSWER_HEDGE_AFTER_S + 2.0
-
-            if remaining_budget >= min_budget_for_regen:
-                regeneration_count += 1
-                regen_deadline = min(ANSWER_DEADLINE_S, remaining_budget - 1.0)
-                feedback = FEEDBACK_CITATION_REJECTED_TEMPLATE.format(
-                    reason=val_result.reason, details=val_result.details
-                )
-                try:
-                    with start_span("faq_resolver.generate_answer"):
-                        answer_payload = self._invoke_generate_answer(
-                            query=message,
-                            retrieved_docs=candidate_docs_list,
-                            order_info=order_info,
-                            model_id=self.resolved_model_id,
-                            feedback=feedback,
-                            deadline_s=regen_deadline,
-                        )
-                except Exception as exc:
-                    logger.warning(
-                        "Answer regeneration failed (%s) for ticket %s",
-                        type(exc).__name__,
-                        ticket_id,
-                    )
-                    llm_failed = True
-                    answer_payload = {}
-
-                if llm_failed:
-                    if self._is_static_fallback_eligible(
-                        predicted_intent=predicted_intent,
-                        order_info=order_info,
-                        order_id=order_id,
-                        ordered_doc_ids=ordered_doc_ids,
-                        retrieved_docs_map=retrieved_docs_map,
-                    ):
-                        return self._execute_static_fallback(
-                            message=message,
-                            ordered_doc_ids=ordered_doc_ids,
-                            retrieved_docs_map=retrieved_docs_map,
-                            tool_calls_count=tool_calls_count,
-                            retrieval_passes_count=retrieval_passes_count,
-                            regeneration_count=regeneration_count,
-                            t_start=t_start,
-                            ticket_id=ticket_id,
-                            traceparent=traceparent,
-                            customer_id=customer_id,
-                            session_id=session_id,
-                        )
-                    return self._escalate(
-                        ticket_id=ticket_id,
-                        queue="human-standard",
-                        reason="uncited_answer",
-                        degraded=True,
-                        message=ESCALATE_ACCURACY_MESSAGE,
-                        tool_calls_count=tool_calls_count,
-                        retrieval_passes_count=retrieval_passes_count,
-                        regeneration_count=regeneration_count,
-                        latency_ms=self._elapsed_ms(t_start),
-                        traceparent=traceparent,
-                        customer_id=customer_id,
-                        session_id=session_id,
-                        body_redacted=message,
-                    )
-
-                val_result = self.validator.validate(answer_payload, retrieved_docs_map)
-            else:
-                # REQ-AGENT-029: Not enough remaining budget for regeneration -> skip regeneration!
-                logger.info(
-                    "Skipping regeneration: remaining budget %.2f s < min required %.2f s",
-                    remaining_budget,
-                    min_budget_for_regen,
-                )
-                if self._is_static_fallback_eligible(
-                    predicted_intent=predicted_intent,
+        regeneration_count += 1
+        regen_deadline = min(ANSWER_DEADLINE_S, remaining_budget - 1.0)
+        feedback = FEEDBACK_CITATION_REJECTED_TEMPLATE.format(
+            reason=val_result.reason, details=val_result.details
+        )
+        llm_failed = False
+        try:
+            with start_span("faq_resolver.generate_answer"):
+                answer_payload = self._invoke_generate_answer(
+                    query=message,
+                    retrieved_docs=candidate_docs_list,
                     order_info=order_info,
-                    order_id=order_id,
-                    ordered_doc_ids=ordered_doc_ids,
-                    retrieved_docs_map=retrieved_docs_map,
-                ):
-                    return self._execute_static_fallback(
+                    model_id=self.resolved_model_id,
+                    feedback=feedback,
+                    deadline_s=regen_deadline,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Answer regeneration failed (%s) for ticket %s",
+                type(exc).__name__,
+                ticket_id,
+            )
+            llm_failed = True
+            answer_payload = {}
+
+        if llm_failed:
+            if self._is_static_fallback_eligible(
+                predicted_intent=predicted_intent,
+                order_info=order_info,
+                order_id=order_id,
+                ordered_doc_ids=ordered_doc_ids,
+                retrieved_docs_map=retrieved_docs_map,
+            ):
+                return (
+                    self._execute_static_fallback(
                         message=message,
                         ordered_doc_ids=ordered_doc_ids,
                         retrieved_docs_map=retrieved_docs_map,
@@ -1228,12 +1316,21 @@ class FaqResolverAgent:
                         retrieval_passes_count=retrieval_passes_count,
                         regeneration_count=regeneration_count,
                         t_start=t_start,
-                    )
-                return self._escalate(
+                        ticket_id=ticket_id,
+                        traceparent=traceparent,
+                        customer_id=customer_id,
+                        session_id=session_id,
+                    ),
+                    {},
+                    regeneration_count,
+                    True,
+                )
+            return (
+                self._escalate(
                     ticket_id=ticket_id,
                     queue="human-standard",
                     reason="uncited_answer",
-                    degraded=False,
+                    degraded=True,
                     message=ESCALATE_ACCURACY_MESSAGE,
                     tool_calls_count=tool_calls_count,
                     retrieval_passes_count=retrieval_passes_count,
@@ -1243,13 +1340,34 @@ class FaqResolverAgent:
                     customer_id=customer_id,
                     session_id=session_id,
                     body_redacted=message,
-                )
+                ),
+                {},
+                regeneration_count,
+                True,
+            )
+        return None, answer_payload, regeneration_count, False
 
-        # -----------------------------------------------------------------
-        # Step 6: Non-Hallucination Fallback or Auto-Resolution
-        # -----------------------------------------------------------------
-        if not val_result.is_valid:
-            return self._escalate(
+    def _handle_invalid_synthesis_fallback(
+        self,
+        predicted_intent: Optional[str],
+        order_info: Optional[Dict[str, Any]],
+        order_id: Optional[str],
+        ordered_doc_ids: List[str],
+        retrieved_docs_map: Dict[str, Dict[str, Any]],
+        message: str,
+        tool_calls_count: int,
+        retrieval_passes_count: int,
+        regeneration_count: int,
+        t_start: float,
+        ticket_id: str,
+        traceparent: Optional[str],
+        customer_id: Optional[str],
+        session_id: str,
+        llm_failed: bool = False,
+    ) -> Tuple[ResolutionResult, Dict[str, Any], Any, int, bool]:
+        """Handle escalation when synthesized answer fails citation validation."""
+        return (
+            self._escalate(
                 ticket_id=ticket_id,
                 queue="human-standard",
                 reason="uncited_answer",
@@ -1263,11 +1381,142 @@ class FaqResolverAgent:
                 customer_id=customer_id,
                 session_id=session_id,
                 body_redacted=message,
+            ),
+            {},
+            None,
+            regeneration_count,
+            False,
+        )
+
+    def _synthesize_and_validate(
+        self,
+        ticket_id: str,
+        session_id: str,
+        message: str,
+        customer_id: Optional[str],
+        order_info: Optional[Dict[str, Any]],
+        order_id: Optional[str],
+        predicted_intent: Optional[str],
+        candidate_docs_list: List[Dict[str, Any]],
+        retrieved_docs_map: Dict[str, Dict[str, Any]],
+        ordered_doc_ids: List[str],
+        traceparent: Optional[str],
+        t_start: float,
+        tool_calls_count: int,
+        retrieval_passes_count: int,
+        regeneration_count: int,
+    ) -> Tuple[Optional[ResolutionResult], Dict[str, Any], Any, int, bool]:
+        """Generate answer with Gemini/LLM, validate groundedness, and execute conditional regeneration."""
+        if self._is_budget_exhausted(t_start):
+            return (
+                self._escalate(
+                    ticket_id=ticket_id,
+                    queue="human-standard",
+                    reason="budget_exceeded",
+                    degraded=False,
+                    message=ESCALATE_BUDGET_EXCEEDED_RETRIEVAL_MESSAGE,
+                    tool_calls_count=tool_calls_count,
+                    retrieval_passes_count=retrieval_passes_count,
+                    regeneration_count=regeneration_count,
+                    latency_ms=self._elapsed_ms(t_start),
+                    traceparent=traceparent,
+                    customer_id=customer_id,
+                    session_id=session_id,
+                    body_redacted=message,
+                ),
+                {},
+                None,
+                regeneration_count,
+                False,
             )
 
-        # -----------------------------------------------------------------
-        # Step 7: Model Armor Egress Sanitization (REQ-MA-004)
-        # -----------------------------------------------------------------
+        early_res, answer_payload, llm_failed = self._generate_initial_answer(
+            ticket_id=ticket_id,
+            session_id=session_id,
+            message=message,
+            customer_id=customer_id,
+            order_info=order_info,
+            order_id=order_id,
+            predicted_intent=predicted_intent,
+            candidate_docs_list=candidate_docs_list,
+            retrieved_docs_map=retrieved_docs_map,
+            ordered_doc_ids=ordered_doc_ids,
+            traceparent=traceparent,
+            t_start=t_start,
+            tool_calls_count=tool_calls_count,
+            retrieval_passes_count=retrieval_passes_count,
+            regeneration_count=regeneration_count,
+        )
+        if early_res is not None:
+            return early_res, {}, None, regeneration_count, True
+
+        val_result = self.validator.validate(answer_payload, retrieved_docs_map)
+
+        # Step 5: Conditional 1-Time Answer Regeneration (REQ-AGENT-029)
+        if (
+            not llm_failed
+            and not val_result.is_valid
+            and regeneration_count < self.max_regenerations
+        ):
+            regen_res, regen_payload, regeneration_count, regen_failed = self._run_answer_regeneration(
+                ticket_id=ticket_id,
+                session_id=session_id,
+                message=message,
+                customer_id=customer_id,
+                order_info=order_info,
+                order_id=order_id,
+                predicted_intent=predicted_intent,
+                candidate_docs_list=candidate_docs_list,
+                retrieved_docs_map=retrieved_docs_map,
+                ordered_doc_ids=ordered_doc_ids,
+                traceparent=traceparent,
+                t_start=t_start,
+                tool_calls_count=tool_calls_count,
+                retrieval_passes_count=retrieval_passes_count,
+                regeneration_count=regeneration_count,
+                val_result=val_result,
+            )
+            if regen_res is not None:
+                return regen_res, {}, None, regeneration_count, True
+            if regen_payload:
+                answer_payload = regen_payload
+                val_result = self.validator.validate(answer_payload, retrieved_docs_map)
+
+        if not val_result.is_valid:
+            return self._handle_invalid_synthesis_fallback(
+                predicted_intent=predicted_intent,
+                order_info=order_info,
+                order_id=order_id,
+                ordered_doc_ids=ordered_doc_ids,
+                retrieved_docs_map=retrieved_docs_map,
+                message=message,
+                tool_calls_count=tool_calls_count,
+                retrieval_passes_count=retrieval_passes_count,
+                regeneration_count=regeneration_count,
+                t_start=t_start,
+                ticket_id=ticket_id,
+                traceparent=traceparent,
+                customer_id=customer_id,
+                session_id=session_id,
+            )
+
+        return None, answer_payload, val_result, regeneration_count, False
+
+    def _sanitize_egress_and_finish(
+        self,
+        ticket_id: str,
+        session_id: str,
+        message: str,
+        customer_id: Optional[str],
+        answer_payload: Dict[str, Any],
+        val_result: Any,
+        traceparent: Optional[str],
+        t_start: float,
+        tool_calls_count: int,
+        retrieval_passes_count: int,
+        regeneration_count: int,
+    ) -> ResolutionResult:
+        """Sanitize synthesized answer via Model Armor egress checks and build final ResolutionResult."""
         raw_answer = answer_payload.get("answer", "")
         if self.model_armor_client is not None:
             ma_verdict = self.model_armor_client.sanitize_model_response(raw_answer)
@@ -1315,6 +1564,145 @@ class FaqResolverAgent:
             retrieval_passes_count=retrieval_passes_count,
             regeneration_count=regeneration_count,
             latency_ms=self._elapsed_ms(t_start),
+        )
+
+    def _check_initial_budget(
+        self,
+        ticket_id: str,
+        session_id: str,
+        message: str,
+        customer_id: Optional[str],
+        traceparent: Optional[str],
+        t_start: float,
+    ) -> Optional[ResolutionResult]:
+        """Enforce initial execution budget check."""
+        if self._is_budget_exhausted(t_start):
+            return self._escalate(
+                ticket_id=ticket_id,
+                queue="human-standard",
+                reason="budget_exceeded",
+                degraded=False,
+                message=ESCALATE_BUDGET_EXCEEDED_PRE_MESSAGE,
+                tool_calls_count=0,
+                retrieval_passes_count=0,
+                regeneration_count=0,
+                latency_ms=self._elapsed_ms(t_start),
+                traceparent=traceparent,
+                customer_id=customer_id,
+                session_id=session_id,
+                body_redacted=message,
+            )
+        return None
+
+    def _analyze_inquiry_scope(
+        self,
+        message: str,
+        sub_questions: Optional[List[Dict[str, str]]],
+        predicted_intent: Optional[str],
+    ) -> Tuple[Optional[Dict[str, str]], Optional[str], bool]:
+        """Analyze sub-questions and order specificity for inquiry routing."""
+        faq_sub_q, order_sub_q = self._classify_sub_questions(sub_questions)
+        order_id = self._extract_order_id(message)
+        is_order_specific = self._is_order_specific_inquiry(
+            message, order_id, order_sub_q, predicted_intent
+        )
+        return faq_sub_q, order_id, is_order_specific
+
+    def _resolve_impl(
+        self,
+        ticket_id: str,
+        session_id: str,
+        message: str,
+        customer_id: Optional[str] = None,
+        customer_verified: Optional[bool] = None,
+        identity_issuer: Optional[str] = None,
+        predicted_intent: Optional[str] = None,
+        memory_summary: Optional[str] = None,
+        untrusted_customer_id: Optional[str] = None,
+        customer_context_token: Optional[str] = None,
+        traceparent: Optional[str] = None,
+        sub_questions: Optional[List[Dict[str, str]]] = None,
+    ) -> ResolutionResult:
+        t_start = self._clock()
+        tool_calls_count = 0
+        retrieval_passes_count = 0
+        regeneration_count = 0
+
+        # Enforce initial budget check
+        early_res = self._check_initial_budget(
+            ticket_id, session_id, message, customer_id, traceparent, t_start
+        )
+        if early_res is not None:
+            return early_res
+
+        # Determine verification status (REQ-IDENT-004, REQ-IDENT-005)
+        is_verified = (
+            customer_verified
+            if customer_verified is not None
+            else bool(customer_id and not str(customer_id).startswith("anon:"))
+        )
+
+        faq_sub_q, order_id, is_order_specific = self._analyze_inquiry_scope(
+            message, sub_questions, predicted_intent
+        )
+
+        # Stage 1: Order Lookup (if inquiry requires order status)
+        early_res, order_info, tool_calls_count = self._lookup_order(
+            ticket_id=ticket_id, session_id=session_id, message=message,
+            customer_id=customer_id, is_verified=is_verified,
+            is_order_specific=is_order_specific, order_id=order_id,
+            untrusted_customer_id=untrusted_customer_id,
+            customer_context_token=customer_context_token,
+            traceparent=traceparent, t_start=t_start,
+            tool_calls_count=tool_calls_count,
+        )
+        if early_res is not None:
+            return early_res
+
+        # Stage 2: Agent Search Retrieval Pass
+        early_res, retrieved_docs_map, ordered_doc_ids, tool_calls_count, retrieval_passes_count = (
+            self._retrieve_knowledge(
+                ticket_id=ticket_id, session_id=session_id, message=message,
+                customer_id=customer_id, faq_sub_q=faq_sub_q,
+                predicted_intent=predicted_intent, traceparent=traceparent,
+                t_start=t_start, tool_calls_count=tool_calls_count,
+                retrieval_passes_count=retrieval_passes_count,
+                regeneration_count=regeneration_count,
+            )
+        )
+        if early_res is not None:
+            return early_res
+
+        # Stage 3: Candidate Reranking via router-s1
+        rerank_query = faq_sub_q["text"] if faq_sub_q and faq_sub_q.get("text") else message
+        ordered_doc_ids, tool_calls_count = self._rerank_candidates(
+            query=rerank_query, retrieved_docs_map=retrieved_docs_map,
+            ordered_doc_ids=ordered_doc_ids, t_start=t_start,
+            tool_calls_count=tool_calls_count,
+        )
+
+        # Stage 4: Grounded Answer Synthesis & Validation
+        candidate_docs_list = [retrieved_docs_map[did] for did in ordered_doc_ids if did in retrieved_docs_map]
+        early_res, answer_payload, val_result, regeneration_count, _ = self._synthesize_and_validate(
+            ticket_id=ticket_id, session_id=session_id, message=message,
+            customer_id=customer_id, order_info=order_info, order_id=order_id,
+            predicted_intent=predicted_intent, candidate_docs_list=candidate_docs_list,
+            retrieved_docs_map=retrieved_docs_map, ordered_doc_ids=ordered_doc_ids,
+            traceparent=traceparent, t_start=t_start, tool_calls_count=tool_calls_count,
+            retrieval_passes_count=retrieval_passes_count,
+            regeneration_count=regeneration_count,
+        )
+        if early_res is not None:
+            return early_res
+
+        # Stage 5: Model Armor Egress Sanitization & Final Auto-Resolution
+        return self._sanitize_egress_and_finish(
+            ticket_id=ticket_id, session_id=session_id, message=message,
+            customer_id=customer_id, answer_payload=answer_payload,
+            val_result=val_result, traceparent=traceparent, t_start=t_start,
+            tool_calls_count=tool_calls_count,
+            retrieval_passes_count=retrieval_passes_count,
+            regeneration_count=regeneration_count,
         )
 
 

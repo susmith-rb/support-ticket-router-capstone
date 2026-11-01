@@ -21,6 +21,7 @@ from ticket_router.agents.faq_resolver.agent import (
     create_faq_resolver_agent,
     root_agent,
 )
+from ticket_router.common.deploy_defaults import get_deploy_default
 from ticket_router.common.settings import Settings
 
 try:
@@ -38,7 +39,7 @@ router = APIRouter() if _FASTAPI_AVAILABLE else None
 def get_well_known_agent_card() -> Dict[str, Any]:
     """Return static A2A agent card for FaqResolver (REQ-AUTH-008)."""
     base_url = os.environ.get(
-        "FAQ_RESOLVER_PUBLIC_URL", "https://faq.8-232-184-225.sslip.io"
+        "FAQ_RESOLVER_PUBLIC_URL", get_deploy_default("services.faq_resolver_url")
     ).rstrip("/")
     return {
         "name": "FaqResolver",

@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from ticket_router.agents.faq_resolver.agent import FaqResolverAgent, root_agent
+from ticket_router.common.deploy_defaults import get_deploy_default
 from ticket_router.common.observability import get_current_traceparent
 
 FAQ_RESOLVER_AGENT_CARD: Dict[str, Any] = {
@@ -18,7 +19,7 @@ FAQ_RESOLVER_AGENT_CARD: Dict[str, Any] = {
     "version": "1.0.0",
     "description": "Bounded ReAct FAQ and order status resolution agent with mandatory grounded citations.",
     "runtime": "GKE Autopilot",
-    "service_account": "sa-faq@susmith-fde-ticket-router.iam.gserviceaccount.com",
+    "service_account": get_deploy_default("service_accounts.faq"),
     "capabilities": [
         "faq_resolution",
         "order_status_inquiry",
