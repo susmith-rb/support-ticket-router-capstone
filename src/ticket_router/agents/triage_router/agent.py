@@ -1271,12 +1271,25 @@ class TriageRouterAgent:
                     error=None,
                 )
 
-            # REQ-AGENT-027 / REQ-TURN-002: Run identity resolution concurrently with policy evaluation on every turn
+            # REQ-AGENT-027 / REQ-TURN-002: identity first, so conversation state is read for the
+            # VERIFIED customer (ticket-db get_pending_confirmation requires verified headers).
+            cust_ctx = resolve_identity(
+                token=customer_id_token,
+                ticket_db_client=mcp_client,
+                oauth_access_token=oauth_access_token,
+                expected_oauth_client_id=self._expected_oauth_client_id,
+            )
+            if customer_verified is not None:
+                state_verified = bool(customer_verified)
+                state_cid = customer_id or (cust_ctx.customer_id if cust_ctx.verified else None)
+            else:
+                state_verified = bool(cust_ctx.verified)
+                state_cid = cust_ctx.customer_id if cust_ctx.verified else None
             conv_state = assemble_conversation_state(
                 mcp_client=mcp_client,
                 session_id=session_id,
-                customer_id=customer_id,
-                customer_verified=bool(customer_verified),
+                customer_id=state_cid if state_verified else None,
+                customer_verified=state_verified,
             )
             eval_kwargs = {
                 "text": message_text,
@@ -1295,24 +1308,7 @@ class TriageRouterAgent:
             except Exception:
                 pass
 
-            id_ctx = contextvars.copy_context()
-            pol_ctx = contextvars.copy_context()
-            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as step1_pool:
-                id_fut = step1_pool.submit(
-                    id_ctx.run,
-                    resolve_identity,
-                    token=customer_id_token,
-                    ticket_db_client=mcp_client,
-                    oauth_access_token=oauth_access_token,
-                    expected_oauth_client_id=self._expected_oauth_client_id,
-                )
-                pol_fut = step1_pool.submit(
-                    pol_ctx.run,
-                    policy.evaluate,
-                    **eval_kwargs,
-                )
-                cust_ctx = id_fut.result()
-                decision = pol_fut.result()
+            decision = policy.evaluate(**eval_kwargs)
 
             if customer_verified is not None:
                 effective_customer_verified = customer_verified
