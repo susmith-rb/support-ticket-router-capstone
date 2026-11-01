@@ -33,6 +33,7 @@ from ticket_router.agents.triage_router.a2a_client import (
     InMemoryA2AClient,
 )
 from ticket_router.agents.triage_router.history import (
+    HISTORY_MEMORY_TIMEOUT_S,
     is_cross_customer_history_request,
 )
 from ticket_router.agents.triage_router.mcp_client import (
@@ -1602,7 +1603,9 @@ class TriageRouterAgent:
                         raw_memory = self.memory_client.retrieve_summary(
                             customer_id=verified_cid,
                             query=message_text,
-                            timeout_s=0.300,
+                            # Explicit history request: allow more than the 300 ms per-turn
+                            # budget used for background context (REQ-HIST-002).
+                            timeout_s=HISTORY_MEMORY_TIMEOUT_S,
                         )
                     except Exception as exc:
                         logger.warning("Memory Bank retrieve failed open: %s", exc)
@@ -1630,8 +1633,12 @@ class TriageRouterAgent:
                     sections = [mem_section]
                     if recent_tickets:
                         ticket_lines = []
+                        seen_refs: set[str] = set()
                         for tk in recent_tickets:
                             ref = tk.get("issue_reference") or "TICK-UNKNOWN"
+                            if ref in seen_refs:
+                                continue
+                            seen_refs.add(ref)
                             cat = tk.get("category", "support")
                             st = "under review" if cat in ("security", "fraud") else tk.get("status", "open")
                             ticket_lines.append(f"- #{ref} (status: {st})")

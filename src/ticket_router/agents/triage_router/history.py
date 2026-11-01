@@ -9,6 +9,10 @@ from __future__ import annotations
 import re
 from typing import Optional
 
+# Memory Bank read budget when the customer explicitly asks for their history (REQ-HIST-002);
+# larger than the 300 ms per-turn budget used for background context.
+HISTORY_MEMORY_TIMEOUT_S = 2.5
+
 # Patterns indicating complaint, emergency, legal, or explicit human requests that bypass self-service
 _HUMAN_REQUEST_REGEX = re.compile(
     r"\b(speak to a human|talk to a human|speak with human|real person|human agent|operator|representative|manager|agent)\b",
