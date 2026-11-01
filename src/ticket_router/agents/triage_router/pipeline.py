@@ -52,6 +52,7 @@ from ticket_router.agents.triage_router.templates import (
     render_security_blocked_reply,
 )
 from ticket_router.common.observability import get_current_traceparent
+from ticket_router.common.resilience import MEMORY_WRITE_DISPATCH_TIMEOUT_S
 from ticket_router.identity import resolve_identity
 from ticket_router.identity.resolver import CustomerContext
 from ticket_router.security.model_armor import ModelArmorVerdict
@@ -2655,11 +2656,18 @@ def finalize_triage_turn(
                 f"Decision: {decision.decision}, queue: {decision.queue}, "
                 f"intent: {decision.predicted_intent}"
             )
-            agent.memory_client.generate_turn_memories(
+            pending = agent.memory_client.generate_turn_memories(
                 customer_id=ticket_customer_id,
                 user_message_tokenized=body_to_persist,
                 decision_summary=dec_summary,
                 async_mode=True,
+            )
+            if isinstance(pending, concurrent.futures.Future):
+                # Bounded wait so the request leaves the container before the response is sent.
+                pending.result(timeout=MEMORY_WRITE_DISPATCH_TIMEOUT_S)
+        except concurrent.futures.TimeoutError:
+            logger.warning(
+                "Memory Bank write dispatch exceeded %.1fs; continuing", MEMORY_WRITE_DISPATCH_TIMEOUT_S
             )
         except Exception as exc:
             logger.warning("Memory Bank write failed: %s", exc)

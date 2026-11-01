@@ -35,6 +35,9 @@ MODEL_ARMOR_TIMEOUT_S: float = 0.700
 MODEL_ARMOR_EGRESS_TIMEOUT_S: float = 2.500
 DISCOVERY_ENGINE_RANK_TIMEOUT_S: float = 60.0
 MEMORY_BANK_TIMEOUT_S: float = 0.300
+# Wait for the Memory Bank write request to be dispatched before the turn returns: serverless
+# runtimes freeze background threads once the response is sent (REQ-AGENT-036).
+MEMORY_WRITE_DISPATCH_TIMEOUT_S: float = 1.0
 
 
 class CircuitState(str, Enum):
