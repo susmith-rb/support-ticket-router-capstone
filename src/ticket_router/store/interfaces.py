@@ -98,6 +98,12 @@ class TicketRepository(ABC):
         """Purge expired redaction maps (expires_at < now). Returns count of deleted maps."""
 
     @abstractmethod
+    def list_customer_tickets(
+        self, customer_id: str, limit: int = 5
+    ) -> List[Ticket]:
+        """List recent tickets belonging to a customer, newest first (REQ-HIST-003)."""
+
+    @abstractmethod
     def get_active_ticket_for_session(
         self, session_id: str, customer_id: Optional[str] = None
     ) -> Optional[Ticket]:

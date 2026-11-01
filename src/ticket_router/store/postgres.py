@@ -590,6 +590,29 @@ class PostgresTicketRepo(TicketRepository):
             cursor.close()
             conn.close()
 
+    def list_customer_tickets(
+        self, customer_id: str, limit: int = 5
+    ) -> List[Ticket]:
+        """List recent tickets belonging to a customer, newest first (REQ-HIST-003)."""
+        if not customer_id or str(customer_id).startswith("anon:"):
+            raise PermissionError("Anonymous callers cannot list customer tickets")
+        query = f"""
+        SELECT {TICKET_COLUMNS_SQL}
+        FROM tickets
+        WHERE customer_id = %s
+        ORDER BY created_at DESC
+        LIMIT %s;
+        """
+        conn = self._connection_factory()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(query, (customer_id, limit))
+            rows = cursor.fetchall()
+            return [_row_to_ticket(row) for row in rows]
+        finally:
+            cursor.close()
+            conn.close()
+
     def get_active_ticket_for_session(
         self, session_id: str, customer_id: Optional[str] = None
     ) -> Optional[Ticket]:

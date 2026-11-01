@@ -50,6 +50,7 @@ class Taxonomy:
     queues: Tuple[str, ...]
     tiers: Tuple[str, ...]
     expected_behaviour: ExpectedBehaviourPolicy
+    deterministic_intents: Tuple[str, ...] = ()
 
 
 @functools.lru_cache(maxsize=1)
@@ -92,6 +93,9 @@ def load_taxonomy(path: Optional[pathlib.Path | str] = None) -> Taxonomy:
         decision_rules=tuple(raw_exp.get("decision_rules", [])),
     )
 
+    raw_deterministic = raw.get("deterministic_intents", {})
+    deterministic_intents = tuple(raw_deterministic.keys())
+
     return Taxonomy(
         intents=intents,
         intent_definitions=intent_defs,
@@ -102,6 +106,7 @@ def load_taxonomy(path: Optional[pathlib.Path | str] = None) -> Taxonomy:
         queues=queues,
         tiers=tiers,
         expected_behaviour=expected_behaviour,
+        deterministic_intents=deterministic_intents,
     )
 
 

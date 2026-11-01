@@ -393,3 +393,40 @@ def test_update_ticket_status_idempotent_replay():
     # No UPDATE query executed
     update_calls2 = [c for c in cursor.execute.call_args_list if "UPDATE tickets" in c[0][0]]
     assert len(update_calls2) == 0
+
+
+# REQ-HIST-003
+def test_list_customer_tickets_postgres():
+    """list_customer_tickets queries tickets for customer_id ordered by created_at DESC and rejects anon."""
+    t_uuid = uuid4()
+    row = _make_ticket_row(
+        ticket_id=t_uuid,
+        customer_id="cust-123",
+        status="open",
+        category="support",
+    )
+    cursor = MagicMock()
+    cursor.fetchall.return_value = [row]
+    factory = _make_mock_connection_factory(cursor)
+    repo = PostgresTicketRepo(connection_factory=factory)
+
+    # 1. Valid customer listing
+    tickets = repo.list_customer_tickets(customer_id="cust-123", limit=5)
+    assert len(tickets) == 1
+    assert tickets[0].ticket_id == t_uuid
+    assert tickets[0].customer_id == "cust-123"
+
+    # Verify query executed
+    assert cursor.execute.called
+    call_args = cursor.execute.call_args[0]
+    sql, params = call_args[0], call_args[1]
+    assert "WHERE customer_id = %s" in sql
+    assert "ORDER BY created_at DESC" in sql
+    assert "LIMIT %s" in sql
+    assert params == ("cust-123", 5)
+
+    # 2. Anonymous customer rejection
+    with pytest.raises(PermissionError, match="Anonymous callers"):
+        repo.list_customer_tickets(customer_id="anon:12345")
+    with pytest.raises(PermissionError, match="Anonymous callers"):
+        repo.list_customer_tickets(customer_id="")

@@ -95,3 +95,15 @@ expected_behaviour:
     - "conflicting info: label by most recent explicit customer statement; safety-relevant content wins"
     - "missing info: label what is answerable; if no intent is inferable, intent=other and escalate to human-standard"
     - "prompt injection: label underlying request; injected instructions never change expected labels"
+
+deterministic_intents:
+  conversation_history_access:
+    definition: "Requests to view, summarize, or access past conversation history, chat transcripts, or prior interactions."
+    positive_examples:
+      - "can you give me access to all the previous conversations?"
+      - "what did we talk about last time"
+      - "summarize my previous chats"
+      - "show my chat history"
+      - "past interactions"
+    boundary_notes: "Deterministic Tier 0 rule intent evaluated before Tier 1/2 neural models. Does not fire on order history, ticket status by TICK id, or general corporate history."
+

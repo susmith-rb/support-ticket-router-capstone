@@ -4,6 +4,7 @@
 # REQ-LIFE-001: Continuation Decision Policy
 # REQ-LIFE-002: Customer Resolution Confirmation Flow
 # REQ-LIFE-003: Multi-Turn Lifecycle Regression and Evaluation Harness
+# REQ-HIST-004: Multi-Turn Lifecycle and Conversation History Preservation
 """
 
 from __future__ import annotations

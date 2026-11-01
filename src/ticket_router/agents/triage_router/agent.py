@@ -32,6 +32,9 @@ from ticket_router.agents.triage_router.a2a_client import (
     HttpA2AClient,
     InMemoryA2AClient,
 )
+from ticket_router.agents.triage_router.history import (
+    is_cross_customer_history_request,
+)
 from ticket_router.agents.triage_router.mcp_client import (
     HttpTicketDbMcpClient,
     InMemoryTicketDbMcpClient,
@@ -1566,6 +1569,143 @@ class TriageRouterAgent:
                         status_code=200,
                         error=None,
                     )
+
+            # REQ-HIST-001 / REQ-HIST-002: Deterministic conversation history access handling
+            if decision.predicted_intent == "conversation_history_access":
+                parts_trace = traceparent.split("-")
+                trace_id = parts_trace[1] if len(parts_trace) >= 2 else ""
+
+                verified_cid = (
+                    cust_ctx.customer_id
+                    if (customer_verified and cust_ctx.customer_id and not str(cust_ctx.customer_id).startswith("anon:"))
+                    else None
+                )
+
+                if is_cross_customer_history_request(message_text, verified_customer_id=verified_cid):
+                    outcome = "cross_customer_refused"
+                    reply_text = (
+                        "You can only view your own conversation history. Access to other users' conversations is not permitted."
+                    )
+                    memory_found = False
+                    ticket_count = 0
+                elif not customer_verified or not verified_cid:
+                    outcome = "signin_required"
+                    reply_text = (
+                        "Please sign in with your verified customer account to view your conversation history."
+                    )
+                    memory_found = False
+                    ticket_count = 0
+                else:
+                    outcome = "served"
+                    raw_memory = ""
+                    try:
+                        raw_memory = self.memory_client.retrieve_summary(
+                            customer_id=verified_cid,
+                            query=message_text,
+                            timeout_s=0.300,
+                        )
+                    except Exception as exc:
+                        logger.warning("Memory Bank retrieve failed open: %s", exc)
+                        raw_memory = ""
+
+                    memory_found = bool(raw_memory and raw_memory.strip())
+                    if memory_found:
+                        cleaned_memory = re.sub(r"\[[A-Z0-9_]+\]", "(redacted)", raw_memory.strip())
+                        mem_section = f"Summary of previous interactions:\n{cleaned_memory}"
+                    else:
+                        mem_section = "I don't have any saved history from earlier conversations."
+
+                    recent_tickets: list[Dict[str, Any]] = []
+                    try:
+                        recent_tickets = mcp_client.list_customer_tickets(
+                            customer_id=verified_cid,
+                            limit=5,
+                            customer_verified=True,
+                        )
+                    except Exception as exc:
+                        logger.warning("list_customer_tickets failed: %s", exc)
+                        recent_tickets = []
+
+                    ticket_count = len(recent_tickets)
+                    sections = [mem_section]
+                    if recent_tickets:
+                        ticket_lines = []
+                        for tk in recent_tickets:
+                            ref = tk.get("issue_reference") or "TICK-UNKNOWN"
+                            cat = tk.get("category", "support")
+                            st = "under review" if cat in ("security", "fraud") else tk.get("status", "open")
+                            ticket_lines.append(f"- #{ref} (status: {st})")
+                        sections.append("Recent support tickets:\n" + "\n".join(ticket_lines))
+
+                    sections.append("Full chat transcripts are kept in the Gemini Enterprise app's own chat history.")
+                    reply_text = "\n\n".join(sections)
+
+                # Set turn span attributes (REQ-HIST-002)
+                turn_span.set_attribute("decision", "auto_rag")
+                turn_span.set_attribute("tier", "tier0_rules")
+                turn_span.set_attribute("queue", "none")
+                turn_span.set_attribute("degraded", False)
+                turn_span.set_attribute("predicted_intent", "conversation_history_access")
+
+                # Structured INFO event logging (REQ-HIST-002)
+                logger.info(
+                    json.dumps(
+                        {
+                            "event": "conversation_history_access",
+                            "trace_id": trace_id,
+                            "session_id": session_id,
+                            "customer_verified": bool(customer_verified),
+                            "outcome": outcome,
+                            "memory_found": bool(memory_found),
+                            "ticket_count": int(ticket_count),
+                        },
+                        separators=(",", ":"),
+                    )
+                )
+
+                elapsed_ms = (time.monotonic() - start_time) * 1000.0
+                hist_dec = replace(
+                    decision,
+                    decision="auto_rag",
+                    tier="tier0_rules",
+                    queue="none",
+                    predicted_intent="conversation_history_access",
+                    escalate=False,
+                    reason="conversation_history_access",
+                    degraded=False,
+                    calming_ack=reply_text,
+                    latency_ms=elapsed_ms,
+                    details={"category": "conversation_history", "outcome": outcome},
+                )
+                self.logger.log_decision(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision="auto_rag",
+                    tier="tier0_rules",
+                    queue="none",
+                    degraded=False,
+                    latency_ms=elapsed_ms,
+                    traceparent=traceparent,
+                    predicted_intent="conversation_history_access",
+                )
+                return TriageResult(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision=hist_dec,
+                    calming_ack=reply_text,
+                    handoff_response={
+                        "status": "AUTO_RESOLVED",
+                        "route": "conversation_history",
+                        "answer": reply_text,
+                        "ticket_id": t_id,
+                        "status_code": 200,
+                        "outcome": outcome,
+                    },
+                    idempotency_key=idempotency_key,
+                    latency_ms=elapsed_ms,
+                    status_code=200,
+                    error=None,
+                )
 
             # REQ-AGENT-036: Vertex AI Agent Engine Memory Bank read for verified customers
             if (

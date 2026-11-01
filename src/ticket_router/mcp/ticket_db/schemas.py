@@ -231,6 +231,38 @@ class GetTicketResponse(BaseModel):
     status: Optional[str] = Field(default=None, description="Current status")
 
 
+class CustomerTicketSummary(BaseModel):
+    """Projection of recent customer ticket metadata (REQ-HIST-003).
+
+    Excludes body_redacted, message text, and internal decision payload.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    issue_reference: str = Field(..., description="Customer-facing ticket reference (e.g. TICK-...)")
+    status: str = Field(..., description="Ticket status (under review for security/fraud)")
+    created_at: str = Field(..., description="ISO 8601 creation timestamp")
+    category: str = Field(..., description="Ticket category")
+
+
+class ListCustomerTicketsRequest(BaseModel):
+    """Input payload for list_customer_tickets tool (REQ-HIST-003)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    customer_id: str = Field(..., description="Customer identifier")
+    limit: int = Field(default=5, ge=1, le=50, description="Max tickets to return (default 5)")
+
+
+class ListCustomerTicketsResponse(BaseModel):
+    """Output payload for list_customer_tickets tool (REQ-HIST-003)."""
+
+    tickets: list[CustomerTicketSummary] = Field(
+        default_factory=list, description="Recent customer tickets newest first"
+    )
+
+
+
 def get_tool_schemas() -> Dict[str, Any]:
     """Return JSON schemas for ticket-db-mcp tools per REQ-AGENT-010."""
     return {
@@ -299,5 +331,11 @@ def get_tool_schemas() -> Dict[str, Any]:
             "description": "Retrieve ticket details by identifier or UUID.",
             "parameters": GetTicketRequest.model_json_schema(),
             "returns": GetTicketResponse.model_json_schema(),
+        },
+        "list_customer_tickets": {
+            "name": "list_customer_tickets",
+            "description": "List recent ticket references and statuses for a customer (REQ-HIST-003).",
+            "parameters": ListCustomerTicketsRequest.model_json_schema(),
+            "returns": ListCustomerTicketsResponse.model_json_schema(),
         },
     }

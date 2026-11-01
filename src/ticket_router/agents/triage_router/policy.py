@@ -16,6 +16,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from ticket_router.agents.triage_router.history import (
+    detect_conversation_history_request,
+    matches_conversation_history_escalation_exception,
+)
 from ticket_router.agents.triage_router.templates import render_security_blocked_reply
 from ticket_router.common.resilience import (
     TIER3_PRO_DEADLINE_S,
@@ -317,6 +321,17 @@ def evaluate_tier0_rules(text: str) -> Tier0Result:
             reason="tier0_conversational_pleasantry",
             category="pleasantry",
             sentiment="positive",
+            urgency="normal",
+        )
+
+    # 6. Deterministic conversation history access request (REQ-HIST-001)
+    if detect_conversation_history_request(text) and not matches_conversation_history_escalation_exception(text):
+        return Tier0Result(
+            matched=True,
+            escalate=False,
+            reason="conversation_history_access",
+            category="conversation_history",
+            sentiment="neutral",
             urgency="normal",
         )
 
@@ -671,6 +686,77 @@ class TriagePolicy:
                 reason=tier0.reason or f"tier0_conversational_{tier0.category}",
                 degraded=False,
                 details={"category": tier0.category},
+            )
+
+        if tier0.matched and not tier0.escalate and tier0.category == "conversation_history":
+            tokenized_text: Optional[str] = None
+            pii_mapping: Dict[str, str] = {}
+            sanitized_text: Optional[str] = None
+            if self.model_armor_client is not None or precomputed_ma is not None:
+                if precomputed_ma is not None:
+                    ma_verdict, sanitized_text, tokenized_text, pii_mapping = precomputed_ma
+                else:
+                    ma_verdict, sanitized_text, tokenized_text, pii_mapping = self._run_model_armor(text)
+                blocked_types = _extract_blocked_card_info_types(ma_verdict)
+                if blocked_types:
+                    return RouterDecision(
+                        ticket_id=t_id,
+                        session_id=session_id,
+                        decision="blocked",
+                        tier="ingress_guard",
+                        queue="none",
+                        predicted_intent="other",
+                        escalate=False,
+                        sentiment=tier0.sentiment,
+                        urgency=tier0.urgency,
+                        reason="card_data_blocked",
+                        degraded=False,
+                        details={"blocked_info_types": blocked_types},
+                        tokenized_text=None,
+                        pii_mapping={},
+                    )
+                if (
+                    ma_verdict is not None
+                    and ma_verdict.has_pi_jb
+                    and not self._is_prompt_safety_delegated()
+                ):
+                    sec_ack = render_security_blocked_reply()
+                    return RouterDecision(
+                        ticket_id=t_id,
+                        session_id=session_id,
+                        decision="security_blocked",
+                        tier="model_armor",
+                        queue="none",
+                        predicted_intent="other",
+                        escalate=False,
+                        sentiment="neutral",
+                        urgency="normal",
+                        reason="prompt_injection_or_jailbreak",
+                        degraded=False,
+                        calming_ack=sec_ack,
+                        details={
+                            "category": "security",
+                            "model_armor": ma_verdict.to_summary_dict(),
+                            "sanitized_text": sanitized_text,
+                        },
+                        tokenized_text=tokenized_text,
+                        pii_mapping=pii_mapping,
+                    )
+            return RouterDecision(
+                ticket_id=t_id,
+                session_id=session_id,
+                decision="auto_rag",
+                tier="tier0_rules",
+                queue="none",
+                predicted_intent="conversation_history_access",
+                escalate=False,
+                sentiment=tier0.sentiment,
+                urgency=tier0.urgency,
+                reason="conversation_history_access",
+                degraded=False,
+                details={"category": "conversation_history", "sanitized_text": sanitized_text},
+                tokenized_text=tokenized_text,
+                pii_mapping=pii_mapping,
             )
 
         ma_verdict: Optional[ModelArmorVerdict] = None

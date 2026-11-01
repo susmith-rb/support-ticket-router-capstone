@@ -29,10 +29,13 @@ from ticket_router.mcp.ticket_db.schemas import (
     AppendCustomerFollowupResponse,
     ClaimTicketRequest,
     ClaimTicketResponse,
+    CustomerTicketSummary,
     GetActiveTicketRequest,
     GetActiveTicketResponse,
     GetTicketRequest,
     GetTicketResponse,
+    ListCustomerTicketsRequest,
+    ListCustomerTicketsResponse,
     RecordConfirmationRequestedRequest,
     RecordConfirmationRequestedResponse,
     ReidentifyPiiRequest,
@@ -652,6 +655,75 @@ async def get_ticket(
         ticket_id=str(ticket.ticket_id),
         status=ticket.status,
     )
+
+
+@router.post("/tools/list_customer_tickets", response_model=ListCustomerTicketsResponse)
+@router.post("/list_customer_tickets", response_model=ListCustomerTicketsResponse)
+async def list_customer_tickets(
+    req: ListCustomerTicketsRequest,
+    authorization: Optional[str] = Header(None),
+    x_serverless_authorization: Optional[str] = Header(None),
+    x_customer_id: Optional[str] = Header(None, alias="X-Customer-ID"),
+    x_verified_customer_id: Optional[str] = Header(None, alias="X-Verified-Customer-Id"),
+    x_customer_verified: Optional[str] = Header(None, alias="X-Customer-Verified"),
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+) -> ListCustomerTicketsResponse:
+    caller = _extract_caller_identity(authorization, x_serverless_authorization)
+    logger.info("list_customer_tickets called by caller=%s customer=%s", caller, req.customer_id)
+
+    header_customer = x_customer_id or x_verified_customer_id
+    if not header_customer:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing verified customer identity header (X-Customer-ID)",
+        )
+    if str(header_customer).startswith("anon:"):
+        raise HTTPException(
+            status_code=403,
+            detail="Anonymous customers cannot list tickets",
+        )
+    if not x_customer_verified or str(x_customer_verified).lower() != "true":
+        raise HTTPException(
+            status_code=403,
+            detail="Unverified customer identity",
+        )
+    if req.customer_id is not None and req.customer_id != header_customer:
+        raise HTTPException(
+            status_code=400,
+            detail="customer_id in request body does not match verified identity header (BOLA violation)",
+        )
+
+    try:
+        tickets = ticket_repo.list_customer_tickets(
+            customer_id=header_customer,
+            limit=req.limit,
+        )
+        summaries: list[CustomerTicketSummary] = []
+        for t in tickets:
+            ref = t.issue_reference or f"TICK-{str(t.ticket_id)[:8]}"
+            cat = getattr(t, "category", "support") or "support"
+            if cat in ("security", "fraud"):
+                status_str = "under review"
+            else:
+                status_str = t.status
+            created_str = (
+                t.created_at.isoformat()
+                if hasattr(t.created_at, "isoformat")
+                else str(t.created_at)
+            )
+            summaries.append(
+                CustomerTicketSummary(
+                    issue_reference=ref,
+                    status=status_str,
+                    created_at=created_str,
+                    category=cat,
+                )
+            )
+        return ListCustomerTicketsResponse(tickets=summaries)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def create_app(

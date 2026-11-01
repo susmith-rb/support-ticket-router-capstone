@@ -537,3 +537,141 @@ def test_http_ticket_db_client_requests_session_sends_id_token(extra_headers):
     assert sent["Content-Type"] == "application/json"
     if extra_headers:
         assert sent["X-Customer-ID"] == "cust_1001"
+
+
+# REQ-HIST-003
+def test_list_customer_tickets_mcp_validation():
+    """list_customer_tickets tool contract validates identity headers, BOLA, hides body, and masks security/fraud."""
+    from ticket_router.store.models import TicketCreate
+
+    fake_repo = FakeTicketRepo()
+    # Create tickets: 1 normal support, 1 fraud, 1 security
+    fake_repo.create_ticket(
+        TicketCreate(
+            customer_id="cust_1001",
+            channel="web",
+            body_redacted="My package arrived late",
+            category="support",
+            issue_reference="TICK-1001",
+        )
+    )
+    fake_repo.create_ticket(
+        TicketCreate(
+            customer_id="cust_1001",
+            channel="web",
+            body_redacted="Unauthorized transaction dispute",
+            category="fraud",
+            issue_reference="TICK-1002",
+        )
+    )
+    fake_repo.create_ticket(
+        TicketCreate(
+            customer_id="cust_1001",
+            channel="web",
+            body_redacted="Account compromised investigation",
+            category="security",
+            issue_reference="TICK-1003",
+        )
+    )
+
+    app = create_ticket_app(repo=fake_repo)
+    client = TestClient(app)
+
+    # 1. Missing identity headers -> 400
+    r_missing = client.post(
+        "/tools/list_customer_tickets",
+        json={"customer_id": "cust_1001", "limit": 5},
+    )
+    assert r_missing.status_code == 400
+    assert "Missing verified customer identity header" in r_missing.json()["detail"]
+
+    # 2. Anonymous customer -> 403
+    r_anon = client.post(
+        "/tools/list_customer_tickets",
+        headers={"X-Customer-ID": "anon:9999", "X-Customer-Verified": "true"},
+        json={"customer_id": "anon:9999", "limit": 5},
+    )
+    assert r_anon.status_code == 403
+    assert "Anonymous customers cannot list tickets" in r_anon.json()["detail"]
+
+    # 3. Unverified identity -> 403
+    r_unver = client.post(
+        "/tools/list_customer_tickets",
+        headers={"X-Customer-ID": "cust_1001", "X-Customer-Verified": "false"},
+        json={"customer_id": "cust_1001", "limit": 5},
+    )
+    assert r_unver.status_code == 403
+    assert "Unverified customer identity" in r_unver.json()["detail"]
+
+    # 4. BOLA violation (header cust_1001 vs body cust_1002) -> 400
+    r_bola = client.post(
+        "/tools/list_customer_tickets",
+        headers={"X-Customer-ID": "cust_1001", "X-Customer-Verified": "true"},
+        json={"customer_id": "cust_1002", "limit": 5},
+    )
+    assert r_bola.status_code == 400
+    assert "BOLA violation" in r_bola.json()["detail"]
+
+    # 5. Valid request -> 200 with masked fraud/security status and zero body text
+    r_valid = client.post(
+        "/tools/list_customer_tickets",
+        headers={"X-Customer-ID": "cust_1001", "X-Customer-Verified": "true"},
+        json={"customer_id": "cust_1001", "limit": 5},
+    )
+    assert r_valid.status_code == 200
+    data = r_valid.json()
+    assert "tickets" in data
+    tickets = data["tickets"]
+    assert len(tickets) == 3
+
+    for t in tickets:
+        # Zero body text projection invariant (REQ-HIST-003)
+        assert "body" not in t
+        assert "body_redacted" not in t
+        assert "decision" not in t
+        assert "issue_reference" in t
+        assert "status" in t
+        assert "category" in t
+
+        if t["category"] in ("security", "fraud"):
+            assert t["status"] == "under review"
+        else:
+            assert t["status"] == "open"
+
+
+# REQ-HIST-003
+def test_http_ticket_db_client_list_customer_tickets_sends_headers():
+    """HttpTicketDbMcpClient.list_customer_tickets sends OIDC token and X-Customer-* headers."""
+    import json
+    from unittest.mock import MagicMock
+
+    session = MagicMock(spec=["post"])
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {
+        "tickets": [
+            {
+                "issue_reference": "TICK-1001",
+                "status": "open",
+                "created_at": "2026-11-01T00:00:00Z",
+                "category": "support",
+            }
+        ]
+    }
+    session.post.return_value = mock_resp
+
+    client = HttpTicketDbMcpClient(
+        base_url="https://ticket-db-mcp.example",
+        token_provider=lambda _aud: "mock-oidc-token",
+        session=session,
+    )
+    tickets = client.list_customer_tickets("cust_1001", limit=5, customer_verified=True)
+    assert len(tickets) == 1
+    assert tickets[0]["issue_reference"] == "TICK-1001"
+
+    sent = session.post.call_args.kwargs["headers"]
+    assert sent["Authorization"] == "Bearer mock-oidc-token"
+    assert sent["X-Customer-ID"] == "cust_1001"
+    assert sent["X-Customer-Verified"] == "true"
+    payload = json.loads(session.post.call_args.kwargs["data"].decode("utf-8"))
+    assert payload["customer_id"] == "cust_1001"
+    assert payload["limit"] == 5

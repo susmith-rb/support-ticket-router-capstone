@@ -125,6 +125,16 @@ class TicketDbMcpClientProtocol(Protocol):
         """Retrieve ticket by ID or UUID."""
         ...
 
+    def list_customer_tickets(
+        self,
+        customer_id: str,
+        limit: int = 5,
+        customer_verified: bool = True,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> list[Dict[str, Any]]:
+        """List recent tickets for a customer (REQ-HIST-003)."""
+        ...
+
     def record_resolution_confirmation_requested(
         self, ticket_id: str, prompt: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -508,6 +518,53 @@ class InMemoryTicketDbMcpClient:
         })
         return {"success": True, "ticket_id": ticket_id}
 
+    def list_customer_tickets(
+        self,
+        customer_id: str,
+        limit: int = 5,
+        customer_verified: bool = True,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> list[Dict[str, Any]]:
+        """List recent tickets for a customer (REQ-HIST-003)."""
+        eff_headers = headers or {}
+        header_cust = eff_headers.get("X-Customer-ID") or eff_headers.get("X-Verified-Customer-Id")
+        if header_cust:
+            if str(header_cust).startswith("anon:"):
+                raise PermissionError("Anonymous customers cannot list tickets")
+            if customer_id and customer_id != header_cust:
+                raise ValueError("customer_id mismatch (BOLA violation)")
+            cust_ver = str(eff_headers.get("X-Customer-Verified", "true")).lower()
+            if cust_ver != "true":
+                raise PermissionError("Unverified customer identity")
+        else:
+            if not customer_verified:
+                raise PermissionError("Unverified customer identity")
+            if str(customer_id).startswith("anon:"):
+                raise PermissionError("Anonymous customers cannot list tickets")
+
+        matching: list[Dict[str, Any]] = []
+        for t in self.tickets.values():
+            if t.get("customer_id") == customer_id:
+                matching.append(t)
+
+        def _get_sort_key(item: Dict[str, Any]) -> str:
+            return str(item.get("created_at") or "")
+
+        matching.sort(key=_get_sort_key, reverse=True)
+        results: list[Dict[str, Any]] = []
+        for t in matching[:limit]:
+            ref = t.get("issue_reference") or f"TICK-{str(t.get('ticket_id'))[:8]}"
+            cat = t.get("category", "support")
+            st = "under review" if cat in ("security", "fraud") else t.get("status", "open")
+            created_at = t.get("created_at") or datetime.now(timezone.utc).isoformat()
+            results.append({
+                "issue_reference": ref,
+                "status": st,
+                "created_at": created_at,
+                "category": cat,
+            })
+        return results
+
 
 class HttpTicketDbMcpClient:
     """HTTP client calling ticket-db-mcp server on Cloud Run (REQ-AGENT-010)."""
@@ -724,3 +781,29 @@ class HttpTicketDbMcpClient:
             return None
         except Exception:
             return None
+
+    def list_customer_tickets(
+        self,
+        customer_id: str,
+        limit: int = 5,
+        customer_verified: bool = True,
+        id_token: Optional[str] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> list[Dict[str, Any]]:
+        """Query list_customer_tickets tool over HTTP (REQ-HIST-003)."""
+        req_headers: Dict[str, str] = {
+            "X-Customer-ID": customer_id,
+            "X-Customer-Verified": "true" if customer_verified else "false",
+        }
+        if id_token:
+            req_headers["Authorization"] = f"Bearer {id_token}"
+        if headers:
+            req_headers.update(headers)
+
+        payload = {"customer_id": customer_id, "limit": limit}
+        resp = self._post_tool(
+            "list_customer_tickets",
+            payload,
+            headers=req_headers,
+        )
+        return resp.get("tickets", [])

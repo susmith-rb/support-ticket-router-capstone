@@ -315,6 +315,20 @@ class FakeTicketRepo(TicketRepository):
                     self._redaction_maps.pop(t_id, None)
         return deleted_count
 
+    def list_customer_tickets(
+        self, customer_id: str, limit: int = 5
+    ) -> List[Ticket]:
+        """List recent tickets belonging to a customer, newest first (REQ-HIST-003)."""
+        if not customer_id or str(customer_id).startswith("anon:"):
+            raise PermissionError("Anonymous callers cannot list customer tickets")
+        with self._lock:
+            matching = [
+                t for t in self._tickets.values()
+                if t.customer_id == customer_id
+            ]
+            matching.sort(key=lambda t: t.created_at, reverse=True)
+            return matching[:limit]
+
     def get_active_ticket_for_session(
         self, session_id: str, customer_id: Optional[str] = None
     ) -> Optional[Ticket]:
