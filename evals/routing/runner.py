@@ -33,11 +33,11 @@ from evals.routing.cost import call_cost, estimate_dry_run_cost
 from evals.routing.trace import (
     TraceRecord,
 )
+from evals.turn_interpretation.baseline_regex import evaluate_tier0_rules
 from ticket_router.agents.triage_router.policy import (
     RouterDecision,
     RouterThresholds,
     TriagePolicy,
-    evaluate_tier0_rules,
 )
 from ticket_router.config.agent_tuning import (
     _CONTEXT_TIER2_VERSION,
