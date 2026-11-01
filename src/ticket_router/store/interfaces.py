@@ -72,6 +72,12 @@ class TicketRepository(ABC):
         resolution_notes: Optional[str] = None,
         answer_text: Optional[str] = None,
         citations: Optional[List[Dict[str, Any]]] = None,
+        from_status: Optional[str] = None,
+        actor: Optional[str] = None,
+        reason: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        trace: Optional[str] = None,
+        customer_id: Optional[str] = None,
     ) -> Optional[Ticket]:
         """Update ticket status, resolution notes, and optional grounded answer."""
 

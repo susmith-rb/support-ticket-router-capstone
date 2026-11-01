@@ -241,6 +241,16 @@ def extract_answer_from_result(result: TriageResult) -> str:
     if not ans:
         ans = "Your request has been received and processed."
 
+    if result.handoff_response and isinstance(result.handoff_response, dict):
+        conf_q = (
+            result.handoff_response.get("confirmation_question")
+            or result.handoff_response.get("resolution_prompt")
+        )
+        if conf_q:
+            conf_str = str(conf_q).strip()
+            if conf_str and conf_str not in ans:
+                ans = f"{ans.rstrip()}\n\n{conf_str}"
+
     pii_map = getattr(result.decision, "pii_mapping", None) or {}
     return restore_pii_tokens(ans, pii_map)
 

@@ -19,6 +19,7 @@ from ticket_router.store.interfaces import (
     TicketRepository,
 )
 from ticket_router.store.models import (
+    CUSTOMER_ALLOWED_TRANSITIONS,
     Customer,
     CustomerIdentity,
     CustomerResolution,
@@ -28,7 +29,9 @@ from ticket_router.store.models import (
     Ticket,
     TicketCreate,
     TicketEvent,
+    effective_category,
     is_holding_ticket,
+    is_human_owned,
 )
 
 
@@ -63,6 +66,21 @@ class FakeTicketRepo(TicketRepository):
             sess_id = ticket_create.session_id
             if not sess_id and isinstance(ticket_create.decision, dict):
                 sess_id = ticket_create.decision.get("session_id")
+            issue_ref = ticket_create.issue_reference
+            if not issue_ref and isinstance(ticket_create.decision, dict):
+                issue_ref = ticket_create.decision.get("ticket_id")
+            if not issue_ref:
+                issue_ref = f"TICK-{str(t_id)[:8]}"
+
+            assigned_q = (ticket_create.assigned_queue or "").strip()
+            if ticket_create.current_owner:
+                curr_owner = ticket_create.current_owner
+            elif assigned_q.lower().startswith("human"):
+                curr_owner = f"queue:{assigned_q}"
+            else:
+                curr_owner = "bot"
+            category = ticket_create.category or "support"
+
             ticket = Ticket(
                 ticket_id=t_id,
                 customer_id=ticket_create.customer_id,
@@ -75,6 +93,9 @@ class FakeTicketRepo(TicketRepository):
                 created_at=now,
                 updated_at=now,
                 session_id=sess_id,
+                issue_reference=issue_ref,
+                category=category,
+                current_owner=curr_owner,
             )
             self._tickets[t_id] = ticket
             self._events[t_id] = [
@@ -168,14 +189,64 @@ class FakeTicketRepo(TicketRepository):
         resolution_notes: Optional[str] = None,
         answer_text: Optional[str] = None,
         citations: Optional[List[Dict[str, Any]]] = None,
+        from_status: Optional[str] = None,
+        actor: Optional[str] = None,
+        reason: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        trace: Optional[str] = None,
+        customer_id: Optional[str] = None,
     ) -> Optional[Ticket]:
         t_id = self._normalize_uuid(ticket_id)
         with self._lock:
             ticket = self._tickets.get(t_id)
             if ticket is None:
-                return None
+                raise KeyError(f"Ticket not found: {t_id}")
+
+            # Customer scoping / RLS validation (BEFORE checking target state)
+            is_customer_update = (customer_id is not None) or (status in ("resolved_by_customer", "reopened"))
+            if is_customer_update:
+                if customer_id is None:
+                    raise PermissionError("Customer ID is required for customer status updates")
+                if str(customer_id).startswith("anon:"):
+                    raise PermissionError("Anonymous callers cannot update ticket status")
+                if ticket.customer_id != customer_id:
+                    raise PermissionError("Customer mismatch: cannot update another customer's ticket")
+                if actor and actor.startswith(("rep:", "queue:")):
+                    raise PermissionError("Customer cannot impersonate representative or queue actor")
+
+            # Idempotency: if already in target status, return existing ticket (no duplicate event)
+            if ticket.status == status:
+                return ticket
+
+            # Idempotency key deduplication
+            if idempotency_key:
+                for ev in self._events.get(t_id, []):
+                    if (
+                        ev.event_type == "status_changed"
+                        and isinstance(ev.payload, dict)
+                        and ev.payload.get("idempotency_key") == idempotency_key
+                    ):
+                        return ticket
+
+            # Deterministic backend validation for customer transitions
+            if is_customer_update:
+                cat = effective_category(ticket)
+                if cat in ("security", "fraud"):
+                    raise ValueError(f"Cannot update status of {cat} tickets")
+
+                if is_human_owned(ticket):
+                    raise ValueError("Cannot update status of human-owned tickets")
+
+                allowed = CUSTOMER_ALLOWED_TRANSITIONS.get(ticket.status, [])
+                if status not in allowed:
+                    raise ValueError(f"Invalid transition from {ticket.status} to {status}")
+
+            # Optimistic check on from_status
+            if from_status and ticket.status != from_status:
+                raise ValueError(f"Status conflict: current status is {ticket.status}, expected {from_status}")
 
             now = datetime.now(timezone.utc)
+            old_status = ticket.status
             ticket.status = status
             ticket.updated_at = now
             if resolution_notes is not None:
@@ -185,13 +256,24 @@ class FakeTicketRepo(TicketRepository):
             if citations is not None:
                 ticket.citations = citations
 
+            # Audit event status_changed with NO message text
+            payload = {
+                "from": from_status or old_status,
+                "to": status,
+                "actor": actor or "system",
+                "reason": reason or resolution_notes or "status_update",
+                "trace_id": trace,
+            }
+            if idempotency_key:
+                payload["idempotency_key"] = idempotency_key
+
             self._events.setdefault(t_id, []).append(
                 TicketEvent(
                     event_id=uuid4(),
                     ticket_id=t_id,
                     event_type="status_changed",
-                    actor="system",
-                    payload={"status": status, "resolution_notes": resolution_notes},
+                    actor=actor or "system",
+                    payload=payload,
                     created_at=now,
                 )
             )
@@ -253,10 +335,14 @@ class FakeTicketRepo(TicketRepository):
 
             # Sort by created_at descending (most recent first)
             matching.sort(key=lambda x: x.created_at, reverse=True)
-            latest = matching[0]
-
-            if is_holding_ticket(latest.status, latest.assigned_queue):
-                return latest
+            for cand in matching:
+                cand_cat = effective_category(cand)
+                if cand_cat in ("security", "fraud"):
+                    continue
+                if not is_human_owned(cand):
+                    continue
+                if is_holding_ticket(cand.status, cand.assigned_queue, cand_cat, cand.current_owner, cand.decision):
+                    return cand
             return None
 
     def append_customer_followup(

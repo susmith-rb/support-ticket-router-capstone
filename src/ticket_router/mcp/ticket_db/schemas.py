@@ -169,6 +169,68 @@ class AppendCustomerFollowupResponse(BaseModel):
     )
 
 
+class UpdateTicketStatusRequest(BaseModel):
+    """Input payload for update_ticket_status tool (REQ-STORE-011, REQ-LIFE-002)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ticket_id: str = Field(..., description="Target ticket identifier or UUID")
+    from_status: str = Field(..., description="Expected current status before transition")
+    to_status: str = Field(..., description="Target status")
+    actor: str = Field(..., description="Actor making the status transition")
+    reason: str = Field(..., description="Reason code or audit justification")
+    idempotency_key: str = Field(..., description="Deterministic idempotency key for this transition")
+    trace: Optional[str] = Field(default=None, description="Distributed trace context or trace ID")
+    customer_id: Optional[str] = Field(
+        default=None,
+        description="Optional customer identifier; must match verified identity header X-Customer-ID",
+    )
+
+
+class RecordConfirmationRequestedRequest(BaseModel):
+    """Input payload for record_resolution_confirmation_requested tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ticket_id: str = Field(..., description="Target ticket identifier or UUID")
+    prompt: Optional[str] = Field(
+        default=None, description="Confirmation prompt text asked to customer"
+    )
+
+
+class RecordConfirmationRequestedResponse(BaseModel):
+    """Output payload for record_resolution_confirmation_requested tool."""
+
+    success: bool = Field(default=True, description="True if marker was recorded")
+    ticket_id: str = Field(..., description="Target ticket identifier")
+
+
+class UpdateTicketStatusResponse(BaseModel):
+    """Output payload for update_ticket_status tool (REQ-STORE-011, REQ-LIFE-002)."""
+
+    success: bool = Field(..., description="True if status updated or already in target state")
+    ticket_id: str = Field(..., description="Target ticket identifier")
+    status: str = Field(..., description="Current status of the ticket")
+    error: Optional[str] = Field(default=None, description="Error code if transition failed")
+    idempotent: bool = Field(default=False, description="True if request was an idempotent replay")
+
+
+class GetTicketRequest(BaseModel):
+    """Input payload for get_ticket tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ticket_id: str = Field(..., description="Ticket identifier or UUID")
+
+
+class GetTicketResponse(BaseModel):
+    """Output payload for get_ticket tool."""
+
+    ticket: Optional[Dict[str, Any]] = Field(default=None, description="Ticket dictionary")
+    ticket_id: Optional[str] = Field(default=None, description="Ticket identifier")
+    status: Optional[str] = Field(default=None, description="Current status")
+
+
 def get_tool_schemas() -> Dict[str, Any]:
     """Return JSON schemas for ticket-db-mcp tools per REQ-AGENT-010."""
     return {
@@ -219,5 +281,23 @@ def get_tool_schemas() -> Dict[str, Any]:
             "description": "Append a customer follow-up audit event to an active ticket (REQ-AGENT-033).",
             "parameters": AppendCustomerFollowupRequest.model_json_schema(),
             "returns": AppendCustomerFollowupResponse.model_json_schema(),
+        },
+        "update_ticket_status": {
+            "name": "update_ticket_status",
+            "description": "Update ticket lifecycle status with deterministic backend validation (REQ-STORE-011, REQ-LIFE-002).",
+            "parameters": UpdateTicketStatusRequest.model_json_schema(),
+            "returns": UpdateTicketStatusResponse.model_json_schema(),
+        },
+        "record_resolution_confirmation_requested": {
+            "name": "record_resolution_confirmation_requested",
+            "description": "Record that an affirmative resolution confirmation prompt was asked for a ticket (REQ-LIFE-002).",
+            "parameters": RecordConfirmationRequestedRequest.model_json_schema(),
+            "returns": RecordConfirmationRequestedResponse.model_json_schema(),
+        },
+        "get_ticket": {
+            "name": "get_ticket",
+            "description": "Retrieve ticket details by identifier or UUID.",
+            "parameters": GetTicketRequest.model_json_schema(),
+            "returns": GetTicketResponse.model_json_schema(),
         },
     }

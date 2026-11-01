@@ -76,13 +76,17 @@ class HumanHandoff:
         key = idempotency_key or f"{ticket_id}:escalation"
         cid = customer_id or f"anon:{ticket_id}"
         body = body_redacted or ""
-        decision_dict: Dict[str, Any] = decision_payload or {
+        decision_dict: Dict[str, Any] = dict(decision_payload) if decision_payload else {
             "decision": "escalate",
             "queue": queue,
             "reason": reason,
             "escalated_by": escalated_by,
             "degraded": degraded,
         }
+        if session_id and "session_id" not in decision_dict:
+            decision_dict["session_id"] = session_id
+        if ticket_id and "ticket_id" not in decision_dict:
+            decision_dict["ticket_id"] = ticket_id
 
         # Priority 1: Use upsert_ticket if client supports it (ticket-db-mcp HTTP or InMemory client)
         if hasattr(self.ticket_db_client, "upsert_ticket"):

@@ -97,3 +97,11 @@ Cloud SQL for PostgreSQL 16 serves as the authoritative system of record for sup
 - **Acceptance**: `tests/agents/test_redaction_purge.py::test_purge_requires_scheduler_oidc_and_deletes_expired`
 - **Status**: done
 - **Owner**: ticket-store
+
+### REQ-STORE-011: Ticket Lifecycle Fields, Backfill Migration, and Transition Matrix
+- **Statement**: Cloud SQL schema migration `0006_ticket_lifecycle.sql` MUST add additive lifecycle columns to `tickets`: `issue_reference` (VARCHAR(128)), `category` (VARCHAR(64) NOT NULL DEFAULT 'support'), and `current_owner` (VARCHAR(128) NOT NULL DEFAULT 'bot'), with indexes on `(session_id, status)` and `issue_reference`. The migration MUST backfill `category = 'security'` for existing Model Armor / prompt injection records, and `current_owner = coalesce(assigned_queue, 'human-standard')` for `status in ('open', 'escalated')`. `ticket-db-mcp` and `TicketRepository` MUST enforce the deterministic customer transition table (`CUSTOMER_ALLOWED_TRANSITIONS`), permitting customer status transitions strictly from `open` -> `resolved_by_customer`, `answered` -> `resolved_by_customer`, and `resolved_by_customer` -> `reopened`. Customer status updates MUST strictly reject security/fraud tickets, reject tickets owned by human queues/agents (`current_owner != 'bot'`), enforce verified customer ownership (`customer_id` match, refusing `anon:` callers), enforce optimistic concurrency via `from_status` matching current database state, and record an immutable `status_changed` audit event containing `from_status`, `to_status`, `actor`, and `reason` without persisting raw message text.
+- **Rationale**: TDD §3, §4.2, and §7.1. Prevents holding security escalations across turns, prevents unauthenticated ticket tampering, and enforces deterministic resolution transitions.
+- **Acceptance**: `tests/store/test_repo.py` and `tests/agents/test_ticket_lifecycle.py::test_update_ticket_status_validation_rules`
+- **Status**: done
+- **Owner**: ticket-store
+

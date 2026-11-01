@@ -1,11 +1,7 @@
 # Specification: Multi-Agent Service & MCP Subsystem (`agent-service`)
-
 This specification defines the multi-agent runtime topology, inter-agent communication, tool contracts (Model Context Protocol), routing policies, resilience controls, and execution budgets for the Support Ticket Router & Assistant service.
-
 ---
-
 ## 1. Overview & Deployment Topology
-
 The service is composed of three cooperative agents and two dedicated MCP servers partitioned across Google Cloud managed runtimes by architectural responsibility:
 
 ```
@@ -48,9 +44,7 @@ Inbound Support Ticket (Session-authenticated)
 
 ### Package Directory Structure
 The package is structured as `src/ticket_router/agents/{triage_router,faq_resolver,human_queue}/` and `src/ticket_router/mcp/{ticket_db,order_lookup}/`.
-
 ---
-
 ## 2. Requirement Index
 
 | ID | Title | Status | Acceptance |
@@ -91,9 +85,8 @@ The package is structured as `src/ticket_router/agents/{triage_router,faq_resolv
 | `REQ-AGENT-034` | Human Review UI with Cloud Run IAP and Verified Rep Identity | `done` | `tests/agents/test_review_ui.py::test_review_ui_full_workflow` |
 | `REQ-AGENT-035` | Cloud Run Warm Fallback Agent Host (triage-fallback) | `done` | `tests/agents/test_fallback_host.py::test_query_endpoint_e2e_mocked` |
 | `REQ-AGENT-036` | Vertex AI Agent Engine Memory Bank Integration | `done` | `tests/memory/test_memory_bank.py::test_verified_customer_retrieve_and_summary_injected` |
-
+| `REQ-AGENT-037` | Ticket Lifecycle and Deterministic Issue Continuation | `done` | `tests/agents/test_ticket_lifecycle.py::test_reproduce_production_defect_security_escalation_captures_benign_order_lookup` |
 ---
-
 ## 3. Detailed Requirements
 
 ### REQ-AGENT-001: Multi-Agent Package Structure and Deployment Topology
@@ -348,7 +341,7 @@ The package is structured as `src/ticket_router/agents/{triage_router,faq_resolv
 - **Status**: done
 - **Owner**: agent-service
 ### REQ-AGENT-033: Multi-Turn Conversation Holding and Customer Follow-up Attachment
-- **Statement**: Once a ticket is escalated to a human queue (`assigned_queue != None`), follow-up customer messages in the same conversation session (`session_id`) MUST remain attached to that active ticket, assigned to the human queue, until explicitly resolved or reopened via `POST /reopen` (`target_status="returned_to_automation"` or `"open"`): (1) `TriageRouterAgent.triage` MUST query `ticket-db-mcp` for active holding tickets (`get_active_ticket_for_session`) with a short bounded timeout (`TICKET_DB_HOLD_LOOKUP_TIMEOUT_S = 1.5 s`) before routing, failing open to standard routing if the lookup times out or fails; (2) Holding statuses include `escalated`, `queued_for_review`, `claimed`, `assigned`, `in_progress`, and `open`; releasing statuses include `resolved`, `resolved_auto`, `closed`, and `returned_to_automation` (transitioning to `returned_to_automation` clears `assigned_queue` and `assigned_agent` with an audited `ticket_reopened` event so subsequent customer turns return to normal automated routing); (3) While held, follow-up messages MUST NOT trigger model inference (zero calls to `router-s1`, `gemini-3.8-flash`, or `FaqResolverAgent`) or re-publish escalation events to Pub/Sub; instead, the sanitized/tokenized message is appended to the ticket audit trail via `append_customer_followup`, and the agent returns a deterministic calming acknowledgement (`render_followup_calming_reply`) formatted with a human-readable ticket reference (`TICK-<...>`, derived from session ID or stored decision ticket ID) and MUST NEVER expose the database UUID to the customer; (4) If active ticket lookup fails, the agent MUST fail open to standard tiered routing; (5) Ingress card data blocks (`REQ-AGENT-032`) take precedence over ticket holding.
+- **Statement**: Once a ticket is escalated to a human queue (`assigned_queue != None`), follow-up customer messages in the same conversation session (`session_id`) MUST remain attached to that active ticket, assigned to the human queue, until explicitly resolved or reopened via `POST /reopen` (`target_status="returned_to_automation"` or `"open"`): (1) `TriageRouterAgent.triage` MUST query `ticket-db-mcp` for active holding tickets (`get_active_ticket_for_session`) with a short bounded timeout (`TICKET_DB_HOLD_LOOKUP_TIMEOUT_S = 1.5 s`), failing open to standard routing if the lookup times out or fails; (2) Holding statuses include `escalated`, `queued_for_review`, `claimed`, `assigned`, `in_progress`, and `open`; releasing statuses include `resolved`, `resolved_auto`, `closed`, and `returned_to_automation` (transitioning to `returned_to_automation` clears `assigned_queue` and `assigned_agent` with an audited `ticket_reopened` event so subsequent customer turns return to normal automated routing); (3) Turn-level intent classification (`router-s1`) and Model Armor security checks run on every turn before holding continuation evaluation. When a turn attaches to an active holding ticket, downstream generative inference (zero calls to `gemini-3.8-flash` or `FaqResolverAgent`) and re-publishing to Pub/Sub are skipped; instead, the sanitized/tokenized message is appended to the ticket audit trail via `append_customer_followup`, and the agent returns a deterministic calming acknowledgement (`render_followup_calming_reply`) formatted with a human-readable ticket reference (`TICK-<...>`, derived from session ID or stored decision ticket ID) and MUST NEVER expose the database UUID to the customer; (4) If active ticket lookup fails, the agent MUST fail open to standard tiered routing; (5) Ingress card data blocks (`REQ-AGENT-032`) take precedence over ticket holding.
 - **Rationale**: TDD §1.1, §5.1. Prevents automated systems from answering or re-routing tickets once a customer conversation is already transferred to human support specialists, while supporting explicit audited release back to automation.
 - **Acceptance**: `tests/agents/test_conversation_holding.py::test_followup_attaches_to_holding_ticket_with_zero_model_calls` and `tests/mcp/test_ticket_db_resilience.py::test_get_active_ticket_for_session_fail_open_on_timeout` and `tests/agents/test_ticket_reopen.py::test_reopen_endpoint_auth_and_validation`
 - **Status**: done
@@ -375,5 +368,12 @@ The package is structured as `src/ticket_router/agents/{triage_router,faq_resolv
   4. **Configuration & Resilience**: Controlled by feature flag `MEMORY_BANK_ENABLED` (default `"1"` in deploy env, `"0"` in unit tests unless explicitly enabled). Engine target defaults to `projects/620485621180/locations/us-central1/reasoningEngines/2170218524805431296`.
 - **Rationale**: TDD §1, §3.4, §6. Enables personalized routing and RAG answers across customer sessions while maintaining zero PII leakage and strict turn latency budgets.
 - **Acceptance**: `tests/memory/test_memory_bank.py::test_verified_customer_retrieve_and_summary_injected` and `tests/memory/test_memory_bank.py::test_anon_customer_no_read_or_write` and `tests/memory/test_memory_bank.py::test_card_blocked_turn_no_write`
+- **Status**: done
+- **Owner**: agent-service
+
+### REQ-AGENT-037: Ticket Lifecycle and Deterministic Issue Continuation
+- **Statement**: `TriageRouterAgent` MUST enforce the deterministic continuation policy (`CONTINUE` vs `NEW_ISSUE`) and customer resolution confirmation flow defined in `specs/ticket-lifecycle.md` (`REQ-LIFE-001`, `REQ-LIFE-002`, `REQ-LIFE-003`): (1) Ingress card block and Model Armor PI/JB evaluation precede holding; (2) Human-owned ordinary tickets continue on explicit reference or related intent, whereas distinct actionable requests route as `NEW_ISSUE`; (3) Customer affirmative resolution on bot-owned support tickets calls `update_ticket_status` via `ticket-db-mcp` with ownership and transition checks.
+- **Rationale**: TDD §3, §4.2, §7.1. Pointer specification linking agent service to ticket lifecycle spec.
+- **Acceptance**: `tests/agents/test_ticket_lifecycle.py::test_reproduce_production_defect_security_escalation_captures_benign_order_lookup`
 - **Status**: done
 - **Owner**: agent-service

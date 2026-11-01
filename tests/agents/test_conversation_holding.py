@@ -39,17 +39,23 @@ from ticket_router.security.model_armor import (
 class CountingRouterS1:
     """Mock RouterS1 client counting model inference invocations."""
 
-    def __init__(self, escalate: bool = False, p_esc: float = 0.05) -> None:
+    def __init__(
+        self,
+        escalate: bool = False,
+        p_esc: float = 0.05,
+        intent: str = "other",
+    ) -> None:
         self.calls = 0
         self.escalate = escalate
         self.p_esc = p_esc
+        self.intent = intent
 
     def route(self, text: str) -> RouterPrediction:
         self.calls += 1
         return RouterPrediction(
-            intent="shipping_policy",
+            intent=self.intent,
             intent_confidence=0.95,
-            intent_probabilities={"shipping_policy": 0.95, "other": 0.05},
+            intent_probabilities={self.intent: 0.95, "other": 0.05} if self.intent != "other" else {"other": 0.95, "shipping_policy": 0.05},
             escalate=self.escalate,
             escalate_probability=self.p_esc,
             sentiment="neutral",
@@ -189,8 +195,8 @@ def test_followup_attaches_to_holding_ticket_with_zero_model_calls():
         message_text="Also, please check on my refund status while you review this.",
     )
 
-    # Invariants: Zero model or FaqResolver calls, zero re-publishing to PubSub
-    assert s1_client.calls == 0, f"Expected 0 S1 calls, got {s1_client.calls}"
+    # Invariants: Zero Tier 2 or FaqResolver calls, zero re-publishing to PubSub, S1 classification runs on every turn
+    assert s1_client.calls == 1, f"Expected 1 S1 call, got {s1_client.calls}"
     assert tier2_invoker.calls == 0, f"Expected 0 Tier2 calls, got {tier2_invoker.calls}"
     assert a2a_client.calls == 0, f"Expected 0 FaqResolver calls, got {a2a_client.calls}"
     assert len(publisher.published_messages) == 1, "Should not re-publish escalation event on follow-up"
@@ -223,6 +229,7 @@ def test_followup_attaches_to_holding_ticket_with_zero_model_calls():
         session_id=session_id,
         message_text="Also, please check on my refund status while you review this.",
     )
+    assert s1_client.calls == 2
     assert res3.ticket_id == expected_human_tid
     assert res3.calming_ack == render_followup_calming_reply(expected_human_tid)
     assert holding_tid not in res3.calming_ack, "DB UUID must never be exposed to customers"

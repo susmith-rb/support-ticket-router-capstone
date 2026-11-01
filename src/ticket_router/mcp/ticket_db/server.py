@@ -31,6 +31,10 @@ from ticket_router.mcp.ticket_db.schemas import (
     ClaimTicketResponse,
     GetActiveTicketRequest,
     GetActiveTicketResponse,
+    GetTicketRequest,
+    GetTicketResponse,
+    RecordConfirmationRequestedRequest,
+    RecordConfirmationRequestedResponse,
     ReidentifyPiiRequest,
     ReidentifyPiiResponse,
     ResolveCustomerRequest,
@@ -39,6 +43,8 @@ from ticket_router.mcp.ticket_db.schemas import (
     ResolveTicketResponse,
     SaveRedactionMapRequest,
     SaveRedactionMapResponse,
+    UpdateTicketStatusRequest,
+    UpdateTicketStatusResponse,
     UpsertTicketRequest,
     UpsertTicketResponse,
     get_tool_schemas,
@@ -169,6 +175,25 @@ async def upsert_ticket(
     ):
         status_val = "resolved_auto"
 
+    from ticket_router.store.models import effective_category
+
+    category = (
+        details.get("category")
+        or effective_category(decision=dec)
+        or "support"
+    )
+    raw_q = (assigned_queue or "").strip().lower()
+    if raw_q.startswith("human"):
+        current_owner = f"queue:{assigned_queue}"
+    else:
+        current_owner = "bot"
+
+    issue_reference = (
+        dec.get("ticket_id")
+        or f"TICK-{str(det_ticket_uuid)[:8]}"
+    )
+    session_id = dec.get("session_id")
+
     ticket_create = TicketCreate(
         ticket_id=det_ticket_uuid,
         customer_id=req.customer_id,
@@ -176,6 +201,10 @@ async def upsert_ticket(
         body_redacted=req.body_redacted,
         decision=req.decision,
         assigned_queue=assigned_queue,
+        session_id=session_id,
+        issue_reference=issue_reference,
+        category=category,
+        current_owner=current_owner,
     )
 
     ticket = ticket_repo.create_ticket(ticket_create)
@@ -377,6 +406,14 @@ async def get_active_ticket_for_session(
             ticket=None,
         )
 
+    events = []
+    if hasattr(ticket_repo, "list_events"):
+        try:
+            events = ticket_repo.list_events(ticket.ticket_id)
+        except Exception:
+            events = []
+    has_conf = any(getattr(ev, "event_type", None) == "resolution_confirmation_requested" for ev in events)
+
     ticket_dict = {
         "ticket_id": str(ticket.ticket_id),
         "customer_id": ticket.customer_id,
@@ -389,6 +426,7 @@ async def get_active_ticket_for_session(
         "created_at": ticket.created_at.isoformat(),
         "updated_at": ticket.updated_at.isoformat(),
         "session_id": getattr(ticket, "session_id", None) or req.session_id,
+        "resolution_confirmation_requested": has_conf,
     }
     return GetActiveTicketResponse(
         ticket_id=str(ticket.ticket_id),
@@ -431,6 +469,189 @@ async def append_customer_followup(
         raise HTTPException(status_code=404, detail="ticket_not_found") from exc
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail="customer_mismatch") from exc
+
+
+@router.post("/tools/update_ticket_status", response_model=UpdateTicketStatusResponse)
+@router.post("/update_ticket_status", response_model=UpdateTicketStatusResponse)
+async def update_ticket_status(
+    req: UpdateTicketStatusRequest,
+    authorization: Optional[str] = Header(None),
+    x_serverless_authorization: Optional[str] = Header(None),
+    x_customer_id: Optional[str] = Header(None, alias="X-Customer-ID"),
+    x_verified_customer_id: Optional[str] = Header(None, alias="X-Verified-Customer-Id"),
+    x_customer_verified: Optional[str] = Header(None, alias="X-Customer-Verified"),
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+) -> UpdateTicketStatusResponse:
+    caller = _extract_caller_identity(authorization, x_serverless_authorization)
+    logger.info(
+        "update_ticket_status called by caller=%s ticket=%s to_status=%s actor=%s",
+        caller,
+        req.ticket_id,
+        req.to_status,
+        req.actor,
+    )
+
+    header_customer = x_customer_id or x_verified_customer_id
+    is_customer_transition = (
+        (req.to_status in ("resolved_by_customer", "reopened"))
+        or (req.customer_id is not None)
+        or (header_customer is not None)
+    )
+
+    if is_customer_transition:
+        if not header_customer:
+            raise HTTPException(
+                status_code=400,
+                detail="Missing verified customer identity header (X-Customer-ID)",
+            )
+        if str(header_customer).startswith("anon:"):
+            raise HTTPException(
+                status_code=403,
+                detail="Anonymous customers cannot update ticket status",
+            )
+        if not x_customer_verified or str(x_customer_verified).lower() != "true":
+            raise HTTPException(
+                status_code=403,
+                detail="Unverified customer identity",
+            )
+        if req.customer_id is not None and req.customer_id != header_customer:
+            raise HTTPException(
+                status_code=400,
+                detail="customer_id in request body does not match verified identity header (BOLA violation)",
+            )
+        if req.actor and (req.actor.startswith("rep:") or req.actor.startswith("queue:")):
+            raise HTTPException(
+                status_code=403,
+                detail="Customer cannot impersonate representative or queue actor",
+            )
+
+    try:
+        updated = ticket_repo.update_ticket_status(
+            ticket_id=req.ticket_id,
+            status=req.to_status,
+            from_status=req.from_status,
+            actor=req.actor,
+            reason=req.reason,
+            idempotency_key=req.idempotency_key,
+            trace=req.trace,
+            customer_id=header_customer or req.customer_id,
+        )
+        if updated is None:
+            raise HTTPException(status_code=404, detail="ticket_not_found")
+        is_idempotent = (updated.status == req.to_status) and (req.from_status != req.to_status)
+        return UpdateTicketStatusResponse(
+            success=True,
+            ticket_id=str(updated.ticket_id),
+            status=updated.status,
+            idempotent=is_idempotent,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="ticket_not_found") from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        err_msg = str(exc)
+        if "Status conflict" in err_msg:
+            raise HTTPException(status_code=409, detail=err_msg) from exc
+        raise HTTPException(status_code=400, detail=err_msg) from exc
+
+
+@router.post("/tools/record_resolution_confirmation_requested", response_model=RecordConfirmationRequestedResponse)
+@router.post("/record_resolution_confirmation_requested", response_model=RecordConfirmationRequestedResponse)
+async def record_resolution_confirmation_requested(
+    req: RecordConfirmationRequestedRequest,
+    authorization: Optional[str] = Header(None),
+    x_serverless_authorization: Optional[str] = Header(None),
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+) -> RecordConfirmationRequestedResponse:
+    caller = _extract_caller_identity(authorization, x_serverless_authorization)
+    logger.info(
+        "record_resolution_confirmation_requested called by caller=%s ticket=%s",
+        caller,
+        req.ticket_id,
+    )
+    try:
+        target_uuid = UUID(req.ticket_id)
+    except (ValueError, AttributeError):
+        target_uuid = uuid.uuid5(uuid.NAMESPACE_URL, f"idempotency:{req.ticket_id}")
+
+    ticket = ticket_repo.get_ticket(target_uuid)
+    if ticket is None:
+        try:
+            ticket = ticket_repo.get_ticket(req.ticket_id)
+        except Exception:
+            ticket = None
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="ticket_not_found")
+
+    ticket_repo.append_event(
+        ticket_id=ticket.ticket_id,
+        event_type="resolution_confirmation_requested",
+        actor="router",
+        payload={"prompt": req.prompt} if req.prompt else {},
+    )
+    return RecordConfirmationRequestedResponse(
+        success=True,
+        ticket_id=str(ticket.ticket_id),
+    )
+
+
+@router.post("/tools/get_ticket", response_model=GetTicketResponse)
+@router.post("/get_ticket", response_model=GetTicketResponse)
+async def get_ticket(
+    req: GetTicketRequest,
+    authorization: Optional[str] = Header(None),
+    x_serverless_authorization: Optional[str] = Header(None),
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+) -> GetTicketResponse:
+    caller = _extract_caller_identity(authorization, x_serverless_authorization)
+    logger.info("get_ticket called by caller=%s ticket=%s", caller, req.ticket_id)
+
+    try:
+        target_uuid = UUID(req.ticket_id)
+    except (ValueError, AttributeError):
+        target_uuid = uuid.uuid5(uuid.NAMESPACE_URL, f"idempotency:{req.ticket_id}")
+
+    ticket = ticket_repo.get_ticket(target_uuid)
+    if ticket is None:
+        try:
+            ticket = ticket_repo.get_ticket(req.ticket_id)
+        except Exception:
+            ticket = None
+
+    if ticket is None:
+        return GetTicketResponse(ticket=None, ticket_id=None, status=None)
+
+    events = []
+    if hasattr(ticket_repo, "list_events"):
+        try:
+            events = ticket_repo.list_events(ticket.ticket_id)
+        except Exception:
+            events = []
+    has_conf = any(getattr(ev, "event_type", None) == "resolution_confirmation_requested" for ev in events)
+
+    ticket_dict = {
+        "ticket_id": str(ticket.ticket_id),
+        "customer_id": ticket.customer_id,
+        "channel": ticket.channel,
+        "body_redacted": ticket.body_redacted,
+        "decision": ticket.decision,
+        "status": ticket.status,
+        "assigned_to": ticket.assigned_to,
+        "assigned_queue": ticket.assigned_queue,
+        "category": getattr(ticket, "category", "support"),
+        "current_owner": getattr(ticket, "current_owner", "bot"),
+        "issue_reference": getattr(ticket, "issue_reference", None),
+        "created_at": ticket.created_at.isoformat(),
+        "updated_at": ticket.updated_at.isoformat(),
+        "session_id": getattr(ticket, "session_id", None),
+        "resolution_confirmation_requested": has_conf,
+    }
+    return GetTicketResponse(
+        ticket=ticket_dict,
+        ticket_id=str(ticket.ticket_id),
+        status=ticket.status,
+    )
 
 
 def create_app(

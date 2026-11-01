@@ -19,6 +19,7 @@ import inspect
 import json
 import logging
 import os
+import re
 import threading
 import time
 import uuid
@@ -83,6 +84,7 @@ from ticket_router.security.model_armor import (
 )
 from ticket_router.security.pii_tokens import restore_pii_tokens
 from ticket_router.store.ids import canonical_ticket_uuid
+from ticket_router.store.models import effective_category, is_holding_ticket, is_human_owned
 
 logger = logging.getLogger(__name__)
 _SIGNER_INIT_LOCK = threading.Lock()
@@ -182,6 +184,135 @@ def _emit_security_blocked_log(
         "message_length": len(message_text),
     }
     logger.warning(json.dumps(log_payload, separators=(",", ":")))
+
+
+def _extract_ticket_id_reference(text: str) -> Optional[str]:
+    """Extract explicit TICK-xxxxxxxx reference from text if present."""
+    match = re.search(r"\b(TICK-[A-Za-z0-9_-]+)\b", text, re.IGNORECASE)
+    if match:
+        return match.group(1).upper()
+    return None
+
+
+def _is_explicit_ticket_reference(text: str) -> bool:
+    """Check if message explicitly references a ticket or specialist inquiry."""
+    if _extract_ticket_id_reference(text):
+        return True
+    t = text.lower()
+    return any(
+        p in t
+        for p in (
+            "my ticket",
+            "open ticket",
+            "my open ticket",
+            "the specialist",
+            "my specialist",
+            "ticket status",
+            "status of my ticket",
+        )
+    )
+
+
+def _is_affirmative_resolution(text: str) -> bool:
+    """Check if message is an affirmative confirmation that resolves an issue."""
+    t = text.strip().lower()
+    if not t:
+        return False
+    if re.search(
+        r"\b(but|however|still|not|didn't|does not|unresolved|haven't|problem|issue|broken|help|urgent|agent|human|here)\b",
+        t,
+    ):
+        return False
+    patterns = [
+        r"^yes[!.?]*$",
+        r"^yep[!.?]*$",
+        r"^yeah[!.?]*$",
+        r"^yes\s+(?:thank\s+you|thanks|please)[!.?]*$",
+        r"^(?:yes\s*,?\s*)?(?:that\s+(?:helped|resolved\s+it|fixed\s+it)|all\s+(?:good|set))(?:\s*,?\s*(?:thank\s+you|thanks))?[!.?]*$",
+        r"^(?:yes\s*,?\s*)?(?:close\s+ticket|mark\s+as\s+resolved|issue\s+resolved)(?:\s*,?\s*(?:thank\s+you|thanks))?[!.?]*$",
+        r"^(?:yes\s*,?\s*)?(?:that\s+helped\s+close\s+ticket)(?:\s*,?\s*(?:thank\s+you|thanks))?[!.?]*$",
+    ]
+    return any(re.match(p, t) for p in patterns)
+
+
+def _is_conversational_followup_for_held_ticket(
+    text: str,
+    active_ticket: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """Determine if message is a conversational follow-up to an active human-held ticket."""
+    if _is_explicit_ticket_reference(text):
+        return True
+    t = text.strip().lower()
+    if not t:
+        return True
+    # Conversational connectives indicating follow-up to existing dialogue
+    if re.match(r"^(also|and|by the way|additionally|as well|furthermore|update:|regarding)\b", t):
+        return True
+    # Phrases indicating elaboration, ongoing wait, or specialist inquiry
+    followup_phrases = (
+        "while you review",
+        "review this",
+        "waiting",
+        "when will",
+        "follow up with me",
+        "get back to me",
+        "for updates",
+        "my alternate email",
+        "my email is",
+        "my phone is",
+        "here is",
+        "receipt",
+        "purchase receipt",
+        "attached",
+        "i am here",
+        "i'm here",
+        "still waiting",
+        "just checking",
+    )
+    if any(p in t for p in followup_phrases):
+        return True
+    # Short acknowledgments in an active human queue
+    if re.match(r"^(yes|yep|yeah|ok|okay|sure|thanks|thank you)\b", t):
+        return True
+    return False
+
+
+def _derive_customer_ticket_id(
+    tid: str,
+    session_id: str,
+    active_ticket: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Derive customer-safe ticket reference string (REQ-AGENT-033)."""
+    def _is_uuid_str(val: Any) -> bool:
+        try:
+            uuid.UUID(str(val))
+            return True
+        except (ValueError, AttributeError, TypeError):
+            return False
+
+    if tid and not _is_uuid_str(tid):
+        return tid
+
+    if active_ticket:
+        held_dec = active_ticket.get("decision")
+        if isinstance(held_dec, str):
+            try:
+                held_dec = json.loads(held_dec)
+            except Exception:
+                held_dec = None
+        if isinstance(held_dec, dict):
+            stored = held_dec.get("ticket_id")
+            if stored and not _is_uuid_str(stored):
+                return str(stored)
+
+        held_sess = (
+            active_ticket.get("session_id")
+            or (isinstance(held_dec, dict) and held_dec.get("session_id"))
+        )
+        if held_sess:
+            return f"TICK-{str(held_sess)[:8]}"
+
+    return f"TICK-{session_id[:8]}"
 
 
 @dataclass(frozen=True)
@@ -835,241 +966,80 @@ class TriageRouterAgent:
                         error="card_data_blocked",
                     )
 
-            # REQ-AGENT-033: Check for active ticket holding human queue for this session
-            active_ticket: Optional[Dict[str, Any]] = None
-            try:
-                active_ticket = mcp_client.get_active_ticket_for_session(session_id=session_id)
-            except Exception as exc:
-                logger.warning(
-                    json.dumps(
-                        {
-                            "event": "get_active_ticket_failed",
-                            "session_id": session_id,
-                            "error_type": type(exc).__name__,
-                        },
-                        separators=(",", ":"),
-                    )
-                )
-
+            # Model Armor PI/JB check on every turn before holding or intent routing (REQ-MA-003, Requirement A)
             if (
-                isinstance(active_ticket, dict)
-                and (active_ticket.get("ticket_id") or active_ticket.get("id"))
+                ma_verdict is not None
+                and ma_verdict.has_pi_jb
+                and not getattr(policy, "_is_prompt_safety_delegated", lambda: False)()
             ):
-                holding_tid = str(active_ticket.get("ticket_id") or active_ticket.get("id"))
-                holding_queue = str(
-                    active_ticket.get("assigned_queue")
-                    or active_ticket.get("queue")
-                    or "human-standard"
-                )
-                ticket_customer_id = str(active_ticket.get("customer_id") or placeholder_cid)
-                body_to_persist = (
-                    tokenized_text
-                    if tokenized_text
-                    else (sanitized_text if sanitized_text else message_text)
-                )
-
-                # REQ-AGENT-033: Derive human-readable ticket reference (never leak DB UUID to customers)
-                held_decision = active_ticket.get("decision")
-                if isinstance(held_decision, str):
-                    try:
-                        held_decision = json.loads(held_decision)
-                    except Exception:
-                        held_decision = None
-
-                stored_tid = None
-                if isinstance(held_decision, dict):
-                    stored_tid = held_decision.get("ticket_id")
-
-                held_sess = (
-                    active_ticket.get("session_id")
-                    or (isinstance(held_decision, dict) and held_decision.get("session_id"))
-                    or session_id
-                )
-
-                def _is_uuid_str(val: Any) -> bool:
-                    try:
-                        uuid.UUID(str(val))
-                        return True
-                    except (ValueError, AttributeError, TypeError):
-                        return False
-
-                if not _is_uuid_str(holding_tid):
-                    customer_ticket_id = holding_tid
-                elif stored_tid and not _is_uuid_str(stored_tid):
-                    customer_ticket_id = str(stored_tid)
-                elif held_sess:
-                    customer_ticket_id = f"TICK-{str(held_sess)[:8]}"
-                else:
-                    customer_ticket_id = f"TICK-{session_id[:8]}"
-
-                # REQ-MA-003: Follow-up in a held session with PI/JB is blocked deterministically
-                # and MUST NOT be appended to the held ticket.
-                if (
-                    ma_verdict is not None
-                    and ma_verdict.has_pi_jb
-                    and not getattr(policy, "_is_prompt_safety_delegated", lambda: False)()
-                ):
-                    sec_ack = render_security_blocked_reply()
-                    eff_channel = derive_channel_source(
-                        channel=channel,
-                        oauth_access_token=oauth_access_token,
-                        caller_user_id=caller_user_id,
-                        session_id=session_id,
-                    )
-                    _emit_security_blocked_log(
-                        traceparent=traceparent,
-                        session_id=session_id,
-                        channel=eff_channel,
-                        customer_verified=bool(active_ticket.get("customer_verified", False)),
-                        customer_id=active_ticket.get("customer_id"),
-                        ma_verdict=ma_verdict,
-                        message_text=message_text,
-                    )
-                    elapsed_ms = (time.monotonic() - start_time) * 1000.0
-                    turn_span.set_attribute("decision", "security_blocked")
-                    turn_span.set_attribute("tier", "model_armor")
-                    turn_span.set_attribute("queue", "none")
-                    turn_span.set_attribute("degraded", False)
-                    turn_span.set_attribute("predicted_intent", "other")
-
-                    sec_decision = RouterDecision(
-                        ticket_id=customer_ticket_id,
-                        session_id=session_id,
-                        decision="security_blocked",
-                        tier="model_armor",
-                        queue="none",
-                        predicted_intent="other",
-                        escalate=False,
-                        sentiment="neutral",
-                        urgency="normal",
-                        reason="prompt_injection_or_jailbreak",
-                        degraded=False,
-                        calming_ack=sec_ack,
-                        latency_ms=elapsed_ms,
-                        details={
-                            "category": "security",
-                            "model_armor": ma_verdict.to_summary_dict(),
-                        },
-                        customer_verified=bool(active_ticket.get("customer_verified", False)),
-                        tokenized_text=tokenized_text,
-                        pii_mapping=pii_mapping,
-                    )
-                    self.logger.log_decision(
-                        ticket_id=customer_ticket_id,
-                        session_id=session_id,
-                        decision="security_blocked",
-                        tier="model_armor",
-                        queue="none",
-                        degraded=False,
-                        latency_ms=elapsed_ms,
-                        traceparent=traceparent,
-                        predicted_intent="other",
-                    )
-                    return TriageResult(
-                        ticket_id=customer_ticket_id,
-                        session_id=session_id,
-                        decision=sec_decision,
-                        calming_ack=sec_ack,
-                        handoff_response={
-                            "status": "SECURITY_BLOCKED",
-                            "route": "security_blocked",
-                            "answer": sec_ack,
-                            "ticket_id": customer_ticket_id,
-                            "queue": "none",
-                            "status_code": 200,
-                        },
-                        idempotency_key=idempotency_key,
-                        latency_ms=elapsed_ms,
-                        status_code=200,
-                        error=None,
-                    )
-
-                if pii_mapping:
-                    self._save_redaction_map_if_needed(
-                        ticket_id=customer_ticket_id,
-                        ticket_uuid=holding_tid,
-                        customer_id=ticket_customer_id,
-                        mapping=pii_mapping,
-                    )
-                try:
-                    mcp_client.append_customer_followup(
-                        ticket_id=holding_tid,
-                        body_redacted=body_to_persist,
-                        customer_id=ticket_customer_id,
-                        traceparent=traceparent,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        json.dumps(
-                            {
-                                "event": "append_customer_followup_failed",
-                                "ticket_id": holding_tid,
-                                "error_type": type(exc).__name__,
-                            },
-                            separators=(",", ":"),
-                        )
-                    )
-
-                calming_ack = render_followup_calming_reply(
-                    ticket_id=customer_ticket_id,
+                sec_ack = render_security_blocked_reply()
+                eff_channel = derive_channel_source(
+                    channel=channel,
+                    oauth_access_token=oauth_access_token,
+                    caller_user_id=caller_user_id,
                     session_id=session_id,
                 )
-                calming_ack = restore_pii_tokens(calming_ack, pii_mapping)
+                _emit_security_blocked_log(
+                    traceparent=traceparent,
+                    session_id=session_id,
+                    channel=eff_channel,
+                    customer_verified=False,
+                    customer_id=None,
+                    ma_verdict=ma_verdict,
+                    message_text=message_text,
+                )
                 elapsed_ms = (time.monotonic() - start_time) * 1000.0
-
-                turn_span.set_attribute("decision", "escalate")
-                turn_span.set_attribute("tier", "human_holding")
-                turn_span.set_attribute("queue", holding_queue)
+                turn_span.set_attribute("decision", "security_blocked")
+                turn_span.set_attribute("tier", "model_armor")
+                turn_span.set_attribute("queue", "none")
                 turn_span.set_attribute("degraded", False)
-                turn_span.set_attribute("predicted_intent", "followup")
+                turn_span.set_attribute("predicted_intent", "other")
 
-                followup_decision = RouterDecision(
-                    ticket_id=customer_ticket_id,
+                sec_decision = RouterDecision(
+                    ticket_id=t_id,
                     session_id=session_id,
-                    decision="escalate",
-                    tier="human_holding",
-                    queue=holding_queue,
-                    predicted_intent="followup",
-                    escalate=True,
+                    decision="security_blocked",
+                    tier="model_armor",
+                    queue="none",
+                    predicted_intent="other",
+                    escalate=False,
                     sentiment="neutral",
                     urgency="normal",
-                    reason="multi_turn_holding",
+                    reason="prompt_injection_or_jailbreak",
                     degraded=False,
-                    calming_ack=calming_ack,
+                    calming_ack=sec_ack,
                     latency_ms=elapsed_ms,
                     details={
-                        "holding_ticket_id": customer_ticket_id,
-                        "holding_ticket_uuid": holding_tid,
-                        "queue": holding_queue,
+                        "category": "security",
+                        "model_armor": ma_verdict.to_summary_dict(),
                     },
-                    customer_verified=bool(active_ticket.get("customer_verified", False)),
+                    customer_verified=False,
                     tokenized_text=tokenized_text,
                     pii_mapping=pii_mapping,
                 )
                 self.logger.log_decision(
-                    ticket_id=customer_ticket_id,
+                    ticket_id=t_id,
                     session_id=session_id,
-                    decision="escalate",
-                    tier="human_holding",
-                    queue=holding_queue,
+                    decision="security_blocked",
+                    tier="model_armor",
+                    queue="none",
                     degraded=False,
                     latency_ms=elapsed_ms,
                     traceparent=traceparent,
-                    predicted_intent="followup",
+                    predicted_intent="other",
                 )
                 return TriageResult(
-                    ticket_id=customer_ticket_id,
+                    ticket_id=t_id,
                     session_id=session_id,
-                    decision=followup_decision,
-                    calming_ack=calming_ack,
+                    decision=sec_decision,
+                    calming_ack=sec_ack,
                     handoff_response={
-                        "status": "ESCALATED",
-                        "route": "followup",
-                        "answer": calming_ack,
-                        "ticket_id": customer_ticket_id,
-                        "holding_ticket_uuid": holding_tid,
-                        "queue": holding_queue,
-                        "handoff_done": True,
+                        "status": "SECURITY_BLOCKED",
+                        "route": "security_blocked",
+                        "answer": sec_ack,
+                        "ticket_id": t_id,
+                        "queue": "none",
+                        "status_code": 200,
                     },
                     idempotency_key=idempotency_key,
                     latency_ms=elapsed_ms,
@@ -1077,7 +1047,7 @@ class TriageRouterAgent:
                     error=None,
                 )
 
-            # REQ-AGENT-027: Run identity resolution concurrently with policy evaluation
+            # REQ-AGENT-027: Run identity resolution concurrently with policy evaluation on every turn
             eval_kwargs = {
                 "text": message_text,
                 "session_id": session_id,
@@ -1140,6 +1110,462 @@ class TriageRouterAgent:
             elif decision.details.get("sanitized_text"):
                 body_to_persist = decision.details["sanitized_text"]
             pii_mapping = decision.pii_mapping or {}
+
+            # Handle Model Armor security block returned from policy evaluation
+            if decision.decision == "security_blocked":
+                sec_ack = render_security_blocked_reply()
+                eff_channel = derive_channel_source(
+                    channel=channel,
+                    oauth_access_token=oauth_access_token,
+                    caller_user_id=caller_user_id,
+                    session_id=session_id,
+                )
+                _emit_security_blocked_log(
+                    traceparent=traceparent,
+                    session_id=session_id,
+                    channel=eff_channel,
+                    customer_verified=customer_verified,
+                    customer_id=ticket_customer_id,
+                    ma_verdict=ma_verdict,
+                    message_text=message_text,
+                )
+                elapsed_ms = (time.monotonic() - start_time) * 1000.0
+                return TriageResult(
+                    ticket_id=t_id,
+                    session_id=session_id,
+                    decision=decision,
+                    calming_ack=sec_ack,
+                    handoff_response={
+                        "status": "SECURITY_BLOCKED",
+                        "route": "security_blocked",
+                        "answer": sec_ack,
+                        "ticket_id": t_id,
+                        "queue": "none",
+                        "status_code": 200,
+                    },
+                    idempotency_key=idempotency_key,
+                    latency_ms=elapsed_ms,
+                    status_code=200,
+                    error=None,
+                )
+
+            # REQ-AGENT-037 / REQ-LIFE-001: Explicit reference to security ticket -> safe status-only response
+            ref_tid = _extract_ticket_id_reference(message_text)
+            if ref_tid:
+                try:
+                    ref_ticket = mcp_client.get_ticket(ticket_id=ref_tid)
+                except Exception:
+                    ref_ticket = None
+
+                if isinstance(ref_ticket, dict):
+                    ref_cat = ref_ticket.get("category")
+                    ref_dec = ref_ticket.get("decision")
+                    if isinstance(ref_dec, str):
+                        try:
+                            ref_dec = json.loads(ref_dec)
+                        except Exception:
+                            ref_dec = None
+                    ref_reason = ref_dec.get("reason") if isinstance(ref_dec, dict) else None
+                    ref_tier = ref_dec.get("tier") if isinstance(ref_dec, dict) else None
+                    if ref_cat == "security" or ref_reason == "model_armor_security_trigger" or ref_tier == "model_armor":
+                        safe_ack = f"Ticket #{ref_tid} is currently under internal review with our security team."
+                        elapsed_ms = (time.monotonic() - start_time) * 1000.0
+                        turn_span.set_attribute("decision", "escalate")
+                        turn_span.set_attribute("tier", "ticket_status")
+                        turn_span.set_attribute("queue", "none")
+                        turn_span.set_attribute("predicted_intent", "status_inquiry")
+
+                        status_decision = RouterDecision(
+                            ticket_id=ref_tid,
+                            session_id=session_id,
+                            decision="escalate",
+                            tier="ticket_status",
+                            queue="none",
+                            predicted_intent="status_inquiry",
+                            escalate=False,
+                            sentiment="neutral",
+                            urgency="normal",
+                            reason="security_ticket_status_inquiry",
+                            degraded=False,
+                            calming_ack=safe_ack,
+                            latency_ms=elapsed_ms,
+                            details={
+                                "category": "security",
+                                "referenced_ticket_id": ref_tid,
+                            },
+                            customer_verified=customer_verified,
+                            tokenized_text=tokenized_text,
+                            pii_mapping=pii_mapping,
+                        )
+                        return TriageResult(
+                            ticket_id=ref_tid,
+                            session_id=session_id,
+                            decision=status_decision,
+                            calming_ack=safe_ack,
+                            handoff_response={
+                                "status": "STATUS_INQUIRY",
+                                "route": "ticket_status",
+                                "answer": safe_ack,
+                                "ticket_id": ref_tid,
+                                "queue": "none",
+                                "status_code": 200,
+                            },
+                            idempotency_key=idempotency_key,
+                            latency_ms=elapsed_ms,
+                            status_code=200,
+                            error=None,
+                        )
+
+            # REQ-LIFE-002: Customer resolution confirmation flow (affirmative reply to auto-resolved bot ticket)
+            if _is_affirmative_resolution(message_text):
+                cand_ticket: Optional[Dict[str, Any]] = None
+                if ref_tid:
+                    try:
+                        cand_ticket = mcp_client.get_ticket(ref_tid)
+                    except Exception:
+                        cand_ticket = None
+                if not cand_ticket:
+                    try:
+                        cand_ticket = mcp_client.get_active_ticket_for_session(session_id=session_id)
+                    except Exception:
+                        cand_ticket = None
+                if not cand_ticket:
+                    try:
+                        cand_ticket = mcp_client.get_ticket(f"TICK-{session_id[:8]}")
+                    except Exception:
+                        cand_ticket = None
+
+                if isinstance(cand_ticket, dict):
+                    # 1. Require pending-confirmation marker recorded on ticket (REQ-LIFE-002)
+                    if not cand_ticket.get("resolution_confirmation_requested"):
+                        cand_ticket = None
+
+                    # 2. Session scoping (unless explicitly referenced by ref_tid)
+                    if cand_ticket:
+                        ticket_sess = cand_ticket.get("session_id")
+                        if not ticket_sess and isinstance(cand_ticket.get("decision"), dict):
+                            ticket_sess = cand_ticket["decision"].get("session_id")
+                        if not ref_tid and ticket_sess and ticket_sess != session_id:
+                            cand_ticket = None
+
+                    # 3. Customer ownership scoping
+                    if cand_ticket and ticket_customer_id:
+                        ticket_cust = cand_ticket.get("customer_id")
+                        if ticket_cust and ticket_cust != ticket_customer_id:
+                            cand_ticket = None
+
+                if isinstance(cand_ticket, dict):
+                    cand_tid = str(cand_ticket.get("ticket_id") or cand_ticket.get("id") or f"TICK-{session_id[:8]}")
+                    cand_cat = cand_ticket.get("category", "support")
+                    cand_owner = cand_ticket.get("current_owner", "bot")
+                    cand_status = cand_ticket.get("status", "open")
+
+                    # Customer resolution confirmation allowed ONLY on bot-owned support tickets
+                    if cand_cat not in ("security", "fraud") and cand_owner == "bot":
+                        if not customer_verified or not ticket_customer_id or ticket_customer_id.startswith("anon:"):
+                            anon_refusal = f"To close ticket #{cand_tid}, please sign in with your verified customer account."
+                            elapsed_ms = (time.monotonic() - start_time) * 1000.0
+                            anon_dec = RouterDecision(
+                                ticket_id=cand_tid,
+                                session_id=session_id,
+                                decision="auto_rag",
+                                tier="ticket_lifecycle",
+                                queue="none",
+                                predicted_intent="confirmation",
+                                escalate=False,
+                                sentiment="neutral",
+                                urgency="normal",
+                                reason="unverified_customer_confirmation_refusal",
+                                degraded=False,
+                                calming_ack=anon_refusal,
+                                latency_ms=elapsed_ms,
+                                details={"category": "support", "ticket_id": cand_tid},
+                                customer_verified=False,
+                                tokenized_text=tokenized_text,
+                                pii_mapping=pii_mapping,
+                            )
+                            return TriageResult(
+                                ticket_id=cand_tid,
+                                session_id=session_id,
+                                decision=anon_dec,
+                                calming_ack=anon_refusal,
+                                handoff_response={
+                                    "status": "FORBIDDEN",
+                                    "answer": anon_refusal,
+                                    "ticket_id": cand_tid,
+                                    "status_code": 403,
+                                    "error": "anonymous_confirmation_forbidden",
+                                },
+                                idempotency_key=idempotency_key,
+                                latency_ms=elapsed_ms,
+                                status_code=200,
+                                error=None,
+                            )
+
+                        # Verified customer: update ticket status to resolved_by_customer
+                        try:
+                            mcp_client.update_ticket_status(
+                                ticket_id=cand_tid,
+                                from_status=cand_status,
+                                to_status="resolved_by_customer",
+                                actor=ticket_customer_id,
+                                reason="customer_confirmed_resolution",
+                                idempotency_key=idempotency_key,
+                                trace=traceparent,
+                                customer_id=ticket_customer_id,
+                            )
+                            ack = f"Thank you for confirming! Ticket #{cand_tid} has been marked as resolved. Please let us know if you need help with anything else!"
+                            elapsed_ms = (time.monotonic() - start_time) * 1000.0
+                            turn_span.set_attribute("decision", "auto_rag")
+                            turn_span.set_attribute("tier", "ticket_lifecycle")
+                            turn_span.set_attribute("queue", "none")
+                            turn_span.set_attribute("predicted_intent", "confirmation")
+
+                            res_dec = RouterDecision(
+                                ticket_id=cand_tid,
+                                session_id=session_id,
+                                decision="auto_rag",
+                                tier="ticket_lifecycle",
+                                queue="none",
+                                predicted_intent="confirmation",
+                                escalate=False,
+                                sentiment="neutral",
+                                urgency="normal",
+                                reason="resolved_by_customer",
+                                degraded=False,
+                                calming_ack=ack,
+                                latency_ms=elapsed_ms,
+                                details={"category": "support", "resolved_ticket_id": cand_tid},
+                                customer_verified=True,
+                                tokenized_text=tokenized_text,
+                                pii_mapping=pii_mapping,
+                            )
+                            self.logger.log_decision(
+                                ticket_id=cand_tid,
+                                session_id=session_id,
+                                decision="auto_rag",
+                                tier="ticket_lifecycle",
+                                queue="none",
+                                degraded=False,
+                                latency_ms=elapsed_ms,
+                                traceparent=traceparent,
+                                predicted_intent="confirmation",
+                            )
+                            return TriageResult(
+                                ticket_id=cand_tid,
+                                session_id=session_id,
+                                decision=res_dec,
+                                calming_ack=ack,
+                                handoff_response={
+                                    "status": "RESOLVED",
+                                    "route": "resolved_by_customer",
+                                    "answer": ack,
+                                    "ticket_id": cand_tid,
+                                    "status_code": 200,
+                                },
+                                idempotency_key=idempotency_key,
+                                latency_ms=elapsed_ms,
+                                status_code=200,
+                                error=None,
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                json.dumps(
+                                    {
+                                        "event": "update_ticket_status_failed",
+                                        "ticket_id": cand_tid,
+                                        "error_type": type(exc).__name__,
+                                        "error": str(exc),
+                                    },
+                                    separators=(",", ":"),
+                                )
+                            )
+
+            # REQ-AGENT-033 / REQ-LIFE-001: Deterministic issue continuation check on active holding ticket
+            active_ticket: Optional[Dict[str, Any]] = None
+            try:
+                active_ticket = mcp_client.get_active_ticket_for_session(session_id=session_id)
+            except Exception as exc:
+                logger.warning(
+                    json.dumps(
+                        {
+                            "event": "get_active_ticket_failed",
+                            "session_id": session_id,
+                            "error_type": type(exc).__name__,
+                        },
+                        separators=(",", ":"),
+                    )
+                )
+
+            if active_ticket is None and ref_tid:
+                try:
+                    active_ticket = mcp_client.get_ticket(ticket_id=ref_tid)
+                except Exception:
+                    active_ticket = None
+
+            if isinstance(active_ticket, dict) and (active_ticket.get("ticket_id") or active_ticket.get("id")):
+                holding_tid = str(active_ticket.get("ticket_id") or active_ticket.get("id"))
+                holding_queue = str(
+                    active_ticket.get("assigned_queue")
+                    or active_ticket.get("queue")
+                    or "human-standard"
+                )
+                holding_cat = effective_category(active_ticket)
+                raw_owner = active_ticket.get("current_owner")
+                if raw_owner:
+                    holding_owner = str(raw_owner)
+                elif is_human_owned(active_ticket) or holding_queue.startswith("human"):
+                    holding_owner = f"queue:{holding_queue}"
+                else:
+                    holding_owner = "bot"
+                customer_ticket_id = _derive_customer_ticket_id(holding_tid, session_id, active_ticket)
+
+                held_dec = active_ticket.get("decision")
+                if isinstance(held_dec, str):
+                    try:
+                        held_dec = json.loads(held_dec)
+                    except Exception:
+                        held_dec = None
+                held_intent = held_dec.get("predicted_intent") if isinstance(held_dec, dict) else None
+                cur_intent = decision.predicted_intent
+
+                actionable_intents = {
+                    "order_status",
+                    "order_inquiry",
+                    "order_lookup",
+                    "returns_refunds",
+                    "shipping_policy",
+                    "store_hours",
+                    "account_access",
+                    "payment_methods",
+                    "cancellation",
+                    "warranty",
+                    "price_match",
+                }
+
+                is_explicit_ref = bool((ref_tid and ref_tid == holding_tid) or _is_explicit_ticket_reference(message_text))
+
+                if is_explicit_ref:
+                    should_continue = True
+                elif cur_intent in ("followup", "other"):
+                    should_continue = _is_conversational_followup_for_held_ticket(message_text, active_ticket)
+                elif held_intent and cur_intent == held_intent:
+                    should_continue = True
+                elif cur_intent in actionable_intents:
+                    should_continue = False
+                else:
+                    should_continue = False
+
+                is_held = (
+                    is_holding_ticket(
+                        status=active_ticket.get("status"),
+                        assigned_queue=holding_queue,
+                        category=holding_cat,
+                        current_owner=holding_owner,
+                        decision=active_ticket.get("decision"),
+                    )
+                    and holding_cat not in ("security", "fraud")
+                    and is_human_owned(active_ticket)
+                )
+
+                if should_continue and is_held:
+                    body_to_persist = tokenized_text or sanitized_text or message_text
+                    ticket_customer_id = active_ticket.get("customer_id") or placeholder_cid
+
+                    if pii_mapping:
+                        self._save_redaction_map_if_needed(
+                            ticket_id=customer_ticket_id,
+                            ticket_uuid=holding_tid,
+                            customer_id=ticket_customer_id,
+                            mapping=pii_mapping,
+                        )
+                    try:
+                        mcp_client.append_customer_followup(
+                            ticket_id=holding_tid,
+                            body_redacted=body_to_persist,
+                            customer_id=ticket_customer_id,
+                            traceparent=traceparent,
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            json.dumps(
+                                {
+                                    "event": "append_customer_followup_failed",
+                                    "ticket_id": holding_tid,
+                                    "error_type": type(exc).__name__,
+                                },
+                                separators=(",", ":"),
+                            )
+                        )
+
+                    calming_ack = render_followup_calming_reply(
+                        ticket_id=customer_ticket_id,
+                        session_id=session_id,
+                    )
+                    calming_ack = restore_pii_tokens(calming_ack, pii_mapping)
+                    elapsed_ms = (time.monotonic() - start_time) * 1000.0
+
+                    turn_span.set_attribute("decision", "escalate")
+                    turn_span.set_attribute("tier", "human_holding")
+                    turn_span.set_attribute("queue", holding_queue)
+                    turn_span.set_attribute("degraded", False)
+                    turn_span.set_attribute("classifier_predicted_intent", cur_intent)
+                    turn_span.set_attribute("predicted_intent", "followup")
+
+                    followup_decision = RouterDecision(
+                        ticket_id=customer_ticket_id,
+                        session_id=session_id,
+                        decision="escalate",
+                        tier="human_holding",
+                        queue=holding_queue,
+                        predicted_intent="followup",
+                        escalate=True,
+                        sentiment="neutral",
+                        urgency="normal",
+                        reason="multi_turn_holding",
+                        degraded=False,
+                        calming_ack=calming_ack,
+                        latency_ms=elapsed_ms,
+                        details={
+                            "holding_ticket_id": customer_ticket_id,
+                            "holding_ticket_uuid": holding_tid,
+                            "queue": holding_queue,
+                            "classifier_predicted_intent": cur_intent,
+                        },
+                        customer_verified=bool(active_ticket.get("customer_verified", False)),
+                        tokenized_text=tokenized_text,
+                        pii_mapping=pii_mapping,
+                    )
+                    self.logger.log_decision(
+                        ticket_id=customer_ticket_id,
+                        session_id=session_id,
+                        decision="escalate",
+                        tier="human_holding",
+                        queue=holding_queue,
+                        degraded=False,
+                        latency_ms=elapsed_ms,
+                        traceparent=traceparent,
+                        predicted_intent="followup",
+                    )
+                    return TriageResult(
+                        ticket_id=customer_ticket_id,
+                        session_id=session_id,
+                        decision=followup_decision,
+                        calming_ack=calming_ack,
+                        handoff_response={
+                            "status": "ESCALATED",
+                            "route": "followup",
+                            "answer": calming_ack,
+                            "ticket_id": customer_ticket_id,
+                            "holding_ticket_uuid": holding_tid,
+                            "queue": holding_queue,
+                            "handoff_done": True,
+                        },
+                        idempotency_key=idempotency_key,
+                        latency_ms=elapsed_ms,
+                        status_code=200,
+                        error=None,
+                    )
 
             # REQ-AGENT-036: Vertex AI Agent Engine Memory Bank read for verified customers
             if (
@@ -1311,6 +1737,8 @@ class TriageRouterAgent:
                 }
             else:
                 decision_snapshot = _clean_decision_dict(decision)
+                decision_snapshot["ticket_id"] = t_id
+                decision_snapshot["session_id"] = session_id
                 upsert_ctx = contextvars.copy_context()
                 a2a_failed_exc: Optional[Exception] = None
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as upsert_pool:
@@ -1346,6 +1774,10 @@ class TriageRouterAgent:
                         )
                         try:
                             handoff_resp = self.a2a_client.handoff(payload)
+                            if isinstance(handoff_resp, dict) and handoff_resp.get("status") == "AUTO_RESOLVED":
+                                conf_question = f"\n\nDid that resolve your issue? Reply yes to close ticket #{t_id}."
+                                handoff_resp["confirmation_question"] = conf_question.strip()
+                                handoff_resp["resolution_prompt"] = conf_question.strip()
                             if isinstance(handoff_resp, dict) and handoff_resp.get("status") == "ESCALATED":
                                 if handoff_resp.get("handoff_done"):
                                     # REQ-AGENT-030: FaqResolver completed HumanHandoff; do not publish again
@@ -1392,6 +1824,18 @@ class TriageRouterAgent:
                         customer_id=ticket_customer_id,
                         mapping=pii_mapping,
                     )
+                    if (
+                        isinstance(handoff_resp, dict)
+                        and handoff_resp.get("status") == "AUTO_RESOLVED"
+                        and hasattr(self.mcp_client, "record_resolution_confirmation_requested")
+                    ):
+                        try:
+                            self.mcp_client.record_resolution_confirmation_requested(
+                                ticket_id=t_id,
+                                prompt=handoff_resp.get("confirmation_question"),
+                            )
+                        except Exception as exc:
+                            logger.warning("Failed to record resolution confirmation requested: %s", exc)
 
                 if a2a_failed_exc is not None:
                     decision = replace(
@@ -1525,6 +1969,18 @@ class _AdkAgentShim:
             channel=channel or "web",
             oauth_access_token=oauth_access_token,
         )
+        ans = None
+        if res.handoff_response and res.handoff_response.get("answer"):
+            ans = str(res.handoff_response.get("answer"))
+            conf_q = (
+                res.handoff_response.get("confirmation_question")
+                or res.handoff_response.get("resolution_prompt")
+            )
+            if conf_q and str(conf_q).strip() not in ans:
+                ans = f"{ans.rstrip()}\n\n{str(conf_q).strip()}"
+        elif res.calming_ack:
+            ans = res.calming_ack
+
         resp: Dict[str, Any] = {
             "ticket_id": res.ticket_id,
             "decision": res.decision.decision,
@@ -1532,6 +1988,8 @@ class _AdkAgentShim:
             "calming_ack": res.calming_ack,
             "intent": res.decision.predicted_intent,
         }
+        if ans is not None:
+            resp["answer"] = ans
         if res.status_code != 200:
             resp["status_code"] = res.status_code
         if res.error:

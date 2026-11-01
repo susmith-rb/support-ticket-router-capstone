@@ -15,6 +15,7 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from ticket_router.store.interfaces import CustomerRepository, OrderRepository, TicketRepository
 from ticket_router.store.models import (
+    CUSTOMER_ALLOWED_TRANSITIONS,
     Customer,
     CustomerResolution,
     IdentityEvent,
@@ -23,10 +24,45 @@ from ticket_router.store.models import (
     Ticket,
     TicketCreate,
     TicketEvent,
+    effective_category,
     is_holding_ticket,
+    is_human_owned,
 )
 
 logger = logging.getLogger(__name__)
+
+TICKET_COLUMNS_SQL = (
+    "ticket_id, customer_id, channel, body_redacted, decision, "
+    "status, assigned_to, assigned_queue, answer_text, citations, "
+    "resolution_notes, created_at, updated_at, session_id, "
+    "issue_reference, category, current_owner"
+)
+
+
+def _row_to_ticket(row: Tuple[Any, ...] | List[Any]) -> Ticket:
+    session_id = str(row[13]) if len(row) > 13 and row[13] is not None else None
+    issue_reference = str(row[14]) if len(row) > 14 and row[14] is not None else None
+    category = str(row[15]) if len(row) > 15 and row[15] is not None else "support"
+    current_owner = str(row[16]) if len(row) > 16 and row[16] is not None else "bot"
+    return Ticket(
+        ticket_id=UUID(str(row[0])),
+        customer_id=str(row[1]),
+        channel=str(row[2]),
+        body_redacted=str(row[3]),
+        decision=_decode_json(row[4]),
+        status=str(row[5]),
+        assigned_to=str(row[6]) if row[6] else None,
+        assigned_queue=str(row[7]) if row[7] else None,
+        answer_text=str(row[8]) if row[8] else None,
+        citations=_decode_json(row[9]),
+        resolution_notes=str(row[10]) if row[10] else None,
+        created_at=_parse_datetime(row[11]),
+        updated_at=_parse_datetime(row[12]),
+        session_id=session_id,
+        issue_reference=issue_reference,
+        category=category,
+        current_owner=current_owner,
+    )
 
 
 def _decode_json(val: Any) -> Any:
@@ -85,21 +121,40 @@ class PostgresTicketRepo(TicketRepository):
         decision_json = (
             json.dumps(ticket_create.decision) if ticket_create.decision else None
         )
+        category = ticket_create.category or "support"
+        assigned_q = (ticket_create.assigned_queue or "").strip()
+        if ticket_create.current_owner:
+            current_owner = ticket_create.current_owner
+        elif assigned_q.lower().startswith("human"):
+            current_owner = f"queue:{assigned_q}"
+        else:
+            current_owner = "bot"
+        issue_reference = ticket_create.issue_reference or f"TICK-{str(ticket_id)[:8]}"
+        session_id = ticket_create.session_id
 
-        query = """
+        query = f"""
         INSERT INTO tickets (
             ticket_id, customer_id, channel, body_redacted, decision,
-            status, assigned_to, assigned_queue, created_at, updated_at
+            status, assigned_to, assigned_queue, session_id,
+            issue_reference, category, current_owner,
+            created_at, updated_at
         ) VALUES (
-            %s, %s, %s, %s, %s::jsonb, 'open', %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            %s, %s, %s, %s, %s::jsonb,
+            'open', %s, %s, %s,
+            %s, %s, %s,
+            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         )
         ON CONFLICT (ticket_id) DO UPDATE SET
             updated_at = CURRENT_TIMESTAMP,
             assigned_queue = COALESCE(EXCLUDED.assigned_queue, tickets.assigned_queue),
-            decision = COALESCE(EXCLUDED.decision, tickets.decision)
-        RETURNING ticket_id, customer_id, channel, body_redacted, decision,
-                  status, assigned_to, assigned_queue, answer_text, citations,
-                  resolution_notes, created_at, updated_at;
+            decision = COALESCE(EXCLUDED.decision, tickets.decision),
+            category = CASE
+                WHEN tickets.category IN ('security', 'fraud') THEN tickets.category
+                ELSE COALESCE(EXCLUDED.category, tickets.category)
+            END,
+            current_owner = COALESCE(EXCLUDED.current_owner, tickets.current_owner),
+            issue_reference = COALESCE(EXCLUDED.issue_reference, tickets.issue_reference)
+        RETURNING {TICKET_COLUMNS_SQL};
         """
         event_query = """
         INSERT INTO ticket_events (
@@ -122,6 +177,10 @@ class PostgresTicketRepo(TicketRepository):
                     decision_json,
                     ticket_create.assigned_to,
                     ticket_create.assigned_queue,
+                    session_id,
+                    issue_reference,
+                    category,
+                    current_owner,
                 ),
             )
             row = cursor.fetchone()
@@ -133,21 +192,7 @@ class PostgresTicketRepo(TicketRepository):
 
             conn.commit()
 
-            return Ticket(
-                ticket_id=UUID(str(row[0])),
-                customer_id=str(row[1]),
-                channel=str(row[2]),
-                body_redacted=str(row[3]),
-                decision=_decode_json(row[4]),
-                status=str(row[5]),
-                assigned_to=str(row[6]) if row[6] else None,
-                assigned_queue=str(row[7]) if row[7] else None,
-                answer_text=str(row[8]) if row[8] else None,
-                citations=_decode_json(row[9]),
-                resolution_notes=str(row[10]) if row[10] else None,
-                created_at=_parse_datetime(row[11]),
-                updated_at=_parse_datetime(row[12]),
-            )
+            return _row_to_ticket(row)
         except Exception:
             conn.rollback()
             raise
@@ -157,10 +202,8 @@ class PostgresTicketRepo(TicketRepository):
 
     def get_ticket(self, ticket_id: UUID | str) -> Optional[Ticket]:
         t_id = self._normalize_uuid(ticket_id)
-        query = """
-        SELECT ticket_id, customer_id, channel, body_redacted, decision,
-               status, assigned_to, assigned_queue, answer_text, citations,
-               resolution_notes, created_at, updated_at
+        query = f"""
+        SELECT {TICKET_COLUMNS_SQL}
         FROM tickets
         WHERE ticket_id = %s;
         """
@@ -171,21 +214,7 @@ class PostgresTicketRepo(TicketRepository):
             row = cursor.fetchone()
             if not row:
                 return None
-            return Ticket(
-                ticket_id=UUID(str(row[0])),
-                customer_id=str(row[1]),
-                channel=str(row[2]),
-                body_redacted=str(row[3]),
-                decision=_decode_json(row[4]),
-                status=str(row[5]),
-                assigned_to=str(row[6]) if row[6] else None,
-                assigned_queue=str(row[7]) if row[7] else None,
-                answer_text=str(row[8]) if row[8] else None,
-                citations=_decode_json(row[9]),
-                resolution_notes=str(row[10]) if row[10] else None,
-                created_at=_parse_datetime(row[11]),
-                updated_at=_parse_datetime(row[12]),
-            )
+            return _row_to_ticket(row)
         finally:
             cursor.close()
             conn.close()
@@ -193,10 +222,8 @@ class PostgresTicketRepo(TicketRepository):
     def list_open_tickets(
         self, limit: int = 50, queue: Optional[str] = None
     ) -> List[Ticket]:
-        query = """
-        SELECT ticket_id, customer_id, channel, body_redacted, decision,
-               status, assigned_to, assigned_queue, answer_text, citations,
-               resolution_notes, created_at, updated_at
+        query = f"""
+        SELECT {TICKET_COLUMNS_SQL}
         FROM tickets
         WHERE status = 'open'
         """
@@ -212,24 +239,7 @@ class PostgresTicketRepo(TicketRepository):
         try:
             cursor.execute(query, tuple(params))
             rows = cursor.fetchall()
-            return [
-                Ticket(
-                    ticket_id=UUID(str(row[0])),
-                    customer_id=str(row[1]),
-                    channel=str(row[2]),
-                    body_redacted=str(row[3]),
-                    decision=_decode_json(row[4]),
-                    status=str(row[5]),
-                    assigned_to=str(row[6]) if row[6] else None,
-                    assigned_queue=str(row[7]) if row[7] else None,
-                    answer_text=str(row[8]) if row[8] else None,
-                    citations=_decode_json(row[9]),
-                    resolution_notes=str(row[10]) if row[10] else None,
-                    created_at=_parse_datetime(row[11]),
-                    updated_at=_parse_datetime(row[12]),
-                )
-                for row in rows
-            ]
+            return [_row_to_ticket(row) for row in rows]
         finally:
             cursor.close()
             conn.close()
@@ -346,10 +356,64 @@ class PostgresTicketRepo(TicketRepository):
         resolution_notes: Optional[str] = None,
         answer_text: Optional[str] = None,
         citations: Optional[List[Dict[str, Any]]] = None,
+        from_status: Optional[str] = None,
+        actor: Optional[str] = None,
+        reason: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        trace: Optional[str] = None,
+        customer_id: Optional[str] = None,
     ) -> Optional[Ticket]:
         t_id = self._normalize_uuid(ticket_id)
+        current = self.get_ticket(t_id)
+        if current is None:
+            raise KeyError(f"Ticket not found: {t_id}")
+
+        # Customer scoping / RLS validation (BEFORE checking target state so callers cannot probe)
+        is_customer_update = (customer_id is not None) or (status in ("resolved_by_customer", "reopened"))
+        if is_customer_update:
+            if customer_id is None:
+                raise PermissionError("Customer ID is required for customer status updates")
+            if str(customer_id).startswith("anon:"):
+                raise PermissionError("Anonymous callers cannot update ticket status")
+            if current.customer_id != customer_id:
+                raise PermissionError("Customer mismatch: cannot update another customer's ticket")
+            if actor and actor.startswith(("rep:", "queue:")):
+                raise PermissionError("Customer cannot impersonate representative or queue actor")
+
+        # Idempotency: if already in target state, return without duplicate event
+        if current.status == status:
+            return current
+
+        # Idempotency check on existing events
+        if idempotency_key:
+            events = self.list_events(t_id)
+            for ev in events:
+                if (
+                    ev.event_type == "status_changed"
+                    and isinstance(ev.payload, dict)
+                    and ev.payload.get("idempotency_key") == idempotency_key
+                ):
+                    return current
+
+        # Deterministic backend validation for customer transitions
+        if is_customer_update:
+            cat = effective_category(current)
+            if cat in ("security", "fraud"):
+                raise ValueError(f"Cannot update status of {cat} tickets")
+
+            if is_human_owned(current):
+                raise ValueError("Cannot update status of human-owned tickets")
+
+            allowed = CUSTOMER_ALLOWED_TRANSITIONS.get(current.status, [])
+            if status not in allowed:
+                raise ValueError(f"Invalid transition from {current.status} to {status}")
+
+        # Optimistic check on from_status
+        if from_status and current.status != from_status:
+            raise ValueError(f"Status conflict: current status is {current.status}, expected {from_status}")
+
         citations_json = json.dumps(citations) if citations else None
-        query = """
+        query = f"""
         UPDATE tickets
         SET status = %s,
             resolution_notes = COALESCE(%s, resolution_notes),
@@ -357,9 +421,7 @@ class PostgresTicketRepo(TicketRepository):
             citations = COALESCE(%s::jsonb, citations),
             updated_at = CURRENT_TIMESTAMP
         WHERE ticket_id = %s
-        RETURNING ticket_id, customer_id, channel, body_redacted, decision,
-                  status, assigned_to, assigned_queue, answer_text, citations,
-                  resolution_notes, created_at, updated_at;
+        RETURNING {TICKET_COLUMNS_SQL};
         """
         conn = self._connection_factory()
         cursor = conn.cursor()
@@ -372,35 +434,32 @@ class PostgresTicketRepo(TicketRepository):
                 conn.commit()
                 return None
 
+            event_payload: Dict[str, Any] = {
+                "from": from_status or current.status,
+                "to": status,
+                "actor": actor or "system",
+                "reason": reason or resolution_notes or "status_update",
+                "trace_id": trace,
+            }
+            if idempotency_key:
+                event_payload["idempotency_key"] = idempotency_key
+
             event_query = """
             INSERT INTO ticket_events (event_id, ticket_id, event_type, actor, payload, created_at)
-            VALUES (%s, %s, 'status_changed', 'system', %s::jsonb, CURRENT_TIMESTAMP);
+            VALUES (%s, %s, 'status_changed', %s, %s::jsonb, CURRENT_TIMESTAMP);
             """
             cursor.execute(
                 event_query,
                 (
                     str(uuid4()),
                     t_id,
-                    json.dumps({"status": status, "resolution_notes": resolution_notes}),
+                    actor or "system",
+                    json.dumps(event_payload),
                 ),
             )
             conn.commit()
 
-            return Ticket(
-                ticket_id=UUID(str(row[0])),
-                customer_id=str(row[1]),
-                channel=str(row[2]),
-                body_redacted=str(row[3]),
-                decision=_decode_json(row[4]),
-                status=str(row[5]),
-                assigned_to=str(row[6]) if row[6] else None,
-                assigned_queue=str(row[7]) if row[7] else None,
-                answer_text=str(row[8]) if row[8] else None,
-                citations=_decode_json(row[9]),
-                resolution_notes=str(row[10]) if row[10] else None,
-                created_at=_parse_datetime(row[11]),
-                updated_at=_parse_datetime(row[12]),
-            )
+            return _row_to_ticket(row)
         except Exception:
             conn.rollback()
             raise
@@ -535,10 +594,8 @@ class PostgresTicketRepo(TicketRepository):
         self, session_id: str, customer_id: Optional[str] = None
     ) -> Optional[Ticket]:
         """Fetch the most recent active holding ticket for a conversation session (REQ-AGENT-033)."""
-        query = """
-        SELECT ticket_id, customer_id, channel, body_redacted, decision,
-               status, assigned_to, assigned_queue, answer_text, citations,
-               resolution_notes, created_at, updated_at
+        query = f"""
+        SELECT {TICKET_COLUMNS_SQL}
         FROM tickets
         WHERE (session_id = %s OR decision->>'session_id' = %s)
         """
@@ -556,27 +613,15 @@ class PostgresTicketRepo(TicketRepository):
             if not rows:
                 return None
 
-            latest_row = rows[0]
-            if is_holding_ticket(
-                str(latest_row[5]) if latest_row[5] else None,
-                str(latest_row[7]) if latest_row[7] else None,
-            ):
-                return Ticket(
-                    ticket_id=UUID(str(latest_row[0])),
-                    customer_id=str(latest_row[1]),
-                    channel=str(latest_row[2]),
-                    body_redacted=str(latest_row[3]),
-                    decision=_decode_json(latest_row[4]),
-                    status=str(latest_row[5]),
-                    assigned_to=str(latest_row[6]) if latest_row[6] else None,
-                    assigned_queue=str(latest_row[7]) if latest_row[7] else None,
-                    answer_text=str(latest_row[8]) if latest_row[8] else None,
-                    citations=_decode_json(latest_row[9]),
-                    resolution_notes=str(latest_row[10]) if latest_row[10] else None,
-                    created_at=_parse_datetime(latest_row[11]),
-                    updated_at=_parse_datetime(latest_row[12]),
-                    session_id=session_id,
-                )
+            for row in rows:
+                ticket = _row_to_ticket(row)
+                cat = effective_category(ticket)
+                if cat in ("security", "fraud"):
+                    continue
+                if not is_human_owned(ticket):
+                    continue
+                if is_holding_ticket(ticket.status, ticket.assigned_queue, cat, ticket.current_owner, ticket.decision):
+                    return ticket
             return None
         finally:
             cursor.close()

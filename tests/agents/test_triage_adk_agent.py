@@ -262,3 +262,82 @@ def test_extract_answer_from_result_uses_handoff_message():
     assert extracted == "To ensure complete accuracy, I've escalated your ticket to our support specialists."
 
 
+def test_extract_answer_from_result_and_query_appends_confirmation_question():
+    """Verify confirmation_question in handoff_response is appended once after the answer."""
+    decision = RouterDecision(
+        ticket_id="t-faq-conf",
+        session_id="s-faq-conf",
+        decision="auto_rag",
+        tier="tier1_router_s1",
+        queue="none",
+        predicted_intent="faq",
+        escalate=False,
+        sentiment="neutral",
+        urgency="normal",
+        reason="faq_route",
+    )
+    result = TriageResult(
+        ticket_id="t-faq-conf",
+        session_id="s-faq-conf",
+        decision=decision,
+        calming_ack=None,
+        handoff_response={
+            "status": "AUTO_RESOLVED",
+            "answer": "Our standard shipping takes 3-5 business days.",
+            "confirmation_question": "Did this answer your question?",
+        },
+    )
+    extracted = extract_answer_from_result(result)
+    assert extracted == "Our standard shipping takes 3-5 business days.\n\nDid this answer your question?"
+
+    # If the answer already contains the confirmation question, it must not duplicate
+    result_dup = TriageResult(
+        ticket_id="t-faq-conf",
+        session_id="s-faq-conf",
+        decision=decision,
+        calming_ack=None,
+        handoff_response={
+            "status": "AUTO_RESOLVED",
+            "answer": "Our standard shipping takes 3-5 business days.\n\nDid this answer your question?",
+            "confirmation_question": "Did this answer your question?",
+        },
+    )
+    extracted_dup = extract_answer_from_result(result_dup)
+    assert extracted_dup.count("Did this answer your question?") == 1
+
+    # End-to-end via adk_agent.query
+    in_mem_mcp = InMemoryTicketDbMcpClient()
+    in_mem_a2a = InMemoryA2AClient(
+        response_generator=lambda payload: {
+            "status": "AUTO_RESOLVED",
+            "answer": "Our standard return window is 30 days.",
+            "confirmation_question": "Does this fully resolve your issue?",
+        }
+    )
+    policy = TriagePolicy(
+        thresholds=RouterThresholds(tau_esc=0.50, tau_intent=0.70),
+        s1_client=RouterS1Client(),
+        tier2_invoker=lambda text: RouterPrediction(
+            escalate=False,
+            escalate_prob=0.05,
+            sentiment="neutral",
+            sentiment_prob=0.90,
+            urgency="normal",
+            urgency_prob=0.90,
+            intent="return_policy",
+            intent_prob=0.95,
+        ),
+    )
+    core_router = TriageRouterAgent(
+        policy=policy,
+        mcp_client=in_mem_mcp,
+        a2a_client=in_mem_a2a,
+        lazy_init=False,
+    )
+    adk_agent = TriageRouterAdkAgent(router=core_router)
+    res = adk_agent.query("What is the return window?", session_id="s-conf-q-1")
+    assert "Did that resolve your issue?" in res["answer"]
+    assert res["answer"].count("Did that resolve your issue?") == 1
+
+
+
