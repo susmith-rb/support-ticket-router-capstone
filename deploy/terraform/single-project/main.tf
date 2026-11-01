@@ -260,5 +260,27 @@ module "model_armor" {
   depends_on = [module.project_services, module.agents_iam]
 }
 
+resource "google_logging_metric" "security_blocked_count" {
+  name    = "security_blocked_count"
+  project = var.project_id
+  filter  = "jsonPayload.event=\"security_blocked\""
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+    labels {
+      key         = "channel"
+      value_type  = "STRING"
+      description = "Invocation channel (gemini_enterprise, direct_api, unknown)"
+    }
+  }
+
+  label_extractors = {
+    "channel" = "EXTRACT(jsonPayload.channel)"
+  }
+}
+
+
 
 

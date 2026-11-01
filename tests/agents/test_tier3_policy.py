@@ -608,7 +608,7 @@ def test_tier3_security_paths_never_reach_pro():
         customer_id="cust-sec",
     )
 
-    assert decision.decision == "escalate"
+    assert decision.decision == "security_blocked"
     assert decision.tier == "model_armor"
     assert mock_tier2.call_count == 0
     assert mock_tier3.call_count == 0

@@ -16,7 +16,10 @@ from typing import Any, Optional
 from pydantic import PrivateAttr
 
 from ticket_router.agents.triage_router.agent import TriageResult, TriageRouterAgent
-from ticket_router.agents.triage_router.templates import render_card_data_blocked_reply
+from ticket_router.agents.triage_router.templates import (
+    render_card_data_blocked_reply,
+    render_security_blocked_reply,
+)
 from ticket_router.common.observability import configure_tracing, flush_traces
 from ticket_router.security.pii_tokens import restore_pii_tokens
 
@@ -218,7 +221,9 @@ def extract_oauth_access_token(ctx: Any, auth_id: Optional[str] = None) -> Optio
 def extract_answer_from_result(result: TriageResult) -> str:
     """Extract final user-facing text from TriageResult for response event."""
     ans = ""
-    if result.decision.decision == "blocked":
+    if result.decision.decision == "security_blocked":
+        ans = result.calming_ack or render_security_blocked_reply()
+    elif result.decision.decision == "blocked":
         ans = result.calming_ack or render_card_data_blocked_reply()
     elif result.decision.decision == "escalate":
         ans = result.calming_ack or "Your request has been routed to our specialist team."
@@ -324,6 +329,7 @@ class TriageRouterAdkAgent(BaseAgent):
         session_id = extract_session_id(ctx)
         customer_id_token = extract_customer_id_token(ctx)
         oauth_access_token = extract_oauth_access_token(ctx)
+        caller_user_id = extract_caller_user_id_for_audit(ctx)
 
         router = self._get_router()
         result = router.triage(
@@ -331,6 +337,7 @@ class TriageRouterAdkAgent(BaseAgent):
             message_text=message,
             customer_id_token=customer_id_token,
             oauth_access_token=oauth_access_token,
+            caller_user_id=caller_user_id,
         )
         final_text = extract_answer_from_result(result)
 
@@ -368,6 +375,8 @@ class TriageRouterAdkAgent(BaseAgent):
         customer_id_token: Optional[str] = None,
         customer_id: Optional[str] = None,
         oauth_access_token: Optional[str] = None,
+        caller_user_id: Optional[str] = None,
+        channel: Optional[str] = None,
     ) -> dict[str, Any]:
         """Direct synchronous query entrypoint for local execution and smoke tests."""
         if customer_id is not None:
@@ -380,6 +389,8 @@ class TriageRouterAdkAgent(BaseAgent):
             message_text=message,
             customer_id_token=customer_id_token,
             oauth_access_token=oauth_access_token,
+            caller_user_id=caller_user_id,
+            channel=channel or "web",
         )
         flush_traces(timeout_millis=1500)
         answer = extract_answer_from_result(result)
@@ -406,6 +417,8 @@ class TriageRouterAdkAgent(BaseAgent):
         customer_id_token: Optional[str] = None,
         customer_id: Optional[str] = None,
         oauth_access_token: Optional[str] = None,
+        caller_user_id: Optional[str] = None,
+        channel: Optional[str] = None,
     ) -> Iterator[dict[str, Any]]:
         """Streaming query generator for compatibility with ReasoningEngine interfaces."""
         yield self.query(
@@ -414,6 +427,8 @@ class TriageRouterAdkAgent(BaseAgent):
             customer_id_token=customer_id_token,
             customer_id=customer_id,
             oauth_access_token=oauth_access_token,
+            caller_user_id=caller_user_id,
+            channel=channel,
         )
 
     def triage(self, *args: Any, **kwargs: Any) -> TriageResult:

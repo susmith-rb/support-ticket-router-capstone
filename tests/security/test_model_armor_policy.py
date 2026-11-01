@@ -26,7 +26,7 @@ def test_triage_ingress_security_policy():
     """Verify Model Armor ingress gate blocking, escalation, priority preservation, and fail-safe."""
     facts = VerifiedFacts(vip_customer=False, order_value=50.0)
 
-    # 1. Prompt Injection: Blocked, routed to human, security escalation
+    # 1. Prompt Injection: Security blocked, zero escalation, deterministic refusal
     pi_fake = FakeModelArmorClient(block_pi_jb=True)
     policy_pi = TriagePolicy(model_armor_client=pi_fake)
     dec_pi: RouterDecision = policy_pi.evaluate(
@@ -35,13 +35,13 @@ def test_triage_ingress_security_policy():
         customer_id="cust-1001",
         verified_facts=facts,
     )
-    assert dec_pi.escalate is True
+    assert dec_pi.escalate is False
+    assert dec_pi.decision == "security_blocked"
     assert dec_pi.tier == "model_armor"
-    assert dec_pi.reason == "model_armor_security_trigger"
+    assert dec_pi.queue == "none"
+    assert dec_pi.reason == "prompt_injection_or_jailbreak"
     assert dec_pi.details.get("model_armor", {}).get("blocked") is True
     assert dec_pi.details.get("model_armor", {}).get("pi_jb_tripped") is True
-    # Priority-gaming invariant: injection never buys an urgent lane.
-    assert dec_pi.queue != QueuePriority.P1_URGENT.value
 
     # 2. Malicious URI: Blocked, routed to human queue, security escalation
     uri_fake = FakeModelArmorClient(block_malicious_uri=True)
@@ -319,9 +319,10 @@ def test_triage_ingress_prompt_safety_delegation_requires_ingress_gateway_env():
             verified_facts=facts,
         )
         # Must enforce in-agent because gateway coverage is NOT active
-        assert dec.escalate is True
+        assert dec.escalate is False
+        assert dec.decision == "security_blocked"
         assert dec.tier == "model_armor"
-        assert dec.reason == "model_armor_security_trigger"
+        assert dec.reason == "prompt_injection_or_jailbreak"
         assert dec.details.get("model_armor", {}).get("pi_jb_tripped") is True
         assert "prompt_safety_shadow" not in dec.details
 

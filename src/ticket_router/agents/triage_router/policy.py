@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from ticket_router.agents.triage_router.templates import render_security_blocked_reply
 from ticket_router.common.resilience import (
     TIER3_PRO_DEADLINE_S,
     CircuitBreakerError,
@@ -565,6 +566,9 @@ class TriagePolicy:
         customer_id: str,
         verified_facts: Optional[VerifiedFacts] = None,
         ticket_id: Optional[str] = None,
+        precomputed_ma: Optional[
+            Tuple[Optional[ModelArmorVerdict], Optional[str], Optional[str], Dict[str, str]]
+        ] = None,
     ) -> RouterDecision:
         """Execute tiered routing policy on inbound message text."""
         t_id = ticket_id or f"TICK-{session_id[:8]}"
@@ -581,8 +585,11 @@ class TriagePolicy:
             details_t0: Dict[str, Any] = {"category": tier0.category}
             tokenized_text: Optional[str] = None
             pii_mapping: Dict[str, str] = {}
-            if self.model_armor_client is not None:
-                ma_verdict, sanitized_text, tokenized_text, pii_mapping = self._run_model_armor(text)
+            if self.model_armor_client is not None or precomputed_ma is not None:
+                if precomputed_ma is not None:
+                    ma_verdict, sanitized_text, tokenized_text, pii_mapping = precomputed_ma
+                else:
+                    ma_verdict, sanitized_text, tokenized_text, pii_mapping = self._run_model_armor(text)
                 blocked_types = _extract_blocked_card_info_types(ma_verdict)
                 if blocked_types:
                     return RouterDecision(
@@ -600,6 +607,35 @@ class TriagePolicy:
                         details={"blocked_info_types": blocked_types},
                         tokenized_text=None,
                         pii_mapping={},
+                    )
+                # REQ-MA-003: If Tier 0 would escalate AND Model Armor flags PI/JB,
+                # the security block wins over Tier 0 escalation (no ticket created).
+                if (
+                    ma_verdict is not None
+                    and ma_verdict.has_pi_jb
+                    and not self._is_prompt_safety_delegated()
+                ):
+                    sec_ack = render_security_blocked_reply()
+                    return RouterDecision(
+                        ticket_id=t_id,
+                        session_id=session_id,
+                        decision="security_blocked",
+                        tier="model_armor",
+                        queue="none",
+                        predicted_intent="other",
+                        escalate=False,
+                        sentiment="neutral",
+                        urgency="normal",
+                        reason="prompt_injection_or_jailbreak",
+                        degraded=False,
+                        calming_ack=sec_ack,
+                        details={
+                            "category": "security",
+                            "model_armor": ma_verdict.to_summary_dict(),
+                            "sanitized_text": sanitized_text,
+                        },
+                        tokenized_text=tokenized_text,
+                        pii_mapping=pii_mapping,
                     )
                 if sanitized_text:
                     details_t0["sanitized_text"] = sanitized_text
@@ -648,7 +684,10 @@ class TriagePolicy:
         # ---------------------------------------------------------------------
         # Tier 1 & Model Armor: Concurrent Execution (REQ-MA-003, REQ-MA-005)
         # ---------------------------------------------------------------------
-        if self.model_armor_client is not None:
+        if precomputed_ma is not None:
+            ma_verdict, sanitized_text, tokenized_text, pii_mapping = precomputed_ma
+            s1_pred, s1_error = self._call_s1(text)
+        elif self.model_armor_client is not None:
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 ma_future = executor.submit(self._run_model_armor, text)
                 s1_future = executor.submit(self._call_s1, text)
@@ -712,11 +751,35 @@ class TriagePolicy:
                     },
                 )
             else:
-                # 1. Prompt Injection, Jailbreak, or Malicious URI -> Hard Security Escalation
-                # NEVER forwarded to neural LLM tiers or FaqResolverAgent.
-                # Queue comes from verified facts only: an injection attempt must
-                # never buy a faster lane (priority-gaming invariant).
-                if ma_verdict.has_pi_jb or ma_verdict.has_malicious_uri:
+                # 1. Prompt Injection or Jailbreak -> Security Refusal Block (REQ-MA-003)
+                # NEVER forwarded to neural LLM tiers or FaqResolverAgent, and NO normal ticket created.
+                if ma_verdict.has_pi_jb:
+                    sec_ack = render_security_blocked_reply()
+                    return RouterDecision(
+                        ticket_id=t_id,
+                        session_id=session_id,
+                        decision="security_blocked",
+                        tier="model_armor",
+                        queue="none",
+                        predicted_intent="other",
+                        escalate=False,
+                        sentiment="neutral",
+                        urgency="normal",
+                        reason="prompt_injection_or_jailbreak",
+                        degraded=False,
+                        calming_ack=sec_ack,
+                        details={
+                            "category": "security",
+                            "model_armor": ma_details,
+                            "sanitized_text": sanitized_text,
+                        },
+                        tokenized_text=tokenized_text,
+                        pii_mapping=pii_mapping,
+                    )
+
+                # 2. Malicious URI -> Hard Security Escalation to Human Review
+                # Preserved as human escalation so potential customer link issues can be inspected safely.
+                if ma_verdict.has_malicious_uri:
                     sec_queue = evaluate_gaming_resistant_priority(
                         facts=verified_facts,
                         sentiment="neutral",
@@ -743,7 +806,7 @@ class TriagePolicy:
                         pii_mapping=pii_mapping,
                     )
 
-                # 2. Responsible AI (RAI) Harassment / Abuse -> Boundary Ack + Human Review
+                # 3. Responsible AI (RAI) Harassment / Abuse -> Boundary Ack + Human Review
                 # NEVER dropped, does NOT raise priority (REQ-AGENT-004).
                 if ma_verdict.has_rai_violation:
                     queue = evaluate_gaming_resistant_priority(

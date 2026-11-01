@@ -153,4 +153,18 @@ def render_followup_calming_reply(
     return FOLLOWUP_CALMING_REPLY_TEMPLATE.format(ticket_id=display_id)
 
 
+# REQ-MA-003: In-Agent Prompt Injection / Jailbreak Refusal
+SECURITY_BLOCKED_REPLY = (
+    "I can't help with that request. For your security, messages that try to "
+    "override my instructions are blocked. If you need support, please describe "
+    "your issue and I'll be glad to help."
+)
+
+
+def render_security_blocked_reply() -> str:
+    """Render a deterministic security refusal for prompt injection or jailbreak attempts."""
+    return SECURITY_BLOCKED_REPLY
+
+
+
 

@@ -108,11 +108,31 @@ def test_all_policy_tiers_emit_canonical_taxonomy_intent():
     policy_ma = TriagePolicy(thresholds=RouterThresholds(), model_armor_client=mock_ma)
     dec_ma_sec = policy_ma.evaluate("Harmless inquiry", session_id="s_masec", customer_id="c1")
     assert dec_ma_sec.tier == "model_armor"
-    assert dec_ma_sec.decision == "escalate"
+    assert dec_ma_sec.decision == "security_blocked"
     assert dec_ma_sec.predicted_intent == "other"
     assert is_valid_intent(dec_ma_sec.predicted_intent)
     assert dec_ma_sec.details["category"] == "security"
-    assert dec_ma_sec.reason == "model_armor_security_trigger"
+    assert dec_ma_sec.reason == "prompt_injection_or_jailbreak"
+    assert dec_ma_sec.escalate is False
+    assert dec_ma_sec.queue == "none"
+
+    # Model Armor malicious URI trigger
+    mock_ma_uri = MagicMock()
+    mock_ma_uri.sanitize_user_prompt.return_value = ModelArmorVerdict(
+        is_clean=False,
+        blocked=True,
+        action="BLOCK",
+        malicious_uri=FilterVerdict(tripped=True, confidence="HIGH"),
+        sanitized_text="clean text",
+    )
+    policy_ma_uri = TriagePolicy(thresholds=RouterThresholds(), model_armor_client=mock_ma_uri)
+    dec_ma_uri = policy_ma_uri.evaluate("Harmless inquiry", session_id="s_mauri", customer_id="c1")
+    assert dec_ma_uri.tier == "model_armor"
+    assert dec_ma_uri.decision == "escalate"
+    assert dec_ma_uri.predicted_intent == "other"
+    assert is_valid_intent(dec_ma_uri.predicted_intent)
+    assert dec_ma_uri.details["category"] == "security"
+    assert dec_ma_uri.reason == "model_armor_security_trigger"
 
     # Model Armor RAI abuse trigger
     mock_ma_rai = MagicMock()

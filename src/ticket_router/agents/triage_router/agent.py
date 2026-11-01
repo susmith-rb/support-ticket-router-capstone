@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import concurrent.futures
 import contextvars
+import hashlib
+import inspect
 import json
 import logging
 import os
@@ -48,6 +50,7 @@ from ticket_router.agents.triage_router.templates import (
     render_conversational_reply,
     render_followup_calming_reply,
     render_out_of_scope_refusal,
+    render_security_blocked_reply,
 )
 from ticket_router.common.hedging import hedged_call
 from ticket_router.common.observability import (
@@ -83,6 +86,102 @@ from ticket_router.store.ids import canonical_ticket_uuid
 
 logger = logging.getLogger(__name__)
 _SIGNER_INIT_LOCK = threading.Lock()
+
+
+def derive_channel_source(
+    channel: Optional[str] = None,
+    oauth_access_token: Optional[str] = None,
+    caller_user_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+) -> str:
+    """Derive channel source string for audit logging (REQ-IDENT-007).
+
+    Returns 'gemini_enterprise', 'direct_api', or 'unknown'.
+    Strictly non-authoritative: MUST NEVER be trusted for authorization or customer identity.
+    """
+    if channel in ("gemini_enterprise", "direct_api"):
+        return channel
+    if oauth_access_token:
+        return "gemini_enterprise"
+
+    uid = (caller_user_id or "").lower()
+    sid = (session_id or "").lower()
+    ch = (channel or "").lower()
+
+    if any(k in uid or k in sid for k in ("ge-", "gemini", "workplace")):
+        return "gemini_enterprise"
+    if uid == "smoke-client" or uid.startswith("api-") or sid.startswith("smoke-ingress-"):
+        return "direct_api"
+    if ch in ("api", "rest", "direct_api"):
+        return "direct_api"
+    return "unknown"
+
+
+def _build_detection_reason(ma_verdict: Optional[ModelArmorVerdict]) -> Dict[str, Any]:
+    """Extract matched filters and confidence levels without customer text or PII."""
+    reason: Dict[str, Any] = {}
+    if ma_verdict is None:
+        return {"matched_filters": ["prompt_injection_or_jailbreak"], "confidence": "HIGH"}
+    if ma_verdict.pi_jb and ma_verdict.pi_jb.tripped:
+        reason["pi_and_jailbreak"] = {
+            "tripped": True,
+            "confidence": ma_verdict.pi_jb.confidence,
+        }
+    if ma_verdict.malicious_uri and ma_verdict.malicious_uri.tripped:
+        reason["malicious_uris"] = {
+            "tripped": True,
+            "confidence": ma_verdict.malicious_uri.confidence,
+        }
+    for cat, fv in ma_verdict.rai_categories.items():
+        if fv.tripped:
+            reason[f"rai_{cat}"] = {
+                "tripped": True,
+                "confidence": fv.confidence,
+            }
+    if not reason:
+        reason = {"matched_filters": ["prompt_injection_or_jailbreak"], "confidence": "HIGH"}
+    return reason
+
+
+def _emit_security_blocked_log(
+    *,
+    traceparent: str,
+    session_id: str,
+    channel: str,
+    customer_verified: bool,
+    customer_id: Optional[str],
+    ma_verdict: Optional[ModelArmorVerdict],
+    message_text: str,
+) -> None:
+    """Emit structured WARNING log for prompt injection / jailbreak security refusal (REQ-MA-003).
+
+    CRITICAL SECURITY INVARIANT:
+    Zero customer tokens. Never log raw message text or substrings > 12 characters.
+    """
+    parts = traceparent.split("-")
+    trace_id = parts[1] if len(parts) >= 2 else ""
+    cid = (
+        customer_id
+        if (customer_verified and customer_id and not str(customer_id).startswith("anon:"))
+        else "anon"
+    )
+    msg_hash = hashlib.sha256(message_text.encode("utf-8")).hexdigest()
+    detection_reason = _build_detection_reason(ma_verdict)
+
+    log_payload = {
+        "event": "security_blocked",
+        "severity": "WARNING",
+        "traceparent": traceparent,
+        "trace_id": trace_id,
+        "session_id": session_id,
+        "channel": channel,
+        "customer_verified": bool(customer_verified),
+        "customer_id": cid,
+        "detection_reason": detection_reason,
+        "message_sha256": msg_hash,
+        "message_length": len(message_text),
+    }
+    logger.warning(json.dumps(log_payload, separators=(",", ":")))
 
 
 @dataclass(frozen=True)
@@ -650,6 +749,7 @@ class TriageRouterAgent:
         ticket_id: Optional[str] = None,
         memory_summary: str = "",
         oauth_access_token: Optional[str] = None,
+        caller_user_id: Optional[str] = None,
     ) -> TriageResult:
         """Execute end-to-end triage evaluation, persistence, and dispatch."""
         self._ensure_initialized()
@@ -802,6 +902,88 @@ class TriageRouterAgent:
                 else:
                     customer_ticket_id = f"TICK-{session_id[:8]}"
 
+                # REQ-MA-003: Follow-up in a held session with PI/JB is blocked deterministically
+                # and MUST NOT be appended to the held ticket.
+                if (
+                    ma_verdict is not None
+                    and ma_verdict.has_pi_jb
+                    and not getattr(policy, "_is_prompt_safety_delegated", lambda: False)()
+                ):
+                    sec_ack = render_security_blocked_reply()
+                    eff_channel = derive_channel_source(
+                        channel=channel,
+                        oauth_access_token=oauth_access_token,
+                        caller_user_id=caller_user_id,
+                        session_id=session_id,
+                    )
+                    _emit_security_blocked_log(
+                        traceparent=traceparent,
+                        session_id=session_id,
+                        channel=eff_channel,
+                        customer_verified=bool(active_ticket.get("customer_verified", False)),
+                        customer_id=active_ticket.get("customer_id"),
+                        ma_verdict=ma_verdict,
+                        message_text=message_text,
+                    )
+                    elapsed_ms = (time.monotonic() - start_time) * 1000.0
+                    turn_span.set_attribute("decision", "security_blocked")
+                    turn_span.set_attribute("tier", "model_armor")
+                    turn_span.set_attribute("queue", "none")
+                    turn_span.set_attribute("degraded", False)
+                    turn_span.set_attribute("predicted_intent", "other")
+
+                    sec_decision = RouterDecision(
+                        ticket_id=customer_ticket_id,
+                        session_id=session_id,
+                        decision="security_blocked",
+                        tier="model_armor",
+                        queue="none",
+                        predicted_intent="other",
+                        escalate=False,
+                        sentiment="neutral",
+                        urgency="normal",
+                        reason="prompt_injection_or_jailbreak",
+                        degraded=False,
+                        calming_ack=sec_ack,
+                        latency_ms=elapsed_ms,
+                        details={
+                            "category": "security",
+                            "model_armor": ma_verdict.to_summary_dict(),
+                        },
+                        customer_verified=bool(active_ticket.get("customer_verified", False)),
+                        tokenized_text=tokenized_text,
+                        pii_mapping=pii_mapping,
+                    )
+                    self.logger.log_decision(
+                        ticket_id=customer_ticket_id,
+                        session_id=session_id,
+                        decision="security_blocked",
+                        tier="model_armor",
+                        queue="none",
+                        degraded=False,
+                        latency_ms=elapsed_ms,
+                        traceparent=traceparent,
+                        predicted_intent="other",
+                    )
+                    return TriageResult(
+                        ticket_id=customer_ticket_id,
+                        session_id=session_id,
+                        decision=sec_decision,
+                        calming_ack=sec_ack,
+                        handoff_response={
+                            "status": "SECURITY_BLOCKED",
+                            "route": "security_blocked",
+                            "answer": sec_ack,
+                            "ticket_id": customer_ticket_id,
+                            "queue": "none",
+                            "status_code": 200,
+                        },
+                        idempotency_key=idempotency_key,
+                        latency_ms=elapsed_ms,
+                        status_code=200,
+                        error=None,
+                    )
+
                 if pii_mapping:
                     self._save_redaction_map_if_needed(
                         ticket_id=customer_ticket_id,
@@ -896,6 +1078,22 @@ class TriageRouterAgent:
                 )
 
             # REQ-AGENT-027: Run identity resolution concurrently with policy evaluation
+            eval_kwargs = {
+                "text": message_text,
+                "session_id": session_id,
+                "customer_id": placeholder_cid,
+                "verified_facts": verified_facts,
+                "ticket_id": t_id,
+            }
+            try:
+                sig = inspect.signature(policy.evaluate)
+                if "precomputed_ma" in sig.parameters or any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+                ):
+                    eval_kwargs["precomputed_ma"] = (ma_verdict, sanitized_text, tokenized_text, pii_mapping)
+            except Exception:
+                pass
+
             id_ctx = contextvars.copy_context()
             pol_ctx = contextvars.copy_context()
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as step1_pool:
@@ -910,11 +1108,7 @@ class TriageRouterAgent:
                 pol_fut = step1_pool.submit(
                     pol_ctx.run,
                     policy.evaluate,
-                    text=message_text,
-                    session_id=session_id,
-                    customer_id=placeholder_cid,
-                    verified_facts=verified_facts,
-                    ticket_id=t_id,
+                    **eval_kwargs,
                 )
                 cust_ctx = id_fut.result()
                 decision = pol_fut.result()
@@ -1004,6 +1198,34 @@ class TriageRouterAgent:
                         },
                         separators=(",", ":"),
                     )
+                )
+            elif decision.decision == "security_blocked":
+                # REQ-MA-003: In-agent prompt injection / jailbreak security refusal.
+                # Never persist, never save redaction map, never call A2A or HumanHandoff, zero ticket creation.
+                sec_ack = render_security_blocked_reply()
+                calming_ack = sec_ack
+                status_code = 200
+                error_msg = None
+                handoff_resp = {
+                    "status": "SECURITY_BLOCKED",
+                    "route": "security_blocked",
+                    "answer": sec_ack,
+                    "status_code": 200,
+                }
+                eff_channel = derive_channel_source(
+                    channel=channel,
+                    oauth_access_token=oauth_access_token,
+                    caller_user_id=caller_user_id,
+                    session_id=session_id,
+                )
+                _emit_security_blocked_log(
+                    traceparent=traceparent,
+                    session_id=session_id,
+                    channel=eff_channel,
+                    customer_verified=customer_verified,
+                    customer_id=ticket_customer_id,
+                    ma_verdict=ma_verdict,
+                    message_text=message_text,
                 )
             elif decision.decision == "escalate":
                 # REQ-AGENT-030: Shared HumanHandoff workflow (persist -> publish -> calming ack)
@@ -1225,7 +1447,7 @@ class TriageRouterAgent:
                 customer_verified
                 and ticket_customer_id
                 and not str(ticket_customer_id).startswith("anon:")
-                and decision.decision != "blocked"
+                and decision.decision not in ("blocked", "security_blocked")
                 and decision.reason != "card_data_blocked"
             ):
                 try:
@@ -1286,6 +1508,9 @@ class _AdkAgentShim:
         session_id: str = "default_session",
         customer_id_token: Optional[str] = None,
         customer_id: Optional[str] = None,
+        caller_user_id: Optional[str] = None,
+        channel: Optional[str] = None,
+        oauth_access_token: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Synchronous query entrypoint."""
         if customer_id is not None:
@@ -1296,6 +1521,9 @@ class _AdkAgentShim:
             session_id=session_id,
             message_text=query,
             customer_id_token=customer_id_token,
+            caller_user_id=caller_user_id,
+            channel=channel or "web",
+            oauth_access_token=oauth_access_token,
         )
         resp: Dict[str, Any] = {
             "ticket_id": res.ticket_id,
@@ -1316,6 +1544,9 @@ class _AdkAgentShim:
         session_id: str = "default_session",
         customer_id_token: Optional[str] = None,
         customer_id: Optional[str] = None,
+        caller_user_id: Optional[str] = None,
+        channel: Optional[str] = None,
+        oauth_access_token: Optional[str] = None,
     ):
         """Generator stream query entrypoint for Gemini Enterprise compatibility."""
         yield self.query(
@@ -1323,6 +1554,9 @@ class _AdkAgentShim:
             session_id=session_id,
             customer_id_token=customer_id_token,
             customer_id=customer_id,
+            caller_user_id=caller_user_id,
+            channel=channel,
+            oauth_access_token=oauth_access_token,
         )
 
     def triage(self, *args: Any, **kwargs: Any) -> TriageResult:

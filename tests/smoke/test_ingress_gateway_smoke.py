@@ -22,9 +22,11 @@ from scripts.smoke.ingress_gateway_smoke import (
     PII_EMAIL_PROMPT,
     CheckResult,
     DryRunMockEngine,
+    RestAgentEngineClient,
     check_benign_query,
     check_pii_email,
     check_prompt_injection,
+    check_prompt_injection_v1beta1,
     extract_event_output,
     extract_event_text,
     main,
@@ -137,7 +139,7 @@ def test_check_benign_query_success_and_failure():
 
 
 def test_check_prompt_injection_gateway_block():
-    """Verify check_prompt_injection identifies gateway 403 / Model Armor block."""
+    """Verify check_prompt_injection treats gateway 403 / Model Armor block as PASS."""
     mock_engine = MagicMock()
     exc = RuntimeError("403 Model Armor: Prompt violates content security configurations")
     exc.code = 403
@@ -147,20 +149,44 @@ def test_check_prompt_injection_gateway_block():
     assert res.passed is True
     assert res.status_code == 403
     assert res.metadata["gateway_blocked"] is True
-    assert res.metadata["in_agent_escalated"] is False
     assert "blocked at gateway" in res.details
 
 
-def test_check_prompt_injection_in_agent_escalation():
-    """Verify check_prompt_injection records in-agent escalation when gateway passes through."""
+def test_check_prompt_injection_ticket_ack_fails():
+    """Verify check_prompt_injection treats ticket acknowledgement as FAIL (REQ-MA-003)."""
     mock_engine = MagicMock()
     mock_engine.stream_query.return_value = [
         {
             "output": {
                 "decision": "escalate",
                 "tier": "model_armor",
-                "reason": "model_armor_security_trigger",
-                "answer": "Escalating to human.",
+                "ticket_id": "TICK-12345678",
+                "answer": "Thank you for contacting support. We have logged ticket #TICK-12345678.",
+            }
+        }
+    ]
+
+    res: CheckResult = check_prompt_injection(mock_engine, user_id="u", session_id="s")
+    assert res.passed is False
+    assert res.status_code == 200
+    assert res.metadata["ticket_created"] is True
+    assert "created/acknowledged ticket" in res.details
+
+
+def test_check_prompt_injection_in_agent_refusal_passes():
+    """Verify check_prompt_injection treats in-agent security refusal as PASS."""
+    mock_engine = MagicMock()
+    mock_engine.stream_query.return_value = [
+        {
+            "output": {
+                "decision": "security_blocked",
+                "tier": "model_armor",
+                "queue": "none",
+                "answer": (
+                    "I can't help with that request. For your security, messages that try "
+                    "to override my instructions are blocked. If you need support, please "
+                    "describe your issue and I'll be glad to help."
+                ),
             }
         }
     ]
@@ -168,11 +194,78 @@ def test_check_prompt_injection_in_agent_escalation():
     res: CheckResult = check_prompt_injection(mock_engine, user_id="u", session_id="s")
     assert res.passed is True
     assert res.status_code == 200
-    assert res.metadata["gateway_blocked"] is False
-    assert res.metadata["in_agent_escalated"] is True
-    assert res.metadata["decision"] == "escalate"
-    assert res.metadata["tier"] == "model_armor"
-    assert "escalated in-agent" in res.details
+    assert res.metadata["in_agent_security_blocked"] is True
+    assert "in-agent security refusal" in res.details
+
+
+def test_check_prompt_injection_v1beta1_success_and_failure():
+    """Verify check_prompt_injection_v1beta1 asserts 200 + refusal text and zero ticket ack."""
+    mock_ok = MagicMock()
+    mock_ok.stream_query.return_value = [
+        {
+            "output": {
+                "decision": "security_blocked",
+                "answer": (
+                    "I can't help with that request. For your security, messages that try "
+                    "to override my instructions are blocked. If you need support, please "
+                    "describe your issue and I'll be glad to help."
+                ),
+            }
+        }
+    ]
+    res_ok = check_prompt_injection_v1beta1(mock_ok, user_id="ge-user", session_id="ge-sess")
+    assert res_ok.passed is True
+    assert res_ok.status_code == 200
+    assert res_ok.metadata["is_refusal"] is True
+    assert res_ok.metadata["ticket_acknowledged"] is False
+
+    # Failure when ticket is acknowledged
+    mock_fail = MagicMock()
+    mock_fail.stream_query.return_value = [
+        {
+            "output": {
+                "decision": "escalate",
+                "ticket_id": "TICK-999",
+                "answer": "Logged ticket #TICK-999 for you.",
+            }
+        }
+    ]
+    res_fail = check_prompt_injection_v1beta1(mock_fail, user_id="ge-user", session_id="ge-sess")
+    assert res_fail.passed is False
+
+    # Failure on exception
+    mock_err = MagicMock()
+    mock_err.stream_query.side_effect = RuntimeError("500 internal error")
+    res_err = check_prompt_injection_v1beta1(mock_err, user_id="ge-user", session_id="ge-sess")
+    assert res_err.passed is False
+    assert res_err.status_code == 500
+
+
+def test_rest_agent_engine_client():
+    """Verify RestAgentEngineClient SSE line decoding and streaming."""
+    client = RestAgentEngineClient(
+        resource_name="projects/p/locations/l/reasoningEngines/123",
+        project="p",
+        region="l",
+        access_token="fake-token",
+        api_version="v1beta1",
+    )
+    sess = client.create_session("u")
+    assert "id" in sess
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.iter_lines.return_value = [
+        b'data: {"output": {"decision": "security_blocked", "answer": "Blocked."}}',
+        b"",
+        b'data: {"text": "done"}',
+    ]
+
+    with patch("requests.post", return_value=mock_resp):
+        events = list(client.stream_query("hello", user_id="u", session_id="s"))
+        assert len(events) == 2
+        assert events[0]["output"]["decision"] == "security_blocked"
+        assert events[1]["text"] == "done"
 
 
 def test_check_pii_email_success_and_failure():
@@ -213,10 +306,10 @@ def test_dry_run_mock_engine():
     with pytest.raises(RuntimeError, match="403 Model Armor"):
         list(engine_gw_block.stream_query(ADVERSARIAL_PROMPT_INJECTION, "u", sess["id"]))
 
-    # Prompt injection simulates in-agent escalation when simulate_gateway_block=False
+    # Prompt injection simulates in-agent security refusal when simulate_gateway_block=False
     engine_in_agent = DryRunMockEngine(simulate_gateway_block=False)
     in_agent_events = list(engine_in_agent.stream_query(ADVERSARIAL_PROMPT_INJECTION, "u", sess["id"]))
-    assert in_agent_events[0]["output"]["decision"] == "escalate"
+    assert in_agent_events[0]["output"]["decision"] == "security_blocked"
     assert in_agent_events[0]["output"]["tier"] == "model_armor"
 
 
@@ -234,10 +327,11 @@ def test_run_smoke_dry_run():
     assert summary["checks"]["prompt_injection"]["passed"] is True
     assert summary["checks"]["prompt_injection"]["metadata"]["gateway_blocked"] is True
     assert summary["checks"]["pii_email"]["passed"] is True
+    assert summary["checks"]["prompt_injection_v1beta1"]["passed"] is True
 
 
 def test_run_smoke_with_custom_mock_engine():
-    """Verify run_smoke with custom mock engine simulating in-agent escalation."""
+    """Verify run_smoke with custom mock engine simulating in-agent security refusal."""
     mock = DryRunMockEngine(simulate_gateway_block=False)
     summary = run_smoke(
         resource_name="my-engine",
@@ -247,7 +341,8 @@ def test_run_smoke_with_custom_mock_engine():
     )
     assert summary["overall_status"] == "PASS"
     assert summary["checks"]["prompt_injection"]["metadata"]["gateway_blocked"] is False
-    assert summary["checks"]["prompt_injection"]["metadata"]["in_agent_escalated"] is True
+    assert summary["checks"]["prompt_injection"]["metadata"]["in_agent_security_blocked"] is True
+    assert summary["checks"]["prompt_injection_v1beta1"]["passed"] is True
 
 
 def test_parse_args_and_main(capsys):
