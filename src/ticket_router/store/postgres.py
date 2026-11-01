@@ -656,6 +656,69 @@ class PostgresTicketRepo(TicketRepository):
             cursor.close()
             conn.close()
 
+    def get_pending_confirmation(
+        self, session_id: str, customer_id: Optional[str] = None
+    ) -> Optional[Ticket]:
+        """Fetch newest bot-owned support ticket in session with pending resolution confirmation (REQ-TURN-005)."""
+        query = f"""
+        SELECT {TICKET_COLUMNS_SQL}
+        FROM tickets
+        WHERE (session_id = %s OR decision->>'session_id' = %s)
+          AND status IN ('open', 'answered')
+        """
+        params: List[Any] = [session_id, session_id]
+        if customer_id:
+            query += " AND customer_id = %s"
+            params.append(customer_id)
+        query += " ORDER BY created_at DESC;"
+
+        conn = self._connection_factory()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall()
+            if not rows:
+                return None
+
+            for row in rows:
+                ticket = _row_to_ticket(row)
+                cat = effective_category(ticket)
+                if cat in ("security", "fraud"):
+                    continue
+                if is_human_owned(ticket):
+                    continue
+                raw_owner = ticket.current_owner
+                if raw_owner and raw_owner != "bot":
+                    continue
+                assigned_q = (ticket.assigned_queue or "").lower()
+                if assigned_q.startswith("human"):
+                    continue
+
+                cursor.execute(
+                    """
+                    SELECT event_type, created_at
+                    FROM ticket_events
+                    WHERE ticket_id = %s
+                    ORDER BY created_at ASC;
+                    """,
+                    (str(ticket.ticket_id),),
+                )
+                ev_rows = cursor.fetchall()
+                conf_times = [r[1] for r in ev_rows if r[0] == "resolution_confirmation_requested"]
+                if not conf_times:
+                    continue
+                latest_conf = max(conf_times)
+                status_times = [r[1] for r in ev_rows if r[0] == "status_changed"]
+                if status_times:
+                    latest_status = max(status_times)
+                    if latest_conf < latest_status:
+                        continue
+                return ticket
+            return None
+        finally:
+            cursor.close()
+            conn.close()
+
     def append_customer_followup(
         self,
         ticket_id: UUID | str,

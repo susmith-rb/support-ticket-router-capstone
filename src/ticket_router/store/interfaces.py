@@ -116,6 +116,12 @@ class TicketRepository(ABC):
         """
 
     @abstractmethod
+    def get_pending_confirmation(
+        self, session_id: str, customer_id: Optional[str] = None
+    ) -> Optional[Ticket]:
+        """Fetch the newest bot-owned support ticket in session with pending resolution confirmation (REQ-TURN-005)."""
+
+    @abstractmethod
     def append_customer_followup(
         self,
         ticket_id: UUID | str,

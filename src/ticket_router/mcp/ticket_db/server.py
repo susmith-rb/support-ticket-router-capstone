@@ -32,6 +32,8 @@ from ticket_router.mcp.ticket_db.schemas import (
     CustomerTicketSummary,
     GetActiveTicketRequest,
     GetActiveTicketResponse,
+    GetPendingConfirmationRequest,
+    GetPendingConfirmationResponse,
     GetTicketRequest,
     GetTicketResponse,
     ListCustomerTicketsRequest,
@@ -724,6 +726,90 @@ async def list_customer_tickets(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/tools/get_pending_confirmation", response_model=GetPendingConfirmationResponse)
+@router.post("/get_pending_confirmation", response_model=GetPendingConfirmationResponse)
+async def get_pending_confirmation(
+    req: GetPendingConfirmationRequest,
+    authorization: Optional[str] = Header(None),
+    x_serverless_authorization: Optional[str] = Header(None),
+    x_customer_id: Optional[str] = Header(None, alias="X-Customer-ID"),
+    x_verified_customer_id: Optional[str] = Header(None, alias="X-Verified-Customer-Id"),
+    x_customer_verified: Optional[str] = Header(None, alias="X-Customer-Verified"),
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+) -> GetPendingConfirmationResponse:
+    caller = _extract_caller_identity(authorization, x_serverless_authorization)
+    logger.info("get_pending_confirmation called by caller=%s session=%s", caller, req.session_id)
+
+    header_customer = x_customer_id or x_verified_customer_id
+    if not header_customer:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing verified customer identity header (X-Customer-ID)",
+        )
+    if str(header_customer).startswith("anon:"):
+        raise HTTPException(
+            status_code=403,
+            detail="Anonymous customers cannot check pending confirmation",
+        )
+    if not x_customer_verified or str(x_customer_verified).lower() != "true":
+        raise HTTPException(
+            status_code=403,
+            detail="Unverified customer identity",
+        )
+    if req.customer_id is not None and req.customer_id != header_customer:
+        raise HTTPException(
+            status_code=400,
+            detail="customer_id in request body does not match verified identity header (BOLA violation)",
+        )
+
+    ticket = ticket_repo.get_pending_confirmation(
+        session_id=req.session_id,
+        customer_id=header_customer,
+    )
+    if ticket is None:
+        return GetPendingConfirmationResponse(
+            ticket_id=None,
+            status=None,
+            issue_reference=None,
+            customer_id=None,
+            ticket=None,
+        )
+
+    ref = getattr(ticket, "issue_reference", None) or f"TICK-{str(ticket.ticket_id)[:8]}"
+    created_str = (
+        ticket.created_at.isoformat()
+        if hasattr(ticket.created_at, "isoformat")
+        else str(ticket.created_at)
+    )
+    updated_str = (
+        ticket.updated_at.isoformat()
+        if hasattr(ticket.updated_at, "isoformat")
+        else str(ticket.updated_at)
+    )
+    ticket_dict = {
+        "ticket_id": str(ticket.ticket_id),
+        "customer_id": ticket.customer_id,
+        "channel": ticket.channel,
+        "status": ticket.status,
+        "assigned_to": ticket.assigned_to,
+        "assigned_queue": ticket.assigned_queue,
+        "category": getattr(ticket, "category", "support") or "support",
+        "current_owner": getattr(ticket, "current_owner", "bot") or "bot",
+        "issue_reference": ref,
+        "created_at": created_str,
+        "updated_at": updated_str,
+        "session_id": getattr(ticket, "session_id", None) or req.session_id,
+        "resolution_confirmation_requested": True,
+    }
+    return GetPendingConfirmationResponse(
+        ticket_id=str(ticket.ticket_id),
+        status=ticket.status,
+        issue_reference=ref,
+        customer_id=ticket.customer_id,
+        ticket=ticket_dict,
+    )
 
 
 def create_app(

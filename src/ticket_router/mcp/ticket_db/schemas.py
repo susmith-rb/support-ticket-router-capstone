@@ -141,6 +141,35 @@ class GetActiveTicketResponse(BaseModel):
     )
 
 
+class GetPendingConfirmationRequest(BaseModel):
+    """Input payload for get_pending_confirmation tool (REQ-TURN-005)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str = Field(..., description="Dialogue session identifier")
+    customer_id: Optional[str] = Field(
+        default=None, description="Optional customer identifier for tenant scoping"
+    )
+
+
+class GetPendingConfirmationResponse(BaseModel):
+    """Output payload for get_pending_confirmation tool (REQ-TURN-005)."""
+
+    ticket_id: Optional[str] = Field(
+        default=None, description="Pending confirmation ticket ID or null if none pending"
+    )
+    status: Optional[str] = Field(default=None, description="Ticket status")
+    issue_reference: Optional[str] = Field(
+        default=None, description="Canonical customer-facing issue reference"
+    )
+    customer_id: Optional[str] = Field(
+        default=None, description="Customer identifier"
+    )
+    ticket: Optional[Dict[str, Any]] = Field(
+        default=None, description="Full ticket payload or null"
+    )
+
+
 class AppendCustomerFollowupRequest(BaseModel):
     """Input payload for append_customer_followup tool (REQ-AGENT-033)."""
 
@@ -337,5 +366,11 @@ def get_tool_schemas() -> Dict[str, Any]:
             "description": "List recent ticket references and statuses for a customer (REQ-HIST-003).",
             "parameters": ListCustomerTicketsRequest.model_json_schema(),
             "returns": ListCustomerTicketsResponse.model_json_schema(),
+        },
+        "get_pending_confirmation": {
+            "name": "get_pending_confirmation",
+            "description": "Retrieve pending resolution confirmation ticket for a dialogue session (REQ-TURN-005).",
+            "parameters": GetPendingConfirmationRequest.model_json_schema(),
+            "returns": GetPendingConfirmationResponse.model_json_schema(),
         },
     }

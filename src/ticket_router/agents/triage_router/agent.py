@@ -1276,7 +1276,7 @@ class TriageRouterAgent:
                 mcp_client=mcp_client,
                 session_id=session_id,
                 customer_id=customer_id,
-                customer_verified=False,
+                customer_verified=bool(customer_verified),
             )
             eval_kwargs = {
                 "text": message_text,
@@ -1677,9 +1677,14 @@ class TriageRouterAgent:
                         cand_ticket = mcp_client.get_active_ticket_for_session(session_id=session_id)
                     except Exception:
                         cand_ticket = None
-                if not cand_ticket:
+                if not cand_ticket and hasattr(mcp_client, "get_pending_confirmation"):
                     try:
-                        cand_ticket = mcp_client.get_ticket(f"TICK-{session_id[:8]}")
+                        cand_resp = mcp_client.get_pending_confirmation(
+                            session_id=session_id,
+                            customer_id=ticket_customer_id,
+                        )
+                        if isinstance(cand_resp, dict):
+                            cand_ticket = cand_resp.get("ticket") or cand_resp
                     except Exception:
                         cand_ticket = None
                 if not cand_ticket:
@@ -1699,14 +1704,14 @@ class TriageRouterAgent:
 
                 if isinstance(cand_ticket, dict):
                     # 1. Check if human-owned ticket (REQ-SAFE-004)
-                    cand_tid = str(cand_ticket.get("ticket_id") or cand_ticket.get("id") or f"TICK-{session_id[:8]}")
+                    cand_tid = str(cand_ticket.get("issue_reference") or cand_ticket.get("ticket_id") or cand_ticket.get("id") or "")
                     cand_queue = str(cand_ticket.get("assigned_queue") or cand_ticket.get("queue") or "")
                     cand_owner = cand_ticket.get("current_owner", "bot")
                     if is_human_owned(cand_ticket) or cand_queue.startswith("human") or cand_owner != "bot":
                         cust_ticket_ref = _derive_customer_ticket_id(cand_tid, session_id, cand_ticket)
                         try:
                             mcp_client.append_customer_followup(
-                                ticket_id=cand_tid,
+                                ticket_id=str(cand_ticket.get("ticket_id") or cand_tid),
                                 body_redacted=message_text,
                                 customer_id=cand_ticket.get("customer_id") or ticket_customer_id,
                                 traceparent=traceparent,
@@ -1792,7 +1797,7 @@ class TriageRouterAgent:
                             cand_ticket = None
 
                 if isinstance(cand_ticket, dict):
-                    cand_tid = str(cand_ticket.get("ticket_id") or cand_ticket.get("id") or f"TICK-{session_id[:8]}")
+                    cand_tid = str(cand_ticket.get("issue_reference") or cand_ticket.get("ticket_id") or "")
                     cand_cat = cand_ticket.get("category", "support")
                     cand_owner = cand_ticket.get("current_owner", "bot")
                     cand_status = cand_ticket.get("status", "open")
@@ -1846,7 +1851,7 @@ class TriageRouterAgent:
                             prompt_q = f"Did that resolve your issue? Reply yes to close ticket #{cust_ticket_ref}."
                             try:
                                 mcp_client.record_resolution_confirmation_requested(
-                                    ticket_id=cand_tid,
+                                    ticket_id=str(cand_ticket.get("ticket_id") or cand_tid),
                                     prompt=prompt_q,
                                 )
                             except Exception as exc:
@@ -1909,7 +1914,7 @@ class TriageRouterAgent:
                         try:
                             if cand_status != "resolved_by_customer":
                                 mcp_client.update_ticket_status(
-                                    ticket_id=cand_tid,
+                                    ticket_id=str(cand_ticket.get("ticket_id") or cand_tid),
                                     from_status=cand_status,
                                     to_status="resolved_by_customer",
                                     actor=ticket_customer_id,
@@ -2699,6 +2704,8 @@ class TriageRouterAgent:
             # Restore in-memory PII tokens for customer-facing reply paths (REQ-STORE-009)
             if calming_ack:
                 calming_ack = restore_pii_tokens(calming_ack, pii_mapping)
+            elif decision.calming_ack:
+                calming_ack = restore_pii_tokens(decision.calming_ack, pii_mapping)
             if isinstance(handoff_resp, dict):
                 handoff_resp = dict(handoff_resp)
                 if handoff_resp.get("answer"):

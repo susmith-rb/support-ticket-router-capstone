@@ -208,6 +208,12 @@ class FakeTicketRepo(TicketRepository):
         with self._lock:
             ticket = self._tickets.get(t_id)
             if ticket is None:
+                for t in self._tickets.values():
+                    if t.issue_reference == str(ticket_id):
+                        ticket = t
+                        t_id = t.ticket_id
+                        break
+            if ticket is None:
                 raise KeyError(f"Ticket not found: {t_id}")
 
             # Customer scoping / RLS validation (BEFORE checking target state)
@@ -365,6 +371,54 @@ class FakeTicketRepo(TicketRepository):
                     continue
                 if is_holding_ticket(cand.status, cand.assigned_queue, cand_cat, cand.current_owner, cand.decision):
                     return cand
+            return None
+
+    def get_pending_confirmation(
+        self, session_id: str, customer_id: Optional[str] = None
+    ) -> Optional[Ticket]:
+        """Fetch newest bot-owned support ticket in session with pending resolution confirmation (REQ-TURN-005)."""
+        with self._lock:
+            matching: List[Ticket] = []
+            for t in self._tickets.values():
+                t_session = t.session_id
+                if not t_session and isinstance(t.decision, dict):
+                    t_session = t.decision.get("session_id")
+                if t_session == session_id:
+                    if customer_id and t.customer_id != customer_id:
+                        continue
+                    if t.status not in ("open", "answered"):
+                        continue
+                    cat = effective_category(t)
+                    if cat in ("security", "fraud"):
+                        continue
+                    if is_human_owned(t):
+                        continue
+                    raw_owner = t.current_owner
+                    if raw_owner and raw_owner != "bot":
+                        continue
+                    assigned_q = (t.assigned_queue or "").lower()
+                    if assigned_q.startswith("human"):
+                        continue
+                    matching.append(t)
+
+            if not matching:
+                return None
+
+            # Sort by created_at descending (most recent first)
+            matching.sort(key=lambda x: x.created_at, reverse=True)
+            for cand in matching:
+                cand_tid = self._normalize_uuid(cand.ticket_id)
+                events = self._events.get(cand_tid, [])
+                conf_events = [ev for ev in events if ev.event_type == "resolution_confirmation_requested"]
+                if not conf_events:
+                    continue
+                latest_conf = max(ev.created_at for ev in conf_events)
+                status_events = [ev for ev in events if ev.event_type == "status_changed"]
+                if status_events:
+                    latest_status = max(ev.created_at for ev in status_events)
+                    if latest_conf < latest_status:
+                        continue
+                return cand
             return None
 
     def append_customer_followup(

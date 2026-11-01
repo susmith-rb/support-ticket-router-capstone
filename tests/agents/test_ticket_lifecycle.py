@@ -854,3 +854,320 @@ def test_mcp_update_ticket_status_http_endpoint_auth_and_scoping():
     )
     assert res_rec.status_code == 200
     assert res_rec.json()["success"] is True
+
+
+def test_lifecycle_end_to_end_fastapi_turn_interpreter_integration():
+    """End-to-end integration test through real FastAPI ticket-db-mcp app (REQ-TURN-005, REQ-LIFE-002).
+
+    Exercises:
+    1. FAQ turn -> confirmation question recorded via record_resolution_confirmation_requested (assert 200, not 404).
+    2. 'yes thanks' turn -> closes ticket via update_ticket_status to resolved_by_customer.
+    3. FAQ turn -> 'no, that didn't help' -> no closure, no new closure question on that reply.
+    4. FAQ turn -> 'if it arrives tomorrow I don't want to escalate' -> no closure question.
+    """
+    from fastapi.testclient import TestClient
+
+    from ticket_router.agents.triage_router.agent import TriageRouterAgent
+    from ticket_router.agents.triage_router.mcp_client import HttpTicketDbMcpClient
+    from ticket_router.agents.triage_router.policy import RouterThresholds, TriagePolicy
+    from ticket_router.agents.triage_router.turn_interpreter import (
+        TurnInterpretation,
+        TurnInterpreter,
+    )
+    from ticket_router.handoff.human_handoff import HumanHandoff
+    from ticket_router.handoff.publisher import FakePublisher
+    from ticket_router.mcp.ticket_db.server import create_app
+    from ticket_router.store.fake import FakeTicketRepo
+
+    repo = FakeTicketRepo()
+    app = create_app(repo=repo)
+    test_client = TestClient(app)
+    mcp_client = HttpTicketDbMcpClient(base_url="http://testserver", session=test_client)
+
+    s1_client = MockRouterS1ForLifecycle()
+    a2a_client = MockA2AClientForLifecycle()
+    publisher = FakePublisher()
+    human_handoff = HumanHandoff(
+        ticket_db_client=mcp_client,
+        publisher=publisher,
+        escalated_by="triage_router",
+    )
+
+    def _mock_ti_invoker(
+        text: str, conversation_state: Any = None, **kwargs: Any
+    ) -> TurnInterpretation:
+        t = text.lower()
+        if "yes thanks" in t or "yes" in t:
+            return TurnInterpretation(
+                turn_act="confirmation_yes",
+                primary_intent="returns_refunds",
+                sentiment="positive",
+                urgency="can wait days",
+                confidence=0.98,
+                escalate=False,
+                rationale="Customer affirmative confirmation",
+            )
+        if "no, that didn't help" in t or "no" in t:
+            return TurnInterpretation(
+                turn_act="confirmation_no",
+                primary_intent="returns_refunds",
+                sentiment="frustrated",
+                urgency="within a day",
+                confidence=0.95,
+                escalate=False,
+                rationale="Customer rejection of resolution",
+            )
+        if "if it arrives tomorrow" in t:
+            return TurnInterpretation(
+                turn_act="conditional_resolution",
+                primary_intent="returns_refunds",
+                sentiment="neutral",
+                urgency="can wait days",
+                confidence=0.92,
+                escalate=False,
+                rationale="Conditional resolution clause",
+            )
+        return TurnInterpretation(
+            turn_act="new_request",
+            primary_intent="returns_refunds",
+            sentiment="neutral",
+            urgency="within a day",
+            confidence=0.90,
+            escalate=False,
+            rationale="Standard query",
+        )
+
+    turn_interpreter = TurnInterpreter(invoker=_mock_ti_invoker)
+    policy = TriagePolicy(
+        thresholds=RouterThresholds(),
+        s1_client=s1_client,
+        turn_interpreter=turn_interpreter,
+    )
+    agent = TriageRouterAgent(
+        policy=policy,
+        mcp_client=mcp_client,
+        a2a_client=a2a_client,
+        human_handoff=human_handoff,
+        turn_interpreter=turn_interpreter,
+    )
+
+    customer_id = "cust_verified_999"
+
+    # --- Scenario 1: FAQ turn -> 'yes thanks' closes ticket ---
+    session_1 = "sess_e2e_yes"
+    # Turn 1: FAQ inquiry
+    res1 = agent.triage(
+        session_id=session_1,
+        message_text="What is your return policy?",
+        customer_id=customer_id,
+        customer_verified=True,
+    )
+    assert res1.decision.decision == "auto_rag"
+    assert res1.decision.escalate is False
+
+    # Check that ticket was created in repo and pending confirmation event recorded
+    t1 = repo.get_pending_confirmation(
+        session_id=session_1, customer_id=customer_id
+    )
+    assert t1 is not None, "Pending confirmation ticket must be found in repo"
+    events_t1 = repo.list_events(t1.ticket_id)
+    assert any(
+        ev.event_type == "resolution_confirmation_requested" for ev in events_t1
+    )
+    assert t1.status in ("open", "answered")
+
+    # Turn 2: 'yes thanks'
+    res2 = agent.triage(
+        session_id=session_1,
+        message_text="yes thanks",
+        customer_id=customer_id,
+        customer_verified=True,
+    )
+    assert res2.decision.reason == "resolved_by_customer"
+    assert res2.decision.escalate is False
+    # Verify ticket in real repo was updated to resolved_by_customer via update_ticket_status
+    t1_updated = repo.get_ticket(t1.ticket_id)
+    assert t1_updated is not None
+    assert t1_updated.status == "resolved_by_customer"
+
+    # --- Scenario 2: FAQ turn -> 'no, that didn't help' -> no closure, no new closure question ---
+    session_2 = "sess_e2e_no"
+    res3 = agent.triage(
+        session_id=session_2,
+        message_text="What is your return policy?",
+        customer_id=customer_id,
+        customer_verified=True,
+    )
+    assert res3.decision.decision == "auto_rag"
+    t2 = repo.get_pending_confirmation(
+        session_id=session_2, customer_id=customer_id
+    )
+    assert t2 is not None
+
+    count_conf_before = len([
+        ev
+        for ev in repo.list_events(t2.ticket_id)
+        if ev.event_type == "resolution_confirmation_requested"
+    ])
+    assert count_conf_before >= 1
+
+    # User says 'no, that didn't help'
+    res4 = agent.triage(
+        session_id=session_2,
+        message_text="no, that didn't help",
+        customer_id=customer_id,
+        customer_verified=True,
+    )
+    assert res4.decision.decision is not None
+    assert res4.decision.reason != "resolved_by_customer"
+    # Ticket must NOT be closed as resolved_by_customer
+    t2_after = repo.get_ticket(t2.ticket_id)
+    assert t2_after is not None
+    assert t2_after.status != "resolved_by_customer"
+    # No new confirmation question recorded on this turn
+    count_conf_after = len([
+        ev
+        for ev in repo.list_events(t2.ticket_id)
+        if ev.event_type == "resolution_confirmation_requested"
+    ])
+    assert count_conf_after == count_conf_before
+
+    # --- Scenario 3: FAQ turn -> 'if it arrives tomorrow I don't want to escalate' -> no closure question ---
+    session_3 = "sess_e2e_cond"
+    res5 = agent.triage(
+        session_id=session_3,
+        message_text="What is your return policy?",
+        customer_id=customer_id,
+        customer_verified=True,
+    )
+    assert res5.decision.decision == "auto_rag"
+    t3 = repo.get_pending_confirmation(
+        session_id=session_3, customer_id=customer_id
+    )
+    assert t3 is not None
+    count_conf3_before = len([
+        ev
+        for ev in repo.list_events(t3.ticket_id)
+        if ev.event_type == "resolution_confirmation_requested"
+    ])
+
+    res6 = agent.triage(
+        session_id=session_3,
+        message_text="if it arrives tomorrow I don't want to escalate",
+        customer_id=customer_id,
+        customer_verified=True,
+    )
+    assert res6.decision.decision is not None
+    assert res6.decision.reason != "resolved_by_customer"
+    # Conditional resolution: ticket not closed, no new closure question
+    t3_after = repo.get_ticket(t3.ticket_id)
+    assert t3_after is not None
+    assert t3_after.status != "resolved_by_customer"
+    count_conf3_after = len([
+        ev
+        for ev in repo.list_events(t3.ticket_id)
+        if ev.event_type == "resolution_confirmation_requested"
+    ])
+    assert count_conf3_after == count_conf3_before
+
+
+def test_lifecycle_turn_interpreter_timeout_with_pending_confirmation_retains_ticket():
+    """When interpreter is unavailable and pending_confirmation exists, ticket is retained (not escalated)."""
+    from fastapi.testclient import TestClient
+
+    from ticket_router.agents.triage_router.agent import TriageRouterAgent
+    from ticket_router.agents.triage_router.mcp_client import HttpTicketDbMcpClient
+    from ticket_router.agents.triage_router.policy import RouterThresholds, TriagePolicy
+    from ticket_router.agents.triage_router.turn_interpreter import (
+        TurnInterpretation,
+        TurnInterpreter,
+    )
+    from ticket_router.common.resilience import ServiceTimeoutError
+    from ticket_router.handoff.human_handoff import HumanHandoff
+    from ticket_router.handoff.publisher import FakePublisher
+    from ticket_router.mcp.ticket_db.server import create_app
+    from ticket_router.store.fake import FakeTicketRepo
+
+    repo = FakeTicketRepo()
+    app = create_app(repo=repo)
+    test_client = TestClient(app)
+    mcp_client = HttpTicketDbMcpClient(base_url="http://testserver", session=test_client)
+
+    s1_client = MockRouterS1ForLifecycle()
+    a2a_client = MockA2AClientForLifecycle()
+    publisher = FakePublisher()
+    human_handoff = HumanHandoff(
+        ticket_db_client=mcp_client,
+        publisher=publisher,
+        escalated_by="triage_router",
+    )
+
+    # Turn 1: normal FAQ turn
+    def _mock_ti_turn1(
+        text: str, conversation_state: Any = None, **kwargs: Any
+    ) -> TurnInterpretation:
+        return TurnInterpretation(
+            turn_act="new_request",
+            primary_intent="returns_refunds",
+            sentiment="neutral",
+            urgency="within a day",
+            confidence=0.90,
+            escalate=False,
+            rationale="Standard query",
+        )
+
+    ti = TurnInterpreter(invoker=_mock_ti_turn1)
+    agent = TriageRouterAgent(
+        policy=TriagePolicy(
+            thresholds=RouterThresholds(),
+            s1_client=s1_client,
+            turn_interpreter=ti,
+        ),
+        mcp_client=mcp_client,
+        a2a_client=a2a_client,
+        human_handoff=human_handoff,
+        turn_interpreter=ti,
+    )
+
+    customer_id = "cust_verified_101"
+    session_id = "sess_ti_timeout"
+    res1 = agent.triage(
+        session_id=session_id,
+        message_text="How do I return?",
+        customer_id=customer_id,
+        customer_verified=True,
+    )
+    assert res1.decision.decision == "auto_rag"
+    t1 = repo.get_pending_confirmation(session_id=session_id, customer_id=customer_id)
+    assert t1 is not None
+
+    # Turn 2: Turn interpreter times out
+    def _mock_ti_timeout(
+        text: str, conversation_state: Any = None, **kwargs: Any
+    ) -> TurnInterpretation:
+        raise ServiceTimeoutError("Flash call timed out")
+
+    ti_timeout = TurnInterpreter(invoker=_mock_ti_timeout)
+    agent.policy.turn_interpreter = ti_timeout
+    agent._turn_interpreter = ti_timeout
+
+    res2 = agent.triage(
+        session_id=session_id,
+        message_text="yes thanks",
+        customer_id=customer_id,
+        customer_verified=True,
+    )
+    # Assert ticket is retained, NOT escalated
+    assert res2.decision.escalate is False
+    assert (
+        res2.decision.reason
+        == "turn_interpreter_timeout_pending_confirmation_retained"
+    )
+    assert (
+        "automated confirmation service temporarily timed out"
+        in res2.calming_ack
+    )
+    # Assert ticket remains open in database
+    t1_check = repo.get_ticket(t1.ticket_id)
+    assert t1_check is not None
+    assert t1_check.status in ("open", "answered")

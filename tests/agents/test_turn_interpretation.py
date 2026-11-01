@@ -643,7 +643,7 @@ def test_resolution_confirmation_protocol():
     assert "Reply yes to close ticket" in turn_ver.reply_text
 
     # Check pending confirmation is recorded in events
-    active_t = db_client.get_active_ticket_for_session("s_proto_01")
+    active_t = db_client.get_pending_confirmation("s_proto_01")
     assert active_t is not None
     assert any(ev.get("event_type") == "resolution_confirmation_requested" for ev in db_client.events)
 
@@ -729,3 +729,46 @@ def test_cross_customer_request_routes_to_interpreter_never_laya_fast_path():
     # 4. Zero tickets persisted
     assert len(db_client.tickets) == 0
     assert len(db_client.events) == 0
+
+
+def test_invoke_turn_interpreter_uses_model_location_over_caller_location(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify that models.yaml location ('global') wins over caller-supplied location ('us-central1')."""
+    import google.genai
+
+    from ticket_router.agents.triage_router.turn_interpreter import invoke_turn_interpreter
+    from ticket_router.config.models import model_location
+
+    captured_kwargs: Dict[str, Any] = {}
+
+    class FakeGenaiModels:
+        def generate_content(self, model: str, contents: Any, config: Any) -> Any:
+            resp = MagicMock()
+            resp.text = json.dumps({
+                "turn_act": "new_request",
+                "intents": [{"intent": "order_status", "text_span": "where is my order"}],
+                "primary_intent": "order_status",
+                "escalate": False,
+                "sentiment": "neutral",
+                "urgency": "within a day",
+                "security": {},
+            })
+            return resp
+
+    class FakeGenaiClient:
+        def __init__(self, **kwargs: Any) -> None:
+            nonlocal captured_kwargs
+            captured_kwargs = kwargs
+            self.models = FakeGenaiModels()
+
+    monkeypatch.setattr(google.genai, "Client", FakeGenaiClient)
+
+    expected_loc = model_location("router_tier2")  # 'global'
+    res = invoke_turn_interpreter(
+        text="where is my order",
+        location="us-central1",
+        project="test-project",
+    )
+    assert captured_kwargs.get("location") == expected_loc
+    assert captured_kwargs.get("location") != "us-central1"
+    assert res.primary_intent == "order_status"
+

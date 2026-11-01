@@ -23,6 +23,11 @@ from ticket_router.common.resilience import (
     TICKET_DB_MCP_TIMEOUT_S,
 )
 from ticket_router.store.ids import canonical_ticket_uuid
+from ticket_router.store.models import (
+    effective_category,
+    is_holding_ticket,
+    is_human_owned,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +99,14 @@ class TicketDbMcpClientProtocol(Protocol):
         customer_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Retrieve active holding ticket for a conversation session (REQ-AGENT-033)."""
+        ...
+
+    def get_pending_confirmation(
+        self,
+        session_id: str,
+        customer_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Retrieve pending resolution confirmation ticket for a dialogue session (REQ-TURN-005)."""
         ...
 
     def append_customer_followup(
@@ -327,17 +340,23 @@ class InMemoryTicketDbMcpClient:
             return None
 
         for cand in reversed(matching):
-            st = (cand.get("status") or "").lower()
-            if st in ("resolved", "resolved_auto", "resolved_by_customer", "closed", "returned_to_automation"):
+            eff_cat = (
+                effective_category(
+                    ticket_or_fields=cand,
+                    category=cand.get("category"),
+                    decision=cand.get("decision"),
+                )
+                or "support"
+            )
+            if eff_cat in ("security", "fraud"):
                 continue
-            cat = cand.get("category")
-            if not cat:
-                dec = cand.get("decision")
-                if isinstance(dec, dict):
-                    cat = dec.get("category")
-            if cat in ("security", "fraud"):
+            if not is_human_owned(cand):
                 continue
-            if st in ("escalated", "queued_for_review", "claimed", "assigned", "in_progress", "open", "answered"):
+            st = cand.get("status")
+            queue = cand.get("assigned_queue")
+            owner = cand.get("current_owner")
+            dec = cand.get("decision")
+            if is_holding_ticket(st, queue, eff_cat, owner, dec):
                 t = dict(cand)
                 actual_tid = cand.get("ticket_id") or cand.get("id")
                 t["resolution_confirmation_requested"] = any(
@@ -347,6 +366,99 @@ class InMemoryTicketDbMcpClient:
                 )
                 return t
 
+        return None
+
+    def get_pending_confirmation(
+        self,
+        session_id: str,
+        customer_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        matching = []
+        for ticket in self.tickets.values():
+            t_sess = ticket.get("session_id")
+            if not t_sess:
+                dec = ticket.get("decision")
+                if isinstance(dec, dict):
+                    t_sess = dec.get("session_id")
+            if not t_sess and ":" in ticket.get("idempotency_key", ""):
+                t_sess = ticket["idempotency_key"].split(":", 1)[0]
+
+            if t_sess == session_id:
+                if (
+                    customer_id
+                    and ticket.get("customer_id")
+                    and ticket.get("customer_id") != customer_id
+                ):
+                    continue
+                st = (ticket.get("status") or "").lower()
+                if st not in ("open", "answered"):
+                    continue
+                eff_cat = (
+                    effective_category(
+                        ticket_or_fields=ticket,
+                        category=ticket.get("category"),
+                        decision=ticket.get("decision"),
+                    )
+                    or "support"
+                )
+                if eff_cat in ("security", "fraud"):
+                    continue
+                if is_human_owned(ticket):
+                    continue
+                raw_owner = ticket.get("current_owner")
+                if raw_owner and raw_owner != "bot":
+                    continue
+                assigned_q = (ticket.get("assigned_queue") or "").lower()
+                if assigned_q.startswith("human"):
+                    continue
+                matching.append(ticket)
+
+        if not matching:
+            return None
+
+        def _get_ts(t: Dict[str, Any]) -> str:
+            return str(t.get("created_at") or "")
+
+        matching.sort(key=_get_ts, reverse=True)
+
+        for cand in matching:
+            cand_id = cand.get("ticket_id") or cand.get("id")
+            events = [
+                ev
+                for ev in self.events
+                if ev.get("ticket_id") in (cand_id, cand.get("ticket_id"))
+            ]
+            conf_events = [
+                ev
+                for ev in events
+                if ev.get("event_type") == "resolution_confirmation_requested"
+            ]
+            if not conf_events:
+                continue
+
+            def _ev_ts(ev: Dict[str, Any]) -> str:
+                return str(ev.get("created_at") or "")
+
+            latest_conf = max(conf_events, key=_ev_ts)
+            status_events = [
+                ev for ev in events if ev.get("event_type") == "status_changed"
+            ]
+            if status_events:
+                latest_status = max(status_events, key=_ev_ts)
+                if _ev_ts(latest_conf) < _ev_ts(latest_status):
+                    continue
+
+            ref = cand.get("issue_reference") or f"TICK-{str(cand_id)[:8]}"
+            t_copy = dict(cand)
+            t_copy["resolution_confirmation_requested"] = True
+            t_copy["issue_reference"] = ref
+            return {
+                "ticket_id": str(cand_id),
+                "status": cand.get("status"),
+                "issue_reference": ref,
+                "customer_id": cand.get("customer_id"),
+                "ticket": t_copy,
+            }
         return None
 
     def update_ticket_status(
@@ -699,6 +811,40 @@ class HttpTicketDbMcpClient:
                 json.dumps(
                     {
                         "event": "get_active_ticket_failed_open",
+                        "session_id": session_id,
+                        "error_type": type(exc).__name__,
+                    },
+                    separators=(",", ":"),
+                )
+            )
+            return None
+
+    def get_pending_confirmation(
+        self,
+        session_id: str,
+        customer_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        req_headers = {}
+        if customer_id:
+            req_headers["X-Customer-ID"] = customer_id
+            req_headers["X-Customer-Verified"] = (
+                "false" if str(customer_id).startswith("anon:") else "true"
+            )
+        try:
+            resp = self._post_tool(
+                "get_pending_confirmation",
+                {"session_id": session_id, "customer_id": customer_id},
+                timeout_s=self.hold_lookup_timeout_s,
+                headers=req_headers if req_headers else None,
+            )
+            if resp and resp.get("ticket_id"):
+                return resp
+            return None
+        except Exception as exc:
+            logger.warning(
+                json.dumps(
+                    {
+                        "event": "get_pending_confirmation_failed",
                         "session_id": session_id,
                         "error_type": type(exc).__name__,
                     },

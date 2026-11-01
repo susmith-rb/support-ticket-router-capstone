@@ -168,7 +168,9 @@ def invoke_turn_interpreter(
     start_time = time.monotonic()
 
     resolved_model = target_model or model_id("router_tier2")
-    resolved_location = location or model_location("router_tier2") or os.environ.get("GOOGLE_CLOUD_LOCATION") or "global"
+    # models.yaml pins the Flash location (global); the agent-wide region (us-central1) returns 404
+    # for this model, so the model location wins over the caller-supplied region.
+    resolved_location = model_location("router_tier2") or location or os.environ.get("GOOGLE_CLOUD_LOCATION") or "global"
     effective_project = project or os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("PROJECT_ID")
     effective_deadline = deadline_s if deadline_s is not None else TIER2_DEADLINE_S
     effective_hedge = hedge_after_s if hedge_after_s is not None else TIER2_HEDGE_AFTER_S
@@ -236,6 +238,17 @@ def invoke_turn_interpreter(
     except ServiceTimeoutError:
         raise
     except Exception as exc:
+        logger.warning(
+            json.dumps(
+                {
+                    "event": "turn_interpreter_failed",
+                    "model": str(resolved_model),
+                    "location": str(resolved_location),
+                    "error_type": type(exc).__name__,
+                },
+                separators=(",", ":"),
+            )
+        )
         raise RuntimeError(f"Turn interpreter call failed ({resolved_model}): {exc}") from exc
 
 
