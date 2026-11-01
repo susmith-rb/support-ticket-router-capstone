@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
+from ticket_router.store.ids import issue_reference, legacy_session_issue_reference
+
 # Expected SLA response ETAs per queue tier (REQ-AGENT-005)
 SLA_ETAS: Dict[str, str] = {
     "human-urgent": "15 minutes",
@@ -143,12 +145,11 @@ def render_followup_calming_reply(
 
     if is_uuid:
         if session_id:
-            display_id = f"TICK-{str(session_id)[:8]}"
+            display_id = legacy_session_issue_reference(session_id)
         else:
-            clean_hex = display_id.replace("-", "")
-            display_id = f"TICK-{clean_hex[:8]}"
+            display_id = issue_reference(display_id)
     elif not display_id.startswith("TICK-") and session_id:
-        display_id = f"TICK-{str(session_id)[:8]}"
+        display_id = legacy_session_issue_reference(session_id)
 
     return FOLLOWUP_CALMING_REPLY_TEMPLATE.format(ticket_id=display_id)
 
@@ -164,6 +165,27 @@ SECURITY_BLOCKED_REPLY = (
 def render_security_blocked_reply() -> str:
     """Render a deterministic security refusal for prompt injection or jailbreak attempts."""
     return SECURITY_BLOCKED_REPLY
+
+
+# REQ-AGENT-005 / REQ-AGENT-009: Fallback and escalation constants
+DEFAULT_ESCALATION_REPLY = (
+    "Your request has been routed to our specialist team."
+)
+
+DEFAULT_OOS_REPLY = (
+    "I can only assist with Global Retail Hub customer support inquiries."
+)
+
+MODEL_ARMOR_SECURITY_TRIGGER_ACK_TEMPLATE = (
+    "Thank you for contacting support. We have logged ticket #{ticket_id} and our "
+    "support team is reviewing your inquiry. A representative will follow up with you shortly."
+)
+
+
+def render_model_armor_security_trigger_ack(ticket_id: str) -> str:
+    """Render calming acknowledgement when model armor security triggers ticket creation."""
+    return MODEL_ARMOR_SECURITY_TRIGGER_ACK_TEMPLATE.format(ticket_id=ticket_id)
+
 
 
 

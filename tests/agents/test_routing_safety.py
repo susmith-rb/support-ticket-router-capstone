@@ -257,15 +257,10 @@ def test_non_escalating_tier3_degradation_fallback() -> None:
     fake_tier2_invoker = MagicMock()
     fake_tier2_invoker.side_effect = ServiceTimeoutError("Tier2 timeout")
 
-    mock_tier3 = MagicMock()
-    mock_tier3.side_effect = ServiceTimeoutError("Tier3 timeout")
-
     policy = TriagePolicy(
         thresholds=RouterThresholds(),
         s1_client=mock_s1,
         tier2_invoker=fake_tier2_invoker,
-        tier3_invoker=mock_tier3,
-        tier3_enabled=True,
     )
 
     dec = policy.evaluate(
@@ -298,8 +293,6 @@ def test_non_escalating_tier3_degradation_fallback() -> None:
         thresholds=RouterThresholds(),
         s1_client=mock_s1,
         tier2_invoker=fake_tier2_angry,
-        tier3_invoker=mock_tier3,
-        tier3_enabled=True,
     )
     dec_angry = policy_angry.evaluate(
         text="I am furious, give me a human right now!",

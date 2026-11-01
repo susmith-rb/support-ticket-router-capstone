@@ -104,23 +104,3 @@ def create_tier2_invoker(
         location=location,
         client=client,
     )
-
-
-def invoke_tier3_gemini(
-    text: str,
-    target_model: Optional[str] = None,
-    project: Optional[str] = None,
-    location: Optional[str] = None,
-    deadline_s: Optional[float] = None,
-) -> RouterPrediction:
-    """Execute Tier 3 Gemini call with call-time 429 fault-injection check."""
-    check_gemini_429_hook()
-    from ticket_router.agents.triage_router.tier3 import invoke_tier3_gemini as _t3_impl
-
-    return _t3_impl(
-        text,
-        target_model=target_model,
-        project=project,
-        location=location,
-        deadline_s=deadline_s,
-    )

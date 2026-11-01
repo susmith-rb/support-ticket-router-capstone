@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
+from ticket_router.store.ids import issue_reference
 from ticket_router.store.interfaces import CustomerRepository, OrderRepository, TicketRepository
 from ticket_router.store.models import (
     CUSTOMER_ALLOWED_TRANSITIONS,
@@ -129,7 +130,7 @@ class PostgresTicketRepo(TicketRepository):
             current_owner = f"queue:{assigned_q}"
         else:
             current_owner = "bot"
-        issue_reference = ticket_create.issue_reference or f"TICK-{str(ticket_id)[:8]}"
+        issue_ref = ticket_create.issue_reference or issue_reference(ticket_id)
         session_id = ticket_create.session_id
 
         query = f"""
@@ -178,7 +179,7 @@ class PostgresTicketRepo(TicketRepository):
                     ticket_create.assigned_to,
                     ticket_create.assigned_queue,
                     session_id,
-                    issue_reference,
+                    issue_ref,
                     category,
                     current_owner,
                 ),

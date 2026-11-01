@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 from ticket_router.common.auth import get_access_token
+from ticket_router.common.resilience import DISCOVERY_ENGINE_RANK_TIMEOUT_S
 from ticket_router.config.models import model_id
 from ticket_router.retrieval.de_endpoint import api_base, data_store_name, search_url
 
@@ -237,7 +238,7 @@ class SearchClient:
         for attempt in range(8):
             try:
                 t0 = time.perf_counter()
-                with urllib.request.urlopen(req, timeout=60) as r:
+                with urllib.request.urlopen(req, timeout=int(DISCOVERY_ENGINE_RANK_TIMEOUT_S)) as r:
                     data = json.loads(r.read().decode("utf-8"))
                 latency_ms = (time.perf_counter() - t0) * 1000.0
                 if sleep_sec > 0:

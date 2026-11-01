@@ -27,6 +27,8 @@ from requests.adapters import HTTPAdapter
 from ticket_router.common.auth import get_access_token
 from ticket_router.common.observability import StructuredJsonLogger
 from ticket_router.common.resilience import (
+    MODEL_ARMOR_EGRESS_TIMEOUT_S,
+    MODEL_ARMOR_TIMEOUT_S,
     CircuitBreaker,
     CircuitBreakerError,
     CircuitBreakerOpenError,
@@ -39,9 +41,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL_ARMOR_BASE_URL: str = (
     "https://modelarmor.us-central1.rep.googleapis.com/v1"
 )
-DEFAULT_TIMEOUT_S: float = 0.700  # REQ-MA-005: max(500 ms, p99 x 1.5); p99 457.7 ms measured from laya-tune 2026-10-28
+DEFAULT_TIMEOUT_S: float = MODEL_ARMOR_TIMEOUT_S  # REQ-MA-005: max(500 ms, p99 x 1.5); p99 457.7 ms measured from laya-tune 2026-10-28
 # Egress screens full FAQ answers (longer text, off the 3 s triage path, inside the 20 s FAQ budget).
-DEFAULT_EGRESS_TIMEOUT_S: float = 2.500
+DEFAULT_EGRESS_TIMEOUT_S: float = MODEL_ARMOR_EGRESS_TIMEOUT_S
 
 # Ingress Gateway Prompt Safety Delegation (REQ-AUTH-011, REQ-MA-007)
 PROMPT_SAFETY_DELEGATED_TO_GATEWAY_ENV: str = "PROMPT_SAFETY_DELEGATED_TO_GATEWAY"

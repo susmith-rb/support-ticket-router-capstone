@@ -168,10 +168,7 @@ def invoke_turn_interpreter(
     start_time = time.monotonic()
 
     resolved_model = target_model or model_id("router_tier2")
-    # models.yaml pins the Flash location (global); the agent-wide region (us-central1) returns 404
-    # for this model, so the model location wins over the caller-supplied region.
     resolved_location = model_location("router_tier2") or location or os.environ.get("GOOGLE_CLOUD_LOCATION") or "global"
-    effective_project = project or os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("PROJECT_ID")
     effective_deadline = deadline_s if deadline_s is not None else TIER2_DEADLINE_S
     effective_hedge = hedge_after_s if hedge_after_s is not None else TIER2_HEDGE_AFTER_S
 
@@ -182,18 +179,16 @@ def invoke_turn_interpreter(
     )
 
     try:
-        from google import genai
         from google.genai import types as genai_types
 
         client_instance = client
         if client_instance is None:
-            client_kwargs: Dict[str, Any] = {}
-            if effective_project:
-                client_kwargs["project"] = effective_project
-                client_kwargs["vertexai"] = True
-            if resolved_location:
-                client_kwargs["location"] = resolved_location
-            client_instance = genai.Client(**client_kwargs)
+            from ticket_router.models.genai_client import get_genai_client
+            client_instance = get_genai_client(
+                role="router_tier2",
+                project=project,
+                location=location,
+            )
 
         cfg_kwargs: Dict[str, Any] = {
             "response_mime_type": "application/json",

@@ -16,12 +16,14 @@ import os
 import sys
 from typing import Any, Dict, List, Optional, Protocol, Sequence
 
+from ticket_router.common.resilience import MEMORY_BANK_TIMEOUT_S
+
 logger = logging.getLogger("ticket_router.memory")
 
 DEFAULT_MEMORY_BANK_ENGINE = (
     "projects/620485621180/locations/us-central1/reasoningEngines/2170218524805431296"
 )
-DEFAULT_RETRIEVAL_TIMEOUT_S = 0.300  # Hard timeout (~300 ms)
+DEFAULT_RETRIEVAL_TIMEOUT_S = MEMORY_BANK_TIMEOUT_S  # Hard timeout (~300 ms)
 MAX_MEMORY_SUMMARY_CHARS = 400
 DEFAULT_TTL_S = "15552000s"  # 180 days in seconds (180 * 24 * 3600)
 DEFAULT_TOP_K = 5

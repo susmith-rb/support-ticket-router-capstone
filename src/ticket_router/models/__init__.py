@@ -1,5 +1,6 @@
 """Models package for ticket_router."""
 
+from ticket_router.models.genai_client import get_genai_client
 from ticket_router.models.router_s1_client import (
     CandidateScore,
     RouterPrediction,
@@ -12,7 +13,6 @@ from ticket_router.models.tier2_gemini import (
     create_tier2_invoker,
     default_tier2_invoker,
     invoke_tier2_gemini,
-    invoke_tier3_gemini,
 )
 
 __all__ = [
@@ -24,6 +24,6 @@ __all__ = [
     "check_gemini_429_hook",
     "create_tier2_invoker",
     "default_tier2_invoker",
+    "get_genai_client",
     "invoke_tier2_gemini",
-    "invoke_tier3_gemini",
 ]

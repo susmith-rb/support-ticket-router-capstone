@@ -17,6 +17,8 @@ from pydantic import PrivateAttr
 
 from ticket_router.agents.triage_router.agent import TriageResult, TriageRouterAgent
 from ticket_router.agents.triage_router.templates import (
+    DEFAULT_ESCALATION_REPLY,
+    DEFAULT_OOS_REPLY,
     render_card_data_blocked_reply,
     render_security_blocked_reply,
 )
@@ -226,9 +228,9 @@ def extract_answer_from_result(result: TriageResult) -> str:
     elif result.decision.decision == "blocked":
         ans = result.calming_ack or render_card_data_blocked_reply()
     elif result.decision.decision == "escalate":
-        ans = result.calming_ack or "Your request has been routed to our specialist team."
+        ans = result.calming_ack or DEFAULT_ESCALATION_REPLY
     elif result.decision.decision == "reject_oos":
-        ans = result.calming_ack or "I can only assist with Global Retail Hub customer support inquiries."
+        ans = result.calming_ack or DEFAULT_OOS_REPLY
     elif result.handoff_response:
         if result.handoff_response.get("answer"):
             ans = str(result.handoff_response.get("answer"))

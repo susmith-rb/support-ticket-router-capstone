@@ -6,6 +6,7 @@ router:
   tau_esc: 0.50      # Escalation confidence floor
   tau_low: 0.15      # Auto-RAG uncertainty lower bound
   tau_intent: 0.70   # Intent classification confidence floor
+  tau_usable_laya: 0.55  # S1 usable intent threshold during degraded fallback
 
 prompts:
   tier2_router_version: "v5"

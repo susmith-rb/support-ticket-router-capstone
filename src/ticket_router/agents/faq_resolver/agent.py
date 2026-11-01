@@ -47,6 +47,18 @@ from ticket_router.agents.faq_resolver.reranker import (
 from ticket_router.agents.faq_resolver.search import (
     execute_faq_search,
 )
+from ticket_router.agents.faq_resolver.templates import (
+    DEFAULT_ORDER_STATUS_TEMPLATE,
+    ESCALATE_ACCOUNT_VERIFICATION_MESSAGE,
+    ESCALATE_ACCURACY_MESSAGE,
+    ESCALATE_BUDGET_EXCEEDED_PRE_MESSAGE,
+    ESCALATE_BUDGET_EXCEEDED_RETRIEVAL_MESSAGE,
+    ESCALATE_KB_DEGRADED_MESSAGE,
+    ESCALATE_SECURITY_MESSAGE,
+    ESCALATE_TECHNICAL_DELAY_MESSAGE,
+    FAKE_RETURN_POLICY_ANSWER,
+    FEEDBACK_CITATION_REJECTED_TEMPLATE,
+)
 from ticket_router.agents.faq_resolver.validator import CitationValidator
 from ticket_router.agents.triage_router.mcp_client import (
     HttpTicketDbMcpClient,
@@ -70,6 +82,7 @@ from ticket_router.security.model_armor import (
     ModelArmorClient,
     ModelArmorClientProtocol,
 )
+from ticket_router.store.ids import legacy_session_issue_reference
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +171,7 @@ class FakeLLMClient(LLMClientProtocol):
 
         if self.always_fail_citations or (self.fail_citations_once and self.call_count == 1):
             return {
-                "answer": "You can return items anytime you feel like it.",
+                "answer": FAKE_RETURN_POLICY_ANSWER,
                 "citations": [{"doc_id": "non_existent_doc", "quote": "fake quote"}],
             }
 
@@ -182,11 +195,11 @@ class FakeLLMClient(LLMClientProtocol):
                 first_order = orders[0]
                 oid = first_order.get("order_id", "recent order")
                 ostatus = first_order.get("status", "in transit")
-                answer = f"Your order {oid} is currently {ostatus}. {answer}"
+                answer = DEFAULT_ORDER_STATUS_TEMPLATE.format(order_id=oid, status=ostatus, answer=answer)
             elif isinstance(order_info, dict) and order_info.get("order_id"):
                 oid = order_info["order_id"]
                 ostatus = order_info.get("status", "in transit")
-                answer = f"Your order {oid} is currently {ostatus}. {answer}"
+                answer = DEFAULT_ORDER_STATUS_TEMPLATE.format(order_id=oid, status=ostatus, answer=answer)
 
         return {
             "answer": answer,
@@ -216,9 +229,9 @@ class GeminiAnswerClient(LLMClientProtocol):
 
     def _get_client(self) -> Any:
         if self._client is None:
-            from google import genai  # type: ignore[import-untyped]
-            self._client = genai.Client(
-                vertexai=True,
+            from ticket_router.models.genai_client import get_genai_client
+            self._client = get_genai_client(
+                role=self.model_role,
                 project=self.project,
                 location=self.location,
             )
@@ -643,7 +656,7 @@ class FaqResolverAgent:
                 queue="human-standard",
                 reason="uncited_answer",
                 degraded=True,
-                message="To ensure complete accuracy, I've escalated your ticket to our support specialists.",
+                message=ESCALATE_ACCURACY_MESSAGE,
                 tool_calls_count=tool_calls_count,
                 retrieval_passes_count=retrieval_passes_count,
                 regeneration_count=regeneration_count,
@@ -663,7 +676,7 @@ class FaqResolverAgent:
                     queue="human-standard",
                     reason="model_armor_response_blocked",
                     degraded=False,
-                    message="To ensure your issue is safely and accurately handled, I have escalated your ticket to our customer support specialists.",
+                    message=ESCALATE_SECURITY_MESSAGE,
                     tool_calls_count=tool_calls_count,
                     retrieval_passes_count=retrieval_passes_count,
                     regeneration_count=regeneration_count,
@@ -679,7 +692,7 @@ class FaqResolverAgent:
                     queue="human-standard",
                     reason="model_armor_degraded",
                     degraded=True,
-                    message="Our system is temporarily experiencing technical delays. A support specialist will follow up with you.",
+                    message=ESCALATE_TECHNICAL_DELAY_MESSAGE,
                     tool_calls_count=tool_calls_count,
                     retrieval_passes_count=retrieval_passes_count,
                     regeneration_count=regeneration_count,
@@ -694,6 +707,7 @@ class FaqResolverAgent:
             status="AUTO_RESOLVED",
             route="resolved",
             answer=raw_answer,
+            message=raw_answer,
             citations=[c.to_dict() for c in val_result.citations],
             reason="static_fallback",
             degraded=True,
@@ -705,9 +719,9 @@ class FaqResolverAgent:
 
     def resolve(
         self,
-        ticket_id: str,
-        session_id: str,
-        message: str,
+        ticket_id: Optional[str] = None,
+        session_id: str = "",
+        message: str = "",
         customer_id: Optional[str] = None,
         customer_verified: Optional[bool] = None,
         identity_issuer: Optional[str] = None,
@@ -722,19 +736,20 @@ class FaqResolverAgent:
         """Execute bounded ReAct loop to resolve FAQ or order inquiry."""
         self._ensure_initialized()
 
+        effective_ticket_id = ticket_id or (legacy_session_issue_reference(session_id) if session_id else "TICK-UNKNOWN")
         token = _active_ticket_uuid.set(ticket_uuid)
         try:
             with start_span(
                 "faq_resolver.resolve",
                 attributes={
-                    "ticket_id": ticket_id,
+                    "ticket_id": effective_ticket_id,
                     "session_id": session_id,
                     "predicted_intent": predicted_intent or "",
                 },
                 traceparent=traceparent,
             ) as resolve_span:
                 res = self._resolve_impl(
-                    ticket_id=ticket_id,
+                    ticket_id=effective_ticket_id,
                     session_id=session_id,
                     message=message,
                     customer_id=customer_id,
@@ -780,7 +795,7 @@ class FaqResolverAgent:
                 queue="human-standard",
                 reason="budget_exceeded",
                 degraded=False,
-                message="Turn budget exceeded before processing.",
+                message=ESCALATE_BUDGET_EXCEEDED_PRE_MESSAGE,
                 tool_calls_count=0,
                 retrieval_passes_count=0,
                 regeneration_count=0,
@@ -868,6 +883,10 @@ class FaqResolverAgent:
                         "Please sign in to check your order details and track shipments. "
                         "If you need further assistance, I can also connect you with a human support specialist."
                     ),
+                    message=(
+                        "Please sign in to check your order details and track shipments. "
+                        "If you need further assistance, I can also connect you with a human support specialist."
+                    ),
                     citations=[],
                     degraded=False,
                     tool_calls_count=0,
@@ -901,7 +920,7 @@ class FaqResolverAgent:
                         queue="human-standard",
                         reason="bola_violation",
                         degraded=False,
-                        message="Inquiry routed to human specialist for account verification.",
+                        message=ESCALATE_ACCOUNT_VERIFICATION_MESSAGE,
                         tool_calls_count=tool_calls_count,
                         retrieval_passes_count=0,
                         regeneration_count=0,
@@ -944,7 +963,7 @@ class FaqResolverAgent:
                         queue="human-standard",
                         reason="bola_violation",
                         degraded=False,
-                        message="Inquiry routed to human specialist for account verification.",
+                        message=ESCALATE_ACCOUNT_VERIFICATION_MESSAGE,
                         tool_calls_count=tool_calls_count,
                         retrieval_passes_count=0,
                         regeneration_count=0,
@@ -988,7 +1007,7 @@ class FaqResolverAgent:
                     queue="human-standard",
                     reason="search_failure",
                     degraded=True,
-                    message="Our automated knowledge base is temporarily degraded. A support specialist will assist you.",
+                    message=ESCALATE_KB_DEGRADED_MESSAGE,
                     tool_calls_count=tool_calls_count,
                     retrieval_passes_count=retrieval_passes_count,
                     regeneration_count=regeneration_count,
@@ -1039,7 +1058,7 @@ class FaqResolverAgent:
                 queue="human-standard",
                 reason="budget_exceeded",
                 degraded=False,
-                message="Turn budget exceeded during knowledge retrieval.",
+                message=ESCALATE_BUDGET_EXCEEDED_RETRIEVAL_MESSAGE,
                 tool_calls_count=tool_calls_count,
                 retrieval_passes_count=retrieval_passes_count,
                 regeneration_count=regeneration_count,
@@ -1099,7 +1118,7 @@ class FaqResolverAgent:
                 queue="human-standard",
                 reason="uncited_answer",
                 degraded=True,
-                message="To ensure complete accuracy, I've escalated your ticket to our support specialists.",
+                message=ESCALATE_ACCURACY_MESSAGE,
                 tool_calls_count=tool_calls_count,
                 retrieval_passes_count=retrieval_passes_count,
                 regeneration_count=regeneration_count,
@@ -1127,9 +1146,8 @@ class FaqResolverAgent:
             if remaining_budget >= min_budget_for_regen:
                 regeneration_count += 1
                 regen_deadline = min(ANSWER_DEADLINE_S, remaining_budget - 1.0)
-                feedback = (
-                    f"Citation validation rejected previous response: {val_result.reason} ({val_result.details}). "
-                    "You MUST supply at least one citation with a quote verbatim present in the retrieved articles."
+                feedback = FEEDBACK_CITATION_REJECTED_TEMPLATE.format(
+                    reason=val_result.reason, details=val_result.details
                 )
                 try:
                     with start_span("faq_resolver.generate_answer"):
@@ -1176,7 +1194,7 @@ class FaqResolverAgent:
                         queue="human-standard",
                         reason="uncited_answer",
                         degraded=True,
-                        message="To ensure complete accuracy, I've escalated your ticket to our support specialists.",
+                        message=ESCALATE_ACCURACY_MESSAGE,
                         tool_calls_count=tool_calls_count,
                         retrieval_passes_count=retrieval_passes_count,
                         regeneration_count=regeneration_count,
@@ -1216,7 +1234,7 @@ class FaqResolverAgent:
                     queue="human-standard",
                     reason="uncited_answer",
                     degraded=False,
-                    message="To ensure complete accuracy, I've escalated your ticket to our support specialists.",
+                    message=ESCALATE_ACCURACY_MESSAGE,
                     tool_calls_count=tool_calls_count,
                     retrieval_passes_count=retrieval_passes_count,
                     regeneration_count=regeneration_count,
@@ -1236,7 +1254,7 @@ class FaqResolverAgent:
                 queue="human-standard",
                 reason="uncited_answer",
                 degraded=llm_failed,
-                message="To ensure complete accuracy, I've escalated your ticket to our support specialists.",
+                message=ESCALATE_ACCURACY_MESSAGE,
                 tool_calls_count=tool_calls_count,
                 retrieval_passes_count=retrieval_passes_count,
                 regeneration_count=regeneration_count,
@@ -1259,7 +1277,7 @@ class FaqResolverAgent:
                     queue="human-standard",
                     reason="model_armor_response_blocked",
                     degraded=False,
-                    message="To ensure your issue is safely and accurately handled, I have escalated your ticket to our customer support specialists.",
+                    message=ESCALATE_SECURITY_MESSAGE,
                     tool_calls_count=tool_calls_count,
                     retrieval_passes_count=retrieval_passes_count,
                     regeneration_count=regeneration_count,
@@ -1275,7 +1293,7 @@ class FaqResolverAgent:
                     queue="human-standard",
                     reason="model_armor_degraded",
                     degraded=True,
-                    message="Our system is temporarily experiencing technical delays. A support specialist will follow up with you.",
+                    message=ESCALATE_TECHNICAL_DELAY_MESSAGE,
                     tool_calls_count=tool_calls_count,
                     retrieval_passes_count=retrieval_passes_count,
                     regeneration_count=regeneration_count,
@@ -1290,6 +1308,7 @@ class FaqResolverAgent:
             status="AUTO_RESOLVED",
             route="resolved",
             answer=raw_answer,
+            message=raw_answer,
             citations=[c.to_dict() for c in val_result.citations],
             degraded=False,
             tool_calls_count=tool_calls_count,

@@ -86,8 +86,8 @@ def sample_tree(tmp_path: Path) -> Path:
     (tmp_path / "prompts" / "tier2_router_v3.yaml").write_text(
         "version: v3\n", encoding="utf-8"
     )
-    (tmp_path / "prompts" / "faq_answer_v1.yaml").write_text(
-        "version: v1\n", encoding="utf-8"
+    (tmp_path / "prompts" / "faq_answer_v2.yaml").write_text(
+        "version: v2\n", encoding="utf-8"
     )
 
     # Excluded components
@@ -186,8 +186,8 @@ def test_fingerprint_change_detection(sample_tree: Path) -> None:
     assert compute_fingerprint(sample_tree) == base_fp
 
     # 2. NEGATIVE CASES: Excluded components DO NOT change the fingerprint
-    # Modifying prompts/faq_answer_v1.yaml
-    faq_prompt_file = sample_tree / "prompts" / "faq_answer_v1.yaml"
+    # Modifying prompts/faq_answer_v2.yaml
+    faq_prompt_file = sample_tree / "prompts" / "faq_answer_v2.yaml"
     faq_prompt_file.write_text("faq prompt modified\n", encoding="utf-8")
     assert compute_fingerprint(sample_tree) == base_fp
     # Modifying faq_resolver

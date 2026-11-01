@@ -129,6 +129,7 @@ class AgentTuningConfig:
     tau_esc: float = 0.50
     tau_low: float = 0.15
     tau_intent: float = 0.70
+    tau_usable_laya: float = 0.55
 
     # Prompt versions
     tier2_router_version: str = "v5"
@@ -236,6 +237,7 @@ def load_tuning_config(
         tau_esc=float(router_data.get("tau_esc", 0.50)),
         tau_low=float(router_data.get("tau_low", 0.15)),
         tau_intent=float(router_data.get("tau_intent", 0.70)),
+        tau_usable_laya=float(router_data.get("tau_usable_laya", 0.55)),
         tier2_router_version=str(prompts_data.get("tier2_router_version", "v5")),
         faq_answer_version=str(prompts_data.get("faq_answer_version", "v2")),
         search_config=str(retr_data.get("search_config", "intent_soft_noisy_0.2")),

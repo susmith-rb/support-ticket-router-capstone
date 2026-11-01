@@ -114,7 +114,6 @@ def test_model_id_resolves_all_standard_roles():
         ("question_gen", "claude-sonnet-5-5"),
         ("query_rewrite", "gemini-3.8-flash"),
         ("router_tier2", "gemini-3.8-flash"),
-        ("tier3_multihop", "gemini-3.1-pro"),
         ("emergency", "gemini-3.1-flash-lite"),
         ("evalsvc_autorater", "gemini-3.8-flash"),
         ("evalsvc_autorater_fallback", "gemini-2.5-flash"),

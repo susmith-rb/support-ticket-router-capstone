@@ -22,7 +22,7 @@ from ticket_router.common.resilience import (
     TICKET_DB_HOLD_LOOKUP_TIMEOUT_S,
     TICKET_DB_MCP_TIMEOUT_S,
 )
-from ticket_router.store.ids import canonical_ticket_uuid
+from ticket_router.store.ids import canonical_ticket_uuid, issue_reference
 from ticket_router.store.models import (
     effective_category,
     is_holding_ticket,
@@ -224,7 +224,7 @@ class InMemoryTicketDbMcpClient:
             current_owner = f"queue:{assigned_queue}"
         else:
             current_owner = "bot"
-        issue_reference = decision.get("ticket_id") or f"TICK-{str(ticket_id)[:8]}"
+        issue_ref = decision.get("ticket_id") or issue_reference(ticket_id)
         sess_id = idempotency_key.split(":", 1)[0] if ":" in idempotency_key else None
 
         record = {
@@ -239,7 +239,7 @@ class InMemoryTicketDbMcpClient:
             "category": category,
             "current_owner": current_owner,
             "assigned_queue": assigned_queue,
-            "issue_reference": issue_reference,
+            "issue_reference": issue_ref,
             "claimed_by": None,
         }
         self.tickets[ticket_id] = record
@@ -448,7 +448,7 @@ class InMemoryTicketDbMcpClient:
                 if _ev_ts(latest_conf) < _ev_ts(latest_status):
                     continue
 
-            ref = cand.get("issue_reference") or f"TICK-{str(cand_id)[:8]}"
+            ref = cand.get("issue_reference") or issue_reference(cand_id)
             t_copy = dict(cand)
             t_copy["resolution_confirmation_requested"] = True
             t_copy["issue_reference"] = ref
@@ -665,7 +665,7 @@ class InMemoryTicketDbMcpClient:
         matching.sort(key=_get_sort_key, reverse=True)
         results: list[Dict[str, Any]] = []
         for t in matching[:limit]:
-            ref = t.get("issue_reference") or f"TICK-{str(t.get('ticket_id'))[:8]}"
+            ref = t.get("issue_reference") or issue_reference(t.get("ticket_id"))
             cat = t.get("category", "support")
             st = "under review" if cat in ("security", "fraud") else t.get("status", "open")
             created_at = t.get("created_at") or datetime.now(timezone.utc).isoformat()

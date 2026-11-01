@@ -7,7 +7,7 @@ Date: 2026-10-23. Project `susmith-fde-ticket-router`. All numbers below are mea
 
 | Data store | Content | How it was built | Cost |
 |---|---|---|---|
-| `faq-articles` | 53 FAQ articles (`corpus/faq-articles/v1/`) | `build_faq_corpus.py`: Gemini 3.1 Pro preview clustered the 81k customer-opened threads' topics into 56 themes; 3 "positive feedback" themes dropped (`drop_articles.sh`); each article synthesized from up to 15 real threads plus one canonical `SIMULATED_POLICY` (single-sourced, `POLICY_VERSION`) | ≈ \$1.30 measured tokens |
+| `faq-articles` | 53 FAQ articles (`corpus/faq-articles/v1/`) | `build_faq_corpus.py`: Gemini 3.1 Pro preview clustered the 81k customer-opened threads' topics into 56 themes; 3 "positive feedback" themes dropped; each article synthesized from up to 15 real threads plus one canonical `SIMULATED_POLICY` (single-sourced, `POLICY_VERSION`) | ≈ \$1.30 measured tokens |
 | `resolved-threads` | 81,103 structured thread docs (`corpus/resolved-threads/v1/`) | `build_threads_corpus.py` from Kaggle `thoughtvector/customer-support-on-twitter` (redacted) | n/a (no LLM) |
 
 Search app `support-kb-search`: Enterprise tier + LLM add-on, location `global`.
@@ -20,7 +20,7 @@ Search app `support-kb-search`: Enterprise tier + LLM add-on, location `global`.
 ## 2. Tier 1: real-tweet retrieval (hardest, most realistic)
 
 The queries are 300 held-out real customer tweets (noisy, @mentions, slang). Their labels are silver: an
-article counts as relevant if it was built from the tweet's theme. Script: `retrieval_eval.py`, sweep: `retrieval_sweep.sh`.
+article counts as relevant if it was built from the tweet's theme. Script: `evals/retrieval_eval.py`.
 
 | Config | Zero-result queries | recall@5 | MRR |
 |---|---|---|---|
@@ -263,7 +263,7 @@ Reading it:
 
 ```bash
 # Tier 1
-python rag/retrieval_eval.py --threshold LOWEST --clean        # see retrieval_sweep.sh for all configs
+python evals/retrieval_eval.py --threshold LOWEST --clean
 # Tier 2 + 3 (writes questions/retrieval/answers/judge jsonl + report.json into <dir>)
 python rag/clean_eval.py <dir> <faq_docs_dir>
 python rag/clean_eval_breakdown.py <dir>                       # abstention + unsupported claims

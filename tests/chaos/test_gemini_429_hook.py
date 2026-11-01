@@ -14,15 +14,14 @@ import pytest
 from google.genai.errors import ClientError
 
 from chaos.experiment_gemini_429 import Gemini429ChaosExperiment
+from ticket_router.agents.faq_resolver.agent import GeminiAnswerClient
 from ticket_router.agents.triage_router.policy import RouterThresholds, TriagePolicy
 from ticket_router.models.tier2_gemini import (
     CHAOS_SIMULATE_GEMINI_429_ENV,
     check_gemini_429_hook,
     create_tier2_invoker,
     invoke_tier2_gemini,
-    invoke_tier3_gemini,
 )
-from ticket_router.retrieval.answer_client import GeminiAnswerClient
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -55,12 +54,7 @@ def test_gemini_429_hook_on_raises_client_error(monkeypatch: pytest.MonkeyPatch)
         invoke_tier2_gemini("Customer return question")
     assert exc_info.value.code == 429
 
-    # 3. Tier 3 Gemini call before network call
-    with pytest.raises(ClientError) as exc_info:
-        invoke_tier3_gemini("Complex dispute query")
-    assert exc_info.value.code == 429
-
-    # 4. FaqResolver answer client before network call
+    # 3. FaqResolver answer client before network call
     ans_client = GeminiAnswerClient(project="test-proj", location="us-central1")
     with pytest.raises(ClientError) as exc_info:
         ans_client.generate_answer(

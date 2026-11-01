@@ -62,6 +62,7 @@ from ticket_router.agents.triage_router.templates import (
     render_card_data_blocked_reply,
     render_conversational_reply,
     render_followup_calming_reply,
+    render_model_armor_security_trigger_ack,
     render_out_of_scope_refusal,
     render_security_blocked_reply,
 )
@@ -103,7 +104,7 @@ from ticket_router.security.model_armor import (
     ModelArmorVerdict,
 )
 from ticket_router.security.pii_tokens import restore_pii_tokens
-from ticket_router.store.ids import canonical_ticket_uuid
+from ticket_router.store.ids import canonical_ticket_uuid, issue_reference, legacy_session_issue_reference
 from ticket_router.store.models import effective_category, is_holding_ticket, is_human_owned
 
 logger = logging.getLogger(__name__)
@@ -440,14 +441,12 @@ def _derive_customer_ticket_id(
 
         t_uuid = active_ticket.get("ticket_id") or active_ticket.get("id")
         if t_uuid and _is_uuid_str(t_uuid):
-            clean_hex = str(t_uuid).replace("-", "")[:8].upper()
-            return f"TICK-{clean_hex}"
+            return issue_reference(t_uuid)
 
     if tid and _is_uuid_str(tid):
-        clean_hex = str(tid).replace("-", "")[:8].upper()
-        return f"TICK-{clean_hex}"
+        return issue_reference(tid)
 
-    return f"TICK-{session_id[:8]}"
+    return legacy_session_issue_reference(session_id)
 
 
 @dataclass(frozen=True)
@@ -647,15 +646,12 @@ def invoke_tier2_gemini(
 
     check_gemini_429_hook()
     try:
-        from google import genai  # type: ignore[import-untyped]
-        client_kwargs: Dict[str, Any] = {}
-        effective_project = project or os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("PROJECT_ID")
-        if effective_project:
-            client_kwargs["project"] = effective_project
-            client_kwargs["vertexai"] = True
-        if location:
-            client_kwargs["location"] = location
-        client = genai.Client(**client_kwargs)
+        from ticket_router.models.genai_client import get_genai_client
+        effective_location = location or model_location("router_tier2")
+        client = get_genai_client(
+            project=project,
+            location=effective_location,
+        )
         from ticket_router.config.agent_tuning import (
             get_active_tier2_prompt_version,
             get_tier2_prompt,
@@ -1108,7 +1104,7 @@ class TriageRouterAgent:
         traceparent = generate_traceparent()
         idempotency_key = compute_idempotency_key(session_id, message_text)
         canonical_uuid = canonical_ticket_uuid(idempotency_key)
-        t_id = ticket_id or f"TICK-{canonical_uuid.replace('-', '')[:8].upper()}"
+        t_id = ticket_id or issue_reference(canonical_uuid)
 
         if customer_id is not None:
             logger.warning(
@@ -1698,6 +1694,10 @@ class TriageRouterAgent:
                     except Exception:
                         pass
 
+                if not isinstance(cand_ticket, dict) and decision.tier == "ticket_lifecycle":
+                    fallback_tier = "tier1_router_s1" if decision.details.get("s1_prediction") else "auto_rag"
+                    decision = replace(decision, tier=fallback_tier, reason="unconfirmed_affirmative_ignored")
+
                 if isinstance(cand_ticket, dict):
                     # 1. Check if human-owned ticket (REQ-SAFE-004)
                     cand_tid = str(cand_ticket.get("issue_reference") or cand_ticket.get("ticket_id") or cand_ticket.get("id") or "")
@@ -1791,6 +1791,10 @@ class TriageRouterAgent:
                         ticket_cust = cand_ticket.get("customer_id")
                         if ticket_cust and ticket_cust != ticket_customer_id:
                             cand_ticket = None
+
+                if not isinstance(cand_ticket, dict) and decision.tier == "ticket_lifecycle":
+                    fallback_tier = "tier1_router_s1" if decision.details.get("s1_prediction") else "auto_rag"
+                    decision = replace(decision, tier=fallback_tier, reason="unconfirmed_affirmative_ignored")
 
                 if isinstance(cand_ticket, dict):
                     cand_tid = str(cand_ticket.get("issue_reference") or cand_ticket.get("ticket_id") or "")
@@ -2445,10 +2449,7 @@ class TriageRouterAgent:
                     decision_payload=_clean_decision_dict(decision),
                 )
                 if decision.reason == "model_armor_security_trigger":
-                    calming_ack = (
-                        f"Thank you for contacting support. We have logged ticket #{t_id} and our "
-                        "support team is reviewing your inquiry. A representative will follow up with you shortly."
-                    )
+                    calming_ack = render_model_armor_security_trigger_ack(t_id)
                 else:
                     calming_ack = handoff_res.calming_ack
 

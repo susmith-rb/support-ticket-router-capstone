@@ -19,14 +19,6 @@ from ticket_router.agents.triage_router.templates import (
     CALMING_ACK_TEMPLATES,
     render_calming_acknowledgement,
 )
-from ticket_router.agents.triage_router.tier3 import (
-    Tier3Config,
-    Tier3GeminiInvoker,
-    create_tier3_invoker,
-    default_tier3_invoker,
-    invoke_tier3_gemini,
-    is_tier3_trigger,
-)
 
 __all__ = [
     "CALMING_ACK_TEMPLATES",
@@ -34,14 +26,8 @@ __all__ = [
     "QueuePriority",
     "RouterDecision",
     "RouterThresholds",
-    "Tier3Config",
-    "Tier3GeminiInvoker",
     "TriagePolicy",
     "VerifiedFacts",
-    "create_tier3_invoker",
-    "default_tier3_invoker",
     "evaluate_gaming_resistant_priority",
-    "invoke_tier3_gemini",
-    "is_tier3_trigger",
     "render_calming_acknowledgement",
 ]

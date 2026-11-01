@@ -9,7 +9,7 @@ threads.jsonl (81k redacted threads) ─────┼─ corpus/build_faq_corp
                                           └─ corpus/build_threads_corpus.py ▶ 81,103 thread documents (JSONL, structData)
 scripts/agent_search_setup.sh create | import-threads | import-faq | engine   ──▶ data stores + search app `support-kb-search`
 evals/search_test.py "query" ...    ──▶ top-5 FAQ results (+ summary with citations) and similar threads
-evals/retrieval_eval.py / scripts/retrieval_sweep.sh  ──▶ recall@k / MRR on 300 held-out real customer messages
+evals/retrieval_eval.py ──▶ recall@k / MRR on 300 held-out real customer messages
 ```
 
 ## What's in Agent Search (project `susmith-fde-ticket-router`, location `global`)
@@ -26,7 +26,7 @@ Search app: `support-kb-search` (Enterprise tier + LLM add-on) over both stores.
 
 1. The teacher's free-text `topic` (on 4,446 labeled messages) was clustered per intent family into 56 themes by Gemini 3.1 Pro.
 2. For each theme, Gemini wrote one article from up to 15 real threads on that theme (customer language and agents' troubleshooting steps), using **one canonical simulated policy block** (`SIMULATED_POLICY` in `build_faq_corpus.py`) so articles never contradict each other on windows, fees or timelines.
-3. Three "positive feedback" themes produced nothing answerable and were dropped (`drop_articles.sh`) → **53 articles**.
+3. Three "positive feedback" themes produced nothing answerable and were dropped → **53 articles**.
 4. All articles carry `reviewed: false` until a human review pass.
 
 ## Knowledge lifecycle (TDD §6.6)
@@ -61,7 +61,7 @@ Cost: ≈ 163k input / 81k output (incl. thinking) tokens ≈ \$1.30 (est., Gemi
 
 Silver-standard eval: 300 real customer first messages whose topic was clustered into a theme that became an article (relevant doc = that article). Messages used as writing examples are excluded. See `results/` for per-config JSON.
 
-Query-side sweep (same 300 queries, `retrieval_sweep.sh`, 2026-10-23):
+Query-side sweep (same 300 queries, 2026-10-23):
 
 | Config | Zero-result queries | recall@1 | recall@3 | recall@5 | recall@10 | MRR@10 |
 | --- | --- | --- | --- | --- | --- | --- |

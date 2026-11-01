@@ -36,7 +36,6 @@ from ticket_router.agents.triage_router.turn_interpreter import (
     create_turn_interpreter,
 )
 from ticket_router.common.resilience import (
-    TIER3_PRO_DEADLINE_S,
     CircuitBreakerError,
     ServiceTimeoutError,
 )
@@ -46,6 +45,7 @@ from ticket_router.security.model_armor import (
     ModelArmorVerdict,
 )
 from ticket_router.security.pii_tokens import tokenize_pii
+from ticket_router.store.ids import legacy_session_issue_reference
 
 logger = logging.getLogger(__name__)
 
@@ -65,16 +65,12 @@ class RouterThresholds:
     tau_esc: Definitive escalation floor
     tau_low: Auto-RAG uncertainty lower bound
     tau_intent: Intent confidence floor
-    tier3_enabled: Enable Tier 3 Pro multihop fallback (retired in favor of TurnInterpreter)
-    tier3_confidence_threshold: Confidence floor below which Tier 3 is triggered
-    tier3_deadline_s: Hard timeout budget for Tier 3 call
+    tau_usable_laya: S1 usable intent threshold during degraded fallback
     """
     tau_esc: float = 0.50
     tau_low: float = 0.15
     tau_intent: float = 0.70
-    tier3_enabled: bool = False
-    tier3_confidence_threshold: float = 0.70
-    tier3_deadline_s: float = TIER3_PRO_DEADLINE_S
+    tau_usable_laya: float = 0.55
 
     @classmethod
     def from_tuning_config(cls) -> "RouterThresholds":
@@ -86,9 +82,7 @@ class RouterThresholds:
                 tau_esc=cfg.tau_esc,
                 tau_low=cfg.tau_low,
                 tau_intent=cfg.tau_intent,
-                tier3_enabled=False,
-                tier3_confidence_threshold=0.70,
-                tier3_deadline_s=TIER3_PRO_DEADLINE_S,
+                tau_usable_laya=cfg.tau_usable_laya,
             )
         except Exception:
             return cls()
@@ -267,11 +261,7 @@ class TriagePolicy:
         s1_client: Optional[RouterS1Client] = None,
         tier2_invoker: Optional[Callable[[str], RouterPrediction]] = None,
         turn_interpreter: Optional[TurnInterpreter] = None,
-        tier3_invoker: Optional[Callable[[str], RouterPrediction]] = None,
         model_armor_client: Optional[ModelArmorClientProtocol] = None,
-        tier3_enabled: Optional[bool] = None,
-        tier3_confidence_threshold: Optional[float] = None,
-        tier3_deadline_s: Optional[float] = None,
         prompt_safety_delegated_to_gateway: Optional[bool] = None,
     ) -> None:
         self.thresholds = thresholds or RouterThresholds()
@@ -279,10 +269,6 @@ class TriagePolicy:
         self.tier2_invoker = tier2_invoker
         self.model_armor_client = model_armor_client
         self.prompt_safety_delegated_to_gateway = prompt_safety_delegated_to_gateway
-        self.tier3_invoker = tier3_invoker
-        self.tier3_enabled = False  # Retired per REQ-TURN-003
-        self.tier3_confidence_threshold = tier3_confidence_threshold
-        self.tier3_deadline_s = tier3_deadline_s
         self._custom_turn_interpreter = turn_interpreter is not None or tier2_invoker is not None
 
         if turn_interpreter is not None:
@@ -465,7 +451,7 @@ class TriagePolicy:
         recent_intents: Optional[List[str]] = None,
     ) -> RouterDecision:
         """Execute tiered routing policy on inbound message text (REQ-TURN-003)."""
-        t_id = ticket_id or f"TICK-{session_id[:8]}"
+        t_id = ticket_id or legacy_session_issue_reference(session_id)
         s1_summary: Optional[Dict[str, Any]] = None
         tokenized_text: Optional[str] = None
         pii_mapping: Dict[str, str] = {}
@@ -816,6 +802,8 @@ class TriagePolicy:
                 details_ti["model_armor"] = ma_details
             if sanitized_text:
                 details_ti["sanitized_text"] = sanitized_text
+            if prompt_safety_shadow:
+                details_ti["prompt_safety_shadow"] = prompt_safety_shadow
 
             # 1. Security Refusals & Conversation History Access
             if (
@@ -1067,7 +1055,7 @@ class TriagePolicy:
         has_usable_s1 = (
             s1_pred is not None
             and s1_pred.intent in _SELF_SERVICE_INTENTS
-            and s1_pred.intent_prob >= 0.55
+            and s1_pred.intent_prob >= self.thresholds.tau_usable_laya
             and s1_pred.escalate_prob < self.thresholds.tau_esc
             and s1_pred.sentiment != "angry"
             and s1_pred.urgency != "immediate"

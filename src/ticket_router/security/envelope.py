@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional, Tuple
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from ticket_router.common.google_http import create_google_session, to_mtls_url
+from ticket_router.common.resilience import ENVELOPE_KMS_TIMEOUT_S
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ class EnvelopeCipher:
                 url,
                 json={"plaintext": dek_b64},
                 headers={"Content-Type": "application/json"},
-                timeout=10.0,
+                timeout=ENVELOPE_KMS_TIMEOUT_S,
             )
             resp.raise_for_status()
             res_data = resp.json()
@@ -140,7 +141,7 @@ class EnvelopeCipher:
             url,
             json={"ciphertext": wdek},
             headers={"Content-Type": "application/json"},
-            timeout=10.0,
+            timeout=ENVELOPE_KMS_TIMEOUT_S,
         )
         resp.raise_for_status()
         res_data = resp.json()

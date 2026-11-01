@@ -378,6 +378,7 @@ class LocalAgentRunner:
         os.environ.setdefault("REQUIRE_REAL_DEPS", "0")
         os.environ.setdefault("MODEL_ARMOR_ENABLED", "0")
 
+        from evals.turn_interpretation.baseline_regex import evaluate_tier0_rules
         from ticket_router.agents.faq_resolver.agent import (
             FakeLLMClient,
             FakeOrderLookupClient,
@@ -387,10 +388,68 @@ class LocalAgentRunner:
         from ticket_router.agents.triage_router.agent import TriageRouterAgent
         from ticket_router.agents.triage_router.mcp_client import InMemoryTicketDbMcpClient
         from ticket_router.agents.triage_router.policy import RouterThresholds, TriagePolicy
-
-        policy = TriagePolicy(
-            thresholds=RouterThresholds.from_tuning_config(),
+        from ticket_router.agents.triage_router.turn_interpreter import (
+            IntentSpan,
+            SecurityFlags,
+            TurnInterpretation,
+            TurnInterpreter,
         )
+
+        def _hermetic_ti(
+            text: str,
+            conversation_state: Any = None,
+            recent_intents: Any = None,
+        ) -> TurnInterpretation:
+            low = text.lower()
+            t0 = evaluate_tier0_rules(text)
+
+            is_angry = bool(
+                t0.category in ("abuse", "emergency", "legal")
+                or "unacceptable" in low
+                or "terrible" in low
+                or "ruined" in low
+                or "lawsuit" in low
+                or "bomb" in low
+                or "hell" in low
+            )
+            is_urgent = bool("bomb" in low or "lawsuit" in low or "court" in low or "police" in low)
+
+            sec = SecurityFlags(
+                cross_customer_data_request=bool(t0.reason == "cross_customer_data_request"),
+                authorization_bypass_attempt=bool(t0.reason == "authorization_bypass_attempt"),
+                conversation_history_request=bool(t0.reason == "conversation_history_request"),
+            )
+
+            intent = "other"
+            if "order" in low:
+                intent = "order_status"
+            elif "return" in low or "refund" in low:
+                intent = "returns_refunds"
+            elif "ship" in low or "deliver" in low:
+                intent = "shipping_policy"
+            elif "account" in low or "password" in low or "pay" in low:
+                intent = "account_payment"
+
+            return TurnInterpretation(
+                turn_act="new_request",
+                intents=[IntentSpan(intent=intent, text_span=text[:20])],
+                primary_intent=intent,
+                escalate=is_angry or is_urgent,
+                escalation_reason="strict_angry_urgent" if (is_angry or is_urgent) else None,
+                sentiment="angry" if is_angry else "neutral",
+                urgency="immediate" if is_urgent else ("within a day" if is_angry else "can wait days"),
+                out_of_scope=False,
+                security=sec,
+                confidence=0.99,
+                latency_ms=0.5,
+            )
+
+        require_real = os.environ.get("REQUIRE_REAL_DEPS", "0").lower() in ("1", "true")
+        policy_kwargs: Dict[str, Any] = {"thresholds": RouterThresholds.from_tuning_config()}
+        if not require_real:
+            policy_kwargs["turn_interpreter"] = TurnInterpreter(invoker=_hermetic_ti)
+
+        policy = TriagePolicy(**policy_kwargs)
         self.router_agent = TriageRouterAgent(
             policy=policy,
             mcp_client=InMemoryTicketDbMcpClient(),

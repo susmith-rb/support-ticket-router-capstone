@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 
+from ticket_router.store.ids import issue_reference
 from ticket_router.store.interfaces import (
     CustomerRepository,
     OrderRepository,
@@ -70,7 +71,7 @@ class FakeTicketRepo(TicketRepository):
             if not issue_ref and isinstance(ticket_create.decision, dict):
                 issue_ref = ticket_create.decision.get("ticket_id")
             if not issue_ref:
-                issue_ref = f"TICK-{str(t_id)[:8]}"
+                issue_ref = issue_reference(t_id)
 
             assigned_q = (ticket_create.assigned_queue or "").strip()
             if ticket_create.current_owner:
@@ -209,7 +210,7 @@ class FakeTicketRepo(TicketRepository):
             ticket = self._tickets.get(t_id)
             if ticket is None:
                 for t in self._tickets.values():
-                    if t.issue_reference == str(ticket_id):
+                    if t.issue_reference and t.issue_reference.strip().upper() == str(ticket_id).strip().upper():
                         ticket = t
                         t_id = t.ticket_id
                         break

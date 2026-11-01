@@ -54,7 +54,7 @@ from ticket_router.mcp.ticket_db.schemas import (
     UpsertTicketResponse,
     get_tool_schemas,
 )
-from ticket_router.store.ids import canonical_ticket_uuid
+from ticket_router.store.ids import canonical_ticket_uuid, issue_reference
 from ticket_router.store.interfaces import CustomerRepository, TicketRepository
 from ticket_router.store.models import RedactionMap, TicketCreate
 
@@ -193,9 +193,9 @@ async def upsert_ticket(
     else:
         current_owner = "bot"
 
-    issue_reference = (
+    issue_ref = (
         dec.get("ticket_id")
-        or f"TICK-{str(det_ticket_uuid)[:8]}"
+        or issue_reference(det_ticket_uuid)
     )
     session_id = dec.get("session_id")
 
@@ -207,7 +207,7 @@ async def upsert_ticket(
         decision=req.decision,
         assigned_queue=assigned_queue,
         session_id=session_id,
-        issue_reference=issue_reference,
+        issue_reference=issue_ref,
         category=category,
         current_owner=current_owner,
     )
@@ -702,7 +702,7 @@ async def list_customer_tickets(
         )
         summaries: list[CustomerTicketSummary] = []
         for t in tickets:
-            ref = t.issue_reference or f"TICK-{str(t.ticket_id)[:8]}"
+            ref = t.issue_reference or issue_reference(t.ticket_id)
             cat = getattr(t, "category", "support") or "support"
             if cat in ("security", "fraud"):
                 status_str = "under review"
@@ -777,7 +777,7 @@ async def get_pending_confirmation(
             ticket=None,
         )
 
-    ref = getattr(ticket, "issue_reference", None) or f"TICK-{str(ticket.ticket_id)[:8]}"
+    ref = getattr(ticket, "issue_reference", None) or issue_reference(ticket.ticket_id)
     created_str = (
         ticket.created_at.isoformat()
         if hasattr(ticket.created_at, "isoformat")
