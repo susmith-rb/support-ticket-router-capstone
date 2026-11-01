@@ -175,8 +175,21 @@ class FakeLLMClient(LLMClientProtocol):
         if doc_id and quote:
             citations.append({"doc_id": doc_id, "quote": quote})
 
+        answer = self.default_answer
+        if order_info:
+            orders = order_info.get("orders") if isinstance(order_info, dict) else None
+            if orders and isinstance(orders, list) and len(orders) > 0:
+                first_order = orders[0]
+                oid = first_order.get("order_id", "recent order")
+                ostatus = first_order.get("status", "in transit")
+                answer = f"Your order {oid} is currently {ostatus}. {answer}"
+            elif isinstance(order_info, dict) and order_info.get("order_id"):
+                oid = order_info["order_id"]
+                ostatus = order_info.get("status", "in transit")
+                answer = f"Your order {oid} is currently {ostatus}. {answer}"
+
         return {
-            "answer": self.default_answer,
+            "answer": answer,
             "citations": citations,
         }
 
@@ -704,6 +717,7 @@ class FaqResolverAgent:
         untrusted_customer_id: Optional[str] = None,
         customer_context_token: Optional[str] = None,
         ticket_uuid: Optional[str] = None,
+        sub_questions: Optional[List[Dict[str, str]]] = None,
     ) -> ResolutionResult:
         """Execute bounded ReAct loop to resolve FAQ or order inquiry."""
         self._ensure_initialized()
@@ -731,6 +745,7 @@ class FaqResolverAgent:
                     untrusted_customer_id=untrusted_customer_id,
                     customer_context_token=customer_context_token,
                     traceparent=traceparent,
+                    sub_questions=sub_questions,
                 )
                 resolve_span.set_attribute("status", res.status)
                 return res
@@ -750,6 +765,7 @@ class FaqResolverAgent:
         untrusted_customer_id: Optional[str] = None,
         customer_context_token: Optional[str] = None,
         traceparent: Optional[str] = None,
+        sub_questions: Optional[List[Dict[str, str]]] = None,
     ) -> ResolutionResult:
         t_start = self._clock()
 
@@ -785,9 +801,29 @@ class FaqResolverAgent:
         # -----------------------------------------------------------------
         # Step 1: Order Lookup (if inquiry requires order status)
         # -----------------------------------------------------------------
+        # Multi-intent sub-question handling (REQ-SAFE-005)
+        faq_sub_q: Optional[Dict[str, str]] = None
+        order_sub_q: Optional[Dict[str, str]] = None
+        if sub_questions and len(sub_questions) > 1:
+            for sq in sub_questions:
+                sq_intent = sq.get("intent", "")
+                if sq_intent == "order_status":
+                    order_sub_q = sq
+                elif sq_intent in (
+                    "returns_refunds",
+                    "shipping_policy",
+                    "account_payment",
+                    "faq",
+                    "technical",
+                    "billing",
+                    "shipping",
+                    "refund",
+                ):
+                    faq_sub_q = sq
+
         order_info: Optional[Dict[str, Any]] = None
         order_id = self._extract_order_id(message)
-        is_order_specific = bool(order_id) or (
+        is_order_specific = bool(order_id) or bool(order_sub_q) or (
             predicted_intent is not None
             and predicted_intent in (
                 "shipping",
@@ -935,11 +971,13 @@ class FaqResolverAgent:
             retrieval_passes_count += 1
             tool_calls_count += 1
 
+            search_query = faq_sub_q["text"] if faq_sub_q and faq_sub_q.get("text") else message
+            search_intent = faq_sub_q.get("intent") if faq_sub_q else predicted_intent
             with start_span("faq_resolver.search"):
                 search_res = execute_faq_search(
                     client=self.search_client,
-                    query=message,
-                    intent_family=predicted_intent,
+                    query=search_query,
+                    intent_family=search_intent,
                     circuit_breaker=self.circuit_breaker,
                 )
 
@@ -982,8 +1020,9 @@ class FaqResolverAgent:
         ):
             tool_calls_count += 1
             candidates = [retrieved_docs_map[did] for did in ordered_doc_ids if did in retrieved_docs_map]
+            rerank_query = faq_sub_q["text"] if faq_sub_q and faq_sub_q.get("text") else message
             with start_span("faq_resolver.rerank"):
-                reranked, _ = self.reranker.rerank(query=message, candidates=candidates)
+                reranked, _ = self.reranker.rerank(query=rerank_query, candidates=candidates)
             if reranked:
                 ordered_doc_ids = [r["id"] for r in reranked if "id" in r]
                 for r in reranked:

@@ -29,7 +29,7 @@ def _create_pooled_session() -> requests.Session:
 
 @dataclass(frozen=True)
 class A2AHandoffPayload:
-    """Inter-agent handoff payload sent from TriageRouter to FaqResolver (REQ-AGENT-006, REQ-AUTH-002, REQ-AUTH-003)."""
+    """Inter-agent handoff payload sent from TriageRouter to FaqResolver (REQ-AGENT-006, REQ-AUTH-002, REQ-AUTH-003, REQ-SAFE-005)."""
     ticket_id: str
     session_id: str
     predicted_intent: str
@@ -41,6 +41,7 @@ class A2AHandoffPayload:
     traceparent: Optional[str] = None
     customer_context_token: Optional[str] = None
     ticket_uuid: Optional[str] = None
+    sub_questions: Optional[list[dict[str, str]]] = None
 
 
 @runtime_checkable

@@ -212,6 +212,12 @@ class PostgresTicketRepo(TicketRepository):
         try:
             cursor.execute(query, (t_id,))
             row = cursor.fetchone()
+            if not row and isinstance(ticket_id, str) and ticket_id.upper().startswith("TICK-"):
+                cursor.execute(
+                    f"SELECT {TICKET_COLUMNS_SQL} FROM tickets WHERE UPPER(issue_reference) = %s;",
+                    (ticket_id.strip().upper(),),
+                )
+                row = cursor.fetchone()
             if not row:
                 return None
             return _row_to_ticket(row)

@@ -45,6 +45,10 @@ FAQ_RESOLVER_AGENT_CARD: Dict[str, Any] = {
                 "type": ["string", "null"],
                 "description": "Canonical ticket UUID for Cloud SQL persistence and escalation",
             },
+            "sub_questions": {
+                "type": ["array", "null"],
+                "description": "Deconstructed sub-questions for multi-intent inquiries",
+            },
         },
     },
     "output_schema": {
@@ -109,6 +113,7 @@ def handle_a2a_request(
     )
     raw_uuid = payload.get("ticket_uuid")
     ticket_uuid: Optional[str] = str(raw_uuid) if raw_uuid is not None else None
+    sub_questions = payload.get("sub_questions")
 
     if not ticket_id or not message:
         return {
@@ -135,6 +140,7 @@ def handle_a2a_request(
         untrusted_customer_id=untrusted_customer_id,
         customer_context_token=customer_context_token,
         ticket_uuid=ticket_uuid,
+        sub_questions=sub_questions,
     )
 
     return resolution.to_dict()

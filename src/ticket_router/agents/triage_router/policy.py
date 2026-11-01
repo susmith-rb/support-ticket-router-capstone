@@ -17,8 +17,13 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ticket_router.agents.triage_router.history import (
+    _HARD_ESCALATE_REGEX,
     detect_conversation_history_request,
     matches_conversation_history_escalation_exception,
+)
+from ticket_router.agents.triage_router.security_intents import (
+    detect_security_intent,
+    get_security_intent_reply,
 )
 from ticket_router.agents.triage_router.templates import render_security_blocked_reply
 from ticket_router.common.resilience import (
@@ -195,6 +200,20 @@ def _extract_blocked_card_info_types(verdict: Optional[ModelArmorVerdict]) -> Li
     return blocked
 
 
+def _summarize_s1_prediction(s1_pred: Optional[RouterPrediction]) -> Optional[Dict[str, Any]]:
+    """Summarize router-s1 prediction into safe, PII-free numeric/enum metadata (REQ-AGENT-038)."""
+    if s1_pred is None:
+        return None
+    return {
+        "escalate": bool(s1_pred.escalate),
+        "escalate_prob": round(float(s1_pred.escalate_prob), 4),
+        "intent": str(s1_pred.intent),
+        "intent_prob": round(float(s1_pred.intent_prob), 4),
+        "sentiment": str(s1_pred.sentiment),
+        "urgency": str(s1_pred.urgency),
+    }
+
+
 # -----------------------------------------------------------------------------
 # Tier 0 Deterministic Rules (REQ-AGENT-002, REQ-AGENT-003)
 # -----------------------------------------------------------------------------
@@ -253,10 +272,12 @@ _PLEASANTRY_REGEX = re.compile(
 )
 
 
+
 def evaluate_tier0_rules(text: str) -> Tier0Result:
-    """Evaluate deterministic regex rules before invoking any neural model (REQ-AGENT-002).
+    """Evaluate deterministic regex rules before invoking any neural model (REQ-AGENT-002, REQ-SAFE-002).
 
     Guarantees:
+    - Deterministic security intents (authorization bypass, cross-customer data) match immediately (REQ-SAFE-002).
     - Abuse/toxic phrases escalate immediately to human review and are NEVER dropped (REQ-AGENT-003).
     - Emergency/legal threats escalate immediately with immediate urgency.
     - Explicit human requests bypass automated answering.
@@ -264,6 +285,19 @@ def evaluate_tier0_rules(text: str) -> Tier0Result:
     """
     if not text or not text.strip():
         return Tier0Result(matched=False)
+
+    # 0. Deterministic Tier 0 security intents (REQ-SAFE-002)
+    sec_intent = detect_security_intent(text)
+    if sec_intent:
+        intent_name, _ = sec_intent
+        return Tier0Result(
+            matched=True,
+            escalate=False,
+            reason=intent_name,
+            category=intent_name,
+            sentiment="neutral",
+            urgency="normal",
+        )
 
     # 1. Emergency or legal threat
     match_em = _EMERGENCY_REGEX.search(text)
@@ -395,6 +429,49 @@ _ORDER_LOOKUP_REGEX = re.compile(
     r")[\s!?.]*$",
     re.IGNORECASE,
 )
+
+
+# Intents FaqResolver can serve end to end (order lookup / grounded policy answers).
+_SELF_SERVICE_INTENTS = ("order_status", "shipping_policy", "returns_refunds", "account_payment")
+
+
+def _has_escalation_signal(
+    text: str,
+    t2_pred: Optional[RouterPrediction] = None,
+    s1_pred: Optional[RouterPrediction] = None,
+    tier0: Optional[Tier0Result] = None,
+) -> bool:
+    """Evaluate whether an explicit escalation signal is present (REQ-AGENT-003, REQ-SAFE-003).
+
+    Tier 2 escalation is honoured only with an escalation signal:
+    1. tier0.escalate is True (emergency, legal, abuse, human request)
+    2. Explicit human/representative request in text
+    3. Sentiment angry (t2 or s1)
+    4. Urgency immediate or high (t2 or s1)
+    5. Fraud, chargeback, legal, safety, or payment-loss keywords
+    """
+    if tier0 is not None and tier0.escalate:
+        return True
+
+    if _HUMAN_REQUEST_REGEX.search(text):
+        return True
+
+    if _EMERGENCY_REGEX.search(text) or _ABUSE_REGEX.search(text) or _HARD_ESCALATE_REGEX.search(text):
+        return True
+
+    if t2_pred is not None:
+        if t2_pred.sentiment == "angry":
+            return True
+        if t2_pred.urgency in ("immediate", "high"):
+            return True
+
+    if s1_pred is not None:
+        if s1_pred.sentiment == "angry":
+            return True
+        if s1_pred.urgency == "immediate":
+            return True
+
+    return False
 
 
 def matches_order_lookup(text: str) -> bool:
@@ -587,6 +664,9 @@ class TriagePolicy:
     ) -> RouterDecision:
         """Execute tiered routing policy on inbound message text."""
         t_id = ticket_id or f"TICK-{session_id[:8]}"
+        s1_summary: Optional[Dict[str, Any]] = None
+        tokenized_text: Optional[str] = None
+        pii_mapping: Dict[str, str] = {}
 
         # Tier 0: Deterministic Safety, Abuse & Keyword Rules (REQ-AGENT-002) (<1 ms)
         tier0 = evaluate_tier0_rules(text)
@@ -668,6 +748,29 @@ class TriagePolicy:
                 reason=tier0.reason or "tier0_rule_match",
                 degraded=False,
                 details=details_t0,
+                tokenized_text=tokenized_text,
+                pii_mapping=pii_mapping,
+            )
+
+        if tier0.matched and not tier0.escalate and tier0.category in ("cross_customer_data_request", "authorization_bypass_attempt"):
+            refusal_reply = get_security_intent_reply(tier0.category, text)
+            details_sec: Dict[str, Any] = {"category": tier0.category}
+            if s1_summary is not None:
+                details_sec["s1_prediction"] = s1_summary
+            return RouterDecision(
+                ticket_id=t_id,
+                session_id=session_id,
+                decision="auto_rag",
+                tier="tier0_rules",
+                queue="none",
+                predicted_intent=tier0.category,
+                escalate=False,
+                sentiment="neutral",
+                urgency="normal",
+                reason=tier0.reason or tier0.category,
+                degraded=False,
+                calming_ack=refusal_reply,
+                details=details_sec,
                 tokenized_text=tokenized_text,
                 pii_mapping=pii_mapping,
             )
@@ -782,6 +885,8 @@ class TriagePolicy:
         else:
             s1_pred, s1_error = self._call_s1(text)
 
+        s1_summary = _summarize_s1_prediction(s1_pred)
+
         # ---------------------------------------------------------------------
         # Model Armor Security Gate (Pre-LLM / Pre-A2A) (REQ-MA-003)
         # ---------------------------------------------------------------------
@@ -841,6 +946,13 @@ class TriagePolicy:
                 # NEVER forwarded to neural LLM tiers or FaqResolverAgent, and NO normal ticket created.
                 if ma_verdict.has_pi_jb:
                     sec_ack = render_security_blocked_reply()
+                    details_sec: Dict[str, Any] = {
+                        "category": "security",
+                        "model_armor": ma_details,
+                        "sanitized_text": sanitized_text,
+                    }
+                    if s1_summary is not None:
+                        details_sec["s1_prediction"] = s1_summary
                     return RouterDecision(
                         ticket_id=t_id,
                         session_id=session_id,
@@ -854,11 +966,7 @@ class TriagePolicy:
                         reason="prompt_injection_or_jailbreak",
                         degraded=False,
                         calming_ack=sec_ack,
-                        details={
-                            "category": "security",
-                            "model_armor": ma_details,
-                            "sanitized_text": sanitized_text,
-                        },
+                        details=details_sec,
                         tokenized_text=tokenized_text,
                         pii_mapping=pii_mapping,
                     )
@@ -871,6 +979,13 @@ class TriagePolicy:
                         sentiment="neutral",
                         urgency="normal",
                     )
+                    details_uri: Dict[str, Any] = {
+                        "category": "security",
+                        "model_armor": ma_details,
+                        "sanitized_text": sanitized_text,
+                    }
+                    if s1_summary is not None:
+                        details_uri["s1_prediction"] = s1_summary
                     return RouterDecision(
                         ticket_id=t_id,
                         session_id=session_id,
@@ -883,11 +998,7 @@ class TriagePolicy:
                         urgency="normal",
                         reason="model_armor_security_trigger",
                         degraded=False,
-                        details={
-                            "category": "security",
-                            "model_armor": ma_details,
-                            "sanitized_text": sanitized_text,
-                        },
+                        details=details_uri,
                         tokenized_text=tokenized_text,
                         pii_mapping=pii_mapping,
                     )
@@ -900,6 +1011,13 @@ class TriagePolicy:
                         sentiment="angry",
                         urgency="normal",
                     )
+                    details_rai: Dict[str, Any] = {
+                        "category": "abuse",
+                        "model_armor": ma_details,
+                        "sanitized_text": sanitized_text,
+                    }
+                    if s1_summary is not None:
+                        details_rai["s1_prediction"] = s1_summary
                     return RouterDecision(
                         ticket_id=t_id,
                         session_id=session_id,
@@ -912,17 +1030,19 @@ class TriagePolicy:
                         urgency="normal",
                         reason="model_armor_rai_trigger",
                         degraded=False,
-                        details={
-                            "category": "abuse",
-                            "model_armor": ma_details,
-                            "sanitized_text": sanitized_text,
-                        },
+                        details=details_rai,
                         tokenized_text=tokenized_text,
                         pii_mapping=pii_mapping,
                     )
 
             # 3. Model Armor Degraded / Timeout -> Fail-safe to human-standard (never drop)
             if ma_verdict.degraded:
+                details_ma_deg: Dict[str, Any] = {
+                    "category": "degraded",
+                    "model_armor": ma_details,
+                }
+                if s1_summary is not None:
+                    details_ma_deg["s1_prediction"] = s1_summary
                 return RouterDecision(
                     ticket_id=t_id,
                     session_id=session_id,
@@ -935,10 +1055,7 @@ class TriagePolicy:
                     urgency="normal",
                     reason="model_armor_degraded",
                     degraded=True,
-                    details={
-                        "category": "degraded",
-                        "model_armor": ma_details,
-                    },
+                    details=details_ma_deg,
                     tokenized_text=tokenized_text,
                     pii_mapping=pii_mapping,
                 )
@@ -964,6 +1081,8 @@ class TriagePolicy:
                     "sentiment_prob": s1_pred.sentiment_prob,
                     "intent_prob": s1_pred.intent_prob,
                 }
+                if s1_summary is not None:
+                    details_s1["s1_prediction"] = s1_summary
                 if ma_details:
                     details_s1["model_armor"] = ma_details
                 if sanitized_text:
@@ -1001,6 +1120,8 @@ class TriagePolicy:
                     "escalate_prob": s1_pred.escalate_prob,
                     "intent_prob": s1_pred.intent_prob,
                 }
+                if s1_summary is not None:
+                    details_rag["s1_prediction"] = s1_summary
                 if ma_details:
                     details_rag["model_armor"] = ma_details
                 if sanitized_text:
@@ -1033,6 +1154,8 @@ class TriagePolicy:
                     "escalate_prob": s1_pred.escalate_prob,
                     "intent_prob": s1_pred.intent_prob,
                 }
+                if s1_summary is not None:
+                    details_order["s1_prediction"] = s1_summary
                 if ma_details:
                     details_order["model_armor"] = ma_details
                 if sanitized_text:
@@ -1087,10 +1210,19 @@ class TriagePolicy:
                 if s1_pred
                 else False
             )
+            # REQ-SAFE-002: on a self-service intent (e.g. an ordinary order delay) a bare Tier 2
+            # escalate flag is honoured only with a real escalation signal. In-domain "other"
+            # (no self-service path, e.g. app crash) keeps Tier 2's decision (REQ-AGENT-022). Tier 0 rules,
+            # Tier 1, angry sentiment and immediate urgency stay add-only (REQ-AGENT-003).
+            t2_self_service = t2_pred.intent in _SELF_SERVICE_INTENTS
+            t2_esc = t2_pred.escalate and (
+                not t2_self_service
+                or _has_escalation_signal(text, t2_pred=t2_pred, s1_pred=s1_pred, tier0=tier0)
+            )
             final_escalate = (
                 tier0.escalate
                 or t1_esc
-                or t2_pred.escalate
+                or t2_esc
                 or t2_pred.sentiment == "angry"
                 or t2_pred.urgency == "immediate"
             )
@@ -1103,6 +1235,8 @@ class TriagePolicy:
                     urgency=t2_pred.urgency,
                 )
                 details_t2: Dict[str, Any] = {"s1_error": s1_error}
+                if s1_summary is not None:
+                    details_t2["s1_prediction"] = s1_summary
                 if ma_details:
                     details_t2["model_armor"] = ma_details
                 if sanitized_text:
@@ -1212,6 +1346,8 @@ class TriagePolicy:
                             "tier2_intent": t2_pred.intent,
                             "tier2_intent_prob": t2_pred.intent_prob,
                         }
+                        if s1_summary is not None:
+                            details_t3["s1_prediction"] = s1_summary
                         if ma_details:
                             details_t3["model_armor"] = ma_details
                         if sanitized_text:
@@ -1241,6 +1377,8 @@ class TriagePolicy:
                             "out_of_scope": True,
                             "tier3_latency_ms": round(t3_latency_ms, 2),
                         }
+                        if s1_summary is not None:
+                            details_t3_oos["s1_prediction"] = s1_summary
                         if ma_details:
                             details_t3_oos["model_armor"] = ma_details
                         if sanitized_text:
@@ -1268,6 +1406,8 @@ class TriagePolicy:
                         "s1_error": s1_error,
                         "tier3_latency_ms": round(t3_latency_ms, 2),
                     }
+                    if s1_summary is not None:
+                        details_t3_rag["s1_prediction"] = s1_summary
                     if ma_details:
                         details_t3_rag["model_armor"] = ma_details
                     if sanitized_text:
@@ -1291,7 +1431,46 @@ class TriagePolicy:
                         pii_mapping=pii_mapping,
                     )
 
-                # Tier 3 timed out or failed with error
+                # Tier 3 timed out or failed with error (REQ-SAFE-003, REQ-AGENT-011)
+                has_usable_tier2 = (
+                    t2_pred.intent in ("order_status", "shipping_policy", "returns_refunds", "account_payment")
+                    and t2_pred.intent_prob >= 0.55
+                    and not t2_pred.escalate
+                    and not t2_pred.out_of_scope
+                )
+                if has_usable_tier2 and not _has_escalation_signal(text, t2_pred=t2_pred, s1_pred=s1_pred, tier0=tier0):
+                    details_t3_fail: Dict[str, Any] = {
+                        "s1_error": s1_error,
+                        "tier3_error": t3_error,
+                        "tier3_timed_out": t3_timed_out,
+                        "tier2_intent": t2_pred.intent,
+                        "tier2_intent_prob": t2_pred.intent_prob,
+                    }
+                    if s1_summary is not None:
+                        details_t3_fail["s1_prediction"] = s1_summary
+                    if ma_details:
+                        details_t3_fail["model_armor"] = ma_details
+                    if sanitized_text:
+                        details_t3_fail["sanitized_text"] = sanitized_text
+
+                    return RouterDecision(
+                        ticket_id=t_id,
+                        session_id=session_id,
+                        decision="auto_rag",
+                        tier="tier2_flash",
+                        queue="none",
+                        predicted_intent=t2_pred.intent or "other",
+                        escalate=False,
+                        sentiment=t2_pred.sentiment or "neutral",
+                        urgency=t2_pred.urgency or "normal",
+                        reason="tier3_unavailable_used_tier2",
+                        degraded=True,
+                        latency_ms=t3_latency_ms,
+                        details=details_t3_fail,
+                        tokenized_text=tokenized_text,
+                        pii_mapping=pii_mapping,
+                    )
+
                 if is_low_confidence:
                     fallback_queue = evaluate_gaming_resistant_priority(
                         facts=verified_facts, tier0=tier0
@@ -1303,6 +1482,8 @@ class TriagePolicy:
                         "tier2_intent": t2_pred.intent,
                         "tier2_intent_prob": t2_pred.intent_prob,
                     }
+                    if s1_summary is not None:
+                        details_t3_fail["s1_prediction"] = s1_summary
                     if ma_details:
                         details_t3_fail["model_armor"] = ma_details
                     if sanitized_text:
@@ -1331,6 +1512,8 @@ class TriagePolicy:
                     "s1_error": s1_error,
                     "out_of_scope": True,
                 }
+                if s1_summary is not None:
+                    details_t2_oos["s1_prediction"] = s1_summary
                 if t3_error:
                     details_t2_oos["tier3_error"] = t3_error
                 if ma_details:
@@ -1357,6 +1540,8 @@ class TriagePolicy:
                 )
 
             details_t2_rag: Dict[str, Any] = {"s1_error": s1_error}
+            if s1_summary is not None:
+                details_t2_rag["s1_prediction"] = s1_summary
             if t3_error:
                 details_t2_rag["tier3_error"] = t3_error
             if ma_details:
@@ -1388,6 +1573,8 @@ class TriagePolicy:
         # Both Tier 1 and Tier 2 unavailable: route to human queue, NEVER drop ticket!
         fallback_queue = evaluate_gaming_resistant_priority(facts=verified_facts, tier0=tier0)
         details_fb: Dict[str, Any] = {"s1_error": s1_error, "t2_error": t2_error}
+        if s1_summary is not None:
+            details_fb["s1_prediction"] = s1_summary
         if ma_details:
             details_fb["model_armor"] = ma_details
         if sanitized_text:

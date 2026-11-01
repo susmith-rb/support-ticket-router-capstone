@@ -166,52 +166,11 @@ def is_cross_customer_history_request(
     text: str,
     verified_customer_id: Optional[str] = None,
 ) -> bool:
-    """Detect requests for another customer's or all users' conversations (REQ-HIST-002)."""
-    if not text or not text.strip():
-        return False
+    """Detect requests for another customer's or all users' conversations (REQ-HIST-002, REQ-SAFE-002).
 
-    t = text.strip().lower()
-    # Strip social handle placeholders like @user
-    t = re.sub(r"@user\b", "", t)
+    Delegates to shared Tier 0 security intents detector.
+    """
+    from ticket_router.agents.triage_router.security_intents import is_cross_customer_data_request
 
-    conv_nouns = r"(?:conversations?|chats?|interactions?|transcripts?|messages?|history|logs?)"
+    return is_cross_customer_data_request(text, verified_customer_id=verified_customer_id)
 
-    # 1. Phrases asking for everyone's, all users', or other customers' conversations
-    cross_phrases = [
-        r"\b(?:everyone(?:'s)?|all\s+(?:other\s+)?users?(?:'s)?|all\s+(?:other\s+)?customers?(?:'s)?)\s+(?:conversations?|chats?|messages?|history)\b",
-        r"\b(?:conversations?|chats?|messages?|history)\s+(?:of|for|from)\s+(?:everyone|all\s+users?|all\s+customers?)\b",
-        r"\bshow\s+(?:me\s+)?everyone(?:'s)?\s+chats?\b",
-        r"\bshow\s+(?:me\s+)?all\s+(?:users|customers)(?:'s)?\s+chats?\b",
-        r"\b(?:access\s+to\s+)?(?:all\s+users?|all\s+customers?|everyone(?:'s)?)\s+(?:conversations?|chats?)\b",
-        r"\bother\s+(?:users?|customers?)(?:'s)?\s+(?:conversations?|chats?|history)\b",
-        r"\b(?:conversations?|chats?)\s+of\s+other\s+(?:users?|customers?)\b",
-        r"\bsomeone\s+else(?:'s)?\s+(?:conversations?|chats?)\b",
-        r"\ball\s+chat\s+logs\s+for\s+all\s+users\b",
-    ]
-    if any(re.search(p, t) for p in cross_phrases):
-        return True
-
-    # 2. Specific customer ID referenced in request that differs from verified caller
-    has_history_intent = bool(
-        re.search(
-            r"\b(?:access\s+(?:to\s+)?|view\s+|show\s+(?:me\s+)?|see\s+|get\s+|pull\s+up\s+|fetch\s+|summarize\s+|summary\s+of\s+|review\s+|look\s+at\s+|(?:conversations?|chats?|messages?|history)\s+(?:of|for|from))\b",
-            t,
-        )
-    )
-
-    if has_history_intent and re.search(rf"\b{conv_nouns}\b", t):
-        cid_match = re.search(r"\b(?:customer|user|account)?\s*(cust_\d+|cust-[a-z0-9_-]+)\b", t)
-        if cid_match:
-            requested_cid = cid_match.group(1).lower()
-            if (verified_customer_id and requested_cid != verified_customer_id.lower()) or (not verified_customer_id):
-                return True
-
-        cust_num_match = re.search(r"\b(?:customer|user)\s+id\s*[:=]?\s*([a-z0-9_-]+)\b", t)
-        if cust_num_match:
-            candidate = cust_num_match.group(1).lower()
-            if candidate not in (
-                "service", "services", "support", "care", "agent", "history", "previous", "earlier", "chat", "chats"
-            ) and ((verified_customer_id and candidate != verified_customer_id.lower()) or (not verified_customer_id)):
-                return True
-
-    return False

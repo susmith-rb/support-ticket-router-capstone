@@ -26,8 +26,11 @@ def hedged_call(
     *,
     clock: Callable[[], float] | None = None,
     sleep: Callable[[float], None] | None = None,
+    span_attributes: dict[str, Any] | None = None,
+    on_span_result: Callable[[Any, T], None] | None = None,
+    on_span_error: Callable[[Any, BaseException | None, bool], None] | None = None,
 ) -> T:
-    """Execute ``fn`` with hedged backup attempts and a hard deadline (REQ-AGENT-025).
+    """Execute ``fn`` with hedged backup attempts and a hard deadline (REQ-AGENT-025, REQ-AGENT-038).
 
     Starts attempt 1 immediately in a ThreadPoolExecutor. If attempt 1 has not
     completed after ``hedge_after_s`` (or raises an exception before the hedge
@@ -44,7 +47,9 @@ def hedged_call(
     budget = float(deadline_s)
 
     span_cm: contextlib.AbstractContextManager[Any] = (
-        start_span(span_name) if span_name else contextlib.nullcontext(None)
+        start_span(span_name, attributes=span_attributes)
+        if span_name
+        else contextlib.nullcontext(None)
     )
 
     with span_cm as span:
@@ -59,6 +64,11 @@ def hedged_call(
                 span.set_attribute("hedge.attempts", 0)
                 span.set_attribute("hedge.winner", 0)
                 span.set_attribute("hedge.timed_out", True)
+                if on_span_error is not None:
+                    try:
+                        on_span_error(span, None, True)
+                    except Exception:
+                        pass
             raise ServiceTimeoutError(
                 f"Hedged call exceeded deadline of {budget * 1000.0:.1f} ms"
             )
@@ -95,6 +105,11 @@ def hedged_call(
                             failed_now = True
                         else:
                             winner = future_to_attempt[fut]
+                            if span is not None and on_span_result is not None:
+                                try:
+                                    on_span_result(span, res)
+                                except Exception:
+                                    pass
                             return res
 
                     if not pending and attempts_started >= max_attempts:
@@ -144,7 +159,13 @@ def hedged_call(
                     )
         finally:
             if span is not None:
+                is_timeout = timed_out or isinstance(last_exc, ServiceTimeoutError)
                 span.set_attribute("hedge.attempts", attempts_started)
                 span.set_attribute("hedge.winner", winner)
-                span.set_attribute("hedge.timed_out", timed_out)
+                span.set_attribute("hedge.timed_out", is_timeout)
+                if winner == 0 and on_span_error is not None:
+                    try:
+                        on_span_error(span, last_exc, is_timeout)
+                    except Exception:
+                        pass
             executor.shutdown(wait=False, cancel_futures=True)

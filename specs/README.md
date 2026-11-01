@@ -58,6 +58,7 @@ Every requirement block in `specs/<area>.md` follows this exact structure:
 | **Model Armor** | [`specs/model-armor.md`](model-armor.md) | Ingress/egress sanitization, regional keep-alive REST client, PI/JB and RAI filters, SDP de-identification, fail-safe routing, and latency budgets. | `REQ-MA-` |
 | **CD Pipeline** | [`specs/cd-pipeline.md`](cd-pipeline.md) | Human-approved continuous deployment across Cloud Run, GKE, and Agent Engine. | `REQ-CD-` |
 | **Load & Chaos** | [`specs/load-and-chaos.md`](load-and-chaos.md) | Locust load testing profiles, cost/quota safeguards, and chaos fault injection (router-s1, 429s, Cloud SQL failover). | `REQ-LOAD-`, `REQ-CHAOS-` |
+| **Routing Safety** | [`specs/routing-safety.md`](routing-safety.md) | Routing safety, deterministic security refusals, non-escalating degradation fallback, turn-level lifecycle isolation, and multi-intent deconstruction. | `REQ-SAFE-` |
 
 ---
 

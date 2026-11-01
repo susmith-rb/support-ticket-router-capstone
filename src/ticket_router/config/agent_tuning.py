@@ -259,10 +259,15 @@ def get_tuning_config(
     return _ACTIVE_CONFIG
 
 
+def get_active_tier2_prompt_version(version: Optional[str] = None) -> str:
+    """Return the active Tier 2 router prompt version string (REQ-AGENT-038)."""
+    cfg = get_tuning_config()
+    return str(version or _CONTEXT_TIER2_VERSION.get() or cfg.tier2_router_version)
+
+
 def get_tier2_prompt(message: str, version: Optional[str] = None) -> str:
     """Render Tier 2 Flash router prompt using configured version."""
-    cfg = get_tuning_config()
-    ver = version or _CONTEXT_TIER2_VERSION.get() or cfg.tier2_router_version
+    ver = get_active_tier2_prompt_version(version)
     template_file = _resolve_prompt_file(f"tier2_router_{ver}.yaml")
 
     if template_file is not None and template_file.is_file():
@@ -297,8 +302,7 @@ def get_tier2_prompt(message: str, version: Optional[str] = None) -> str:
 
 def get_tier2_system_instruction(version: Optional[str] = None) -> Optional[str]:
     """Retrieve Tier 2 Flash router system instruction if defined for the version."""
-    cfg = get_tuning_config()
-    ver = version or _CONTEXT_TIER2_VERSION.get() or cfg.tier2_router_version
+    ver = get_active_tier2_prompt_version(version)
     template_file = _resolve_prompt_file(f"tier2_router_{ver}.yaml")
 
     if template_file is not None and template_file.is_file():

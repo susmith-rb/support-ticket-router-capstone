@@ -266,6 +266,19 @@ def test_tiered_policy_thresholds():
     assert decision.tier == "tier2_flash"
     assert decision.decision == "escalate"
 
+    # REQ-SAFE-002: on a self-service intent (order delay) a bare Tier 2 escalate flag
+    # without an escalation signal is not honoured...
+    mock_tier2.reset_mock()
+    mock_tier2.return_value = _make_prediction(escalate=True, sentiment="frustrated", intent="order_status")
+    decision = policy.evaluate("My order is late", session_id="s1", customer_id="c1")
+    assert decision.tier == "tier2_flash"
+    assert decision.decision == "auto_rag"
+    # ...but it is with one (immediate urgency).
+    mock_tier2.reset_mock()
+    mock_tier2.return_value = _make_prediction(escalate=True, sentiment="neutral", urgency="immediate", intent="order_status")
+    decision = policy.evaluate("My order is late", session_id="s1", customer_id="c1")
+    assert decision.decision == "escalate"
+
     # Uncertainty Band 3: Low p_esc (< 0.15) but intent confidence < tau_intent (0.70)
     mock_tier2.reset_mock()
     mock_s1.route.return_value = _make_prediction(

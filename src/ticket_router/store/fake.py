@@ -113,7 +113,15 @@ class FakeTicketRepo(TicketRepository):
     def get_ticket(self, ticket_id: UUID | str) -> Optional[Ticket]:
         t_id = self._normalize_uuid(ticket_id)
         with self._lock:
-            return self._tickets.get(t_id)
+            ticket = self._tickets.get(t_id)
+            if ticket is not None:
+                return ticket
+            if isinstance(ticket_id, str):
+                ref_norm = ticket_id.strip().upper()
+                for t in self._tickets.values():
+                    if t.issue_reference and t.issue_reference.strip().upper() == ref_norm:
+                        return t
+            return None
 
     def list_open_tickets(
         self, limit: int = 50, queue: Optional[str] = None
